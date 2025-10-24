@@ -3,6 +3,11 @@ from .api import (
     energy_grid,
     sigma_bw_constant,
     sigma_bw_energy_dep,
+    na_sigma_v_from_sigma,
+    ReactionRateResult,
+    HFBSamplerConfig,
+    GeneratedSpectrum,
+    synthesize_sigma_from_hfb,
 )
 
 

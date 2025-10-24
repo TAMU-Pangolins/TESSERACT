@@ -1,3 +1,4 @@
 *.dat
 *.cor
 *.tab
+__pycache__/

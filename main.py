@@ -12,6 +12,7 @@ from nucres.types import Resonance
 from nucres.kinematics import energy_grid
 from nucres.bw import sigma_bw_constant as bw
 from nucres.constants import MASS_PROTON
+from nucres.generator import HFBSamplerConfig, synthesize_sigma_from_hfb
 
 
 def plot_random_resonances(
@@ -94,116 +95,45 @@ def plot_binned_total_cs_from_hfb(
     Build Sigma(E) using HFB Rho(U) with U ~= U_offset_mev + E_lab.
     Prints quick diagnostics so you can see if any levels were actually drawn.
     """
-    import numpy as np
     import matplotlib.pyplot as plt
-    from nucres.hfb_adapter import build_density_grid
 
-    rng = np.random.default_rng(seed)
-
-    # Map lab energy (eV) -> excitation U (MeV): U = U_offset + E_lab(MeV)
-    U_of_E_mev = lambda E_eV: (np.asarray(E_eV, dtype=float) * 1e-6) + float(U_offset_mev)
-
-    # 1) Build density grid (MeV axis, levels/MeV)
     E0 = 0.1 if E_min_mev is None else float(E_min_mev)
     E1 = 2.0 if E_max_mev is None else float(E_max_mev)
     if not (E0 < E1):
         raise ValueError("E_min_mev must be < E_max_mev")
 
-    E_mev, rho = build_density_grid(
-        Z=Z, data_root=data_root,
-        A=A, J_phys=J, pi=pi,
-        E_min_mev=E0, E_max_mev=E1, n_points=n_points,
-        U_of_E_mev=U_of_E_mev,
+    cfg = HFBSamplerConfig(
+        Z=Z,
+        data_root=data_root,
+        A=A,
+        J=J,
+        pi=pi,
+        s1=s1,
+        s2=s2,
+        m1=m1,
+        m2=m2,
+        Gamma_i_mean_eV=Gamma_i_mean_eV,
+        Gamma_o_mean_eV=Gamma_o_mean_eV,
+        delta_E_mev=delta_E_mev,
+        E_min_mev=E0,
+        E_max_mev=E1,
+        n_density_points=n_points,
+        n_sigma_points=n_plot_points,
+        U_offset_mev=U_offset_mev,
+        seed=seed,
     )
+    generated = synthesize_sigma_from_hfb(cfg)
+    meta = generated.metadata
 
-    # --- quick diagnostics ---
-    total_levels = float(np.trapz(rho, E_mev))          # expected count in [E0,E1]
-    print(f"[hfb] window [{E0:.3f},{E1:.3f}] MeV: expected levels ~= {total_levels:.3g}")
+    print(f"[hfb] window [{E0:.3f},{E1:.3f}] MeV: expected levels ~= {meta['expected_levels']:.3g}")
+    print(f"[hfb] bins: {meta['n_bins']}, nonzero-Lambda bins: {meta['nonzero_lambda_bins']}, total drawn levels: {meta['n_drawn']}")
 
-    # 2) Bin Lambda_k = Integral over bin Rho(E)dE
-    n_bins = max(1, int(np.ceil((E1 - E0) / delta_E_mev)))
-    edges_mev = np.linspace(E0, E1, n_bins + 1)
-    lambdas = np.zeros(n_bins)
-    for k in range(n_bins):
-        a, b = edges_mev[k], edges_mev[k + 1]
-        mask = (E_mev >= a) & (E_mev <= b)
-        if np.count_nonzero(mask) >= 2:
-            lambdas[k] = np.trapz(rho[mask], E_mev[mask])
-        else:
-            ra = np.interp(a, E_mev, rho)
-            rb = np.interp(b, E_mev, rho)
-            lambdas[k] = 0.5 * (ra + rb) * (b - a)
-
-    # 3) Draw counts per bin
-    counts = rng.poisson(lambdas)
-    N_drawn = int(counts.sum())
-    nz_bins = int((lambdas > 0).sum())
-    print(f"[hfb] bins: {n_bins}, nonzero-Lambda bins: {nz_bins}, total drawn levels: {N_drawn}")
-
-    # If nothing was drawn, surface a helpful hint and bail gracefully
-    if N_drawn == 0:
+    if meta["n_drawn"] == 0:
         print("[hfb] drew zero levels — try increasing --U-offset-mev (~= S_n), widening the E window, "
               "or checking that your (J,pi) slice isn't too restrictive.")
-        # Plot a faint zero line so the script still produces a figure
-        fig, ax = plt.subplots(figsize=(8, 4))
-        E_plot_eV = np.linspace(E0 * 1e6, E1 * 1e6, n_plot_points)
-        ax.plot(E_plot_eV, np.zeros_like(E_plot_eV))
-        ax.set_xlabel("Energy (eV)"); ax.set_ylabel("Cross Section (b)")
-        ax.set_title(f"HFB binned total cross section  (ΔE = {delta_E_mev:g} MeV)")
-        fig.tight_layout()
-        return fig, ax
 
-    # 4) Global evaluation grid
-    E_plot_MeV = np.linspace(E0, E1, n_plot_points)
-    E_plot_eV  = E_plot_MeV * 1e6 
-    sigma_tot  = np.zeros_like(E_plot_MeV)
-
-    # PT sampler
-    def pt_width(mean_eV: float) -> float:
-        return float(mean_eV * rng.chisquare(df=1))
-
-    # Sample E within a bin proportional Rho(E)
-    def sample_E_in_bin(a_mev: float, b_mev: float, n: int) -> np.ndarray:
-        if n <= 0:
-            return np.empty(0)
-        mask = (E_mev >= a_mev) & (E_mev <= b_mev)
-        Ex = E_mev[mask]; rhx = rho[mask]
-        if Ex.size == 0:
-            Ex = np.array([a_mev, b_mev])
-            rhx = np.array([np.interp(a_mev, E_mev, rho), np.interp(b_mev, E_mev, rho)])
-        else:
-            if Ex[0] > a_mev:
-                Ex = np.concatenate([[a_mev], Ex])
-                rhx = np.concatenate([[np.interp(a_mev, E_mev, rho)], rhx])
-            if Ex[-1] < b_mev:
-                Ex = np.concatenate([Ex, [b_mev]])
-                rhx = np.concatenate([rhx, [np.interp(b_mev, E_mev, rho)]])
-        dE = np.diff(Ex)
-        accum = np.concatenate([[0.0], np.cumsum(0.5 * (rhx[:-1] + rhx[1:]) * dE)])
-        total = accum[-1]
-        if total <= 0:
-            return rng.uniform(a_mev, b_mev, n)
-        u = rng.random(n) * total
-        return np.interp(u, accum, Ex)
-
-    # 5) Build spectrum & sum BW
-    for k, Nk in enumerate(counts):
-        if Nk == 0:
-            continue
-        a_mev, b_mev = edges_mev[k], edges_mev[k + 1]
-        Er_mev = sample_E_in_bin(a_mev, b_mev, Nk)
-        for Er in Er_mev:
-            Er_eV = float(Er * 1e6)
-            r = Resonance(
-                E_r=Er_eV, J=J, s1=s1, s2=s2, m1=m1, m2=m2,
-                Gamma_i=pt_width(Gamma_i_mean_eV),
-                Gamma_o=pt_width(Gamma_o_mean_eV),
-            )
-            sigma_tot += bw(E_plot_eV, r)
-
-    # 6) Plot
     fig, ax = plt.subplots(figsize=(8, 4))
-    ax.plot(E_plot_MeV, sigma_tot, label="Total σ(E) from HFB-driven spectrum")
+    ax.plot(generated.energy_MeV, generated.sigma_barns, label="Total σ(E) from HFB-driven spectrum")
     ax.set_xlabel("Energy (MeV)")
     ax.set_ylabel("Cross Section (b)")
     ax.set_title(f"HFB binned total cross section  (ΔE = {delta_E_mev:g} MeV)")
