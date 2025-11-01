@@ -8,6 +8,10 @@ from .api import (
     HFBSamplerConfig,
     GeneratedSpectrum,
     synthesize_sigma_from_hfb,
+    HFBRateRequest,
+    compute_rate_table,
+    generate_spectrum,
+    rate_table_as_dict,
 )
 
 

@@ -2,3 +2,4 @@
 *.cor
 *.tab
 __pycache__/
+*.pyc
