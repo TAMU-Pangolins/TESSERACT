@@ -1,12 +1,6 @@
 # nucres or CrossSectionThingyizer3000Prime 
 
 
-# Dependencies
-- Python 3
-- mpmath
-
-
-
 
 # Installation Instructions
     
@@ -15,19 +9,24 @@
         git clone https://github.com/aldusv/crosseccy
 
 
-2. Install mpmath:
-
-        pip install mpmath
-
-3. Download the RIPL-3 data using the provided helper:
-
-    You may edit the "USER SETTINGS" block according to your preferences found in `download_ripl.py`
-
-    In the project folder, run
+2. Download the RIPL-3 data using the provided helper: (inside the project root)
 
     ```
     python download_ripl.py
     ```
+
+3. Install into your environment. (inside the project root)
+
+    ```
+    pip install -e .
+    ```
+
+4. Verify the setup. (inside the project root)
+
+    ```
+    python -c "import nucres, json; print('nucres ready, data root =', nucres.config.resolve_data_root())"
+    ```
+
 
 
 # Project Structure

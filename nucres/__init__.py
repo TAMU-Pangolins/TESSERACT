@@ -1,3 +1,7 @@
+from .config import ensure_data_root_env
+
+ensure_data_root_env()
+
 from .api import (
     Resonance,
     energy_grid,

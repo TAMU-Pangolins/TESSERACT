@@ -1,0 +1,25 @@
+[build-system]
+requires = ["hatchling>=1.18"]
+build-backend = "hatchling.build"
+
+[project]
+name = "nucres"
+version = "0.1.0"
+requires-python = ">=3.9"
+dependencies = [
+  "numpy>=1.21",
+  "mpmath>=1.2.0",
+  "matplotlib>=3.3",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["nucres", "common"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+  "nucres",
+  "common",
+  "README.md",
+  "download_ripl.py",
+  "tests",
+]

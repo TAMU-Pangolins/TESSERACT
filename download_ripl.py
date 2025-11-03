@@ -13,6 +13,8 @@ import time
 import urllib.request
 import urllib.error
 
+from nucres.config import store_data_root
+
 # --------------------------- USER SETTINGS ---------------------------
 ONLY_Z_RANGE = None          # e.g. (8, 28) to fetch Z=8..28 only; or None for all Z
 INCLUDE_COR  = True          # also download zXXX.cor if present
@@ -94,7 +96,9 @@ def main():
         print(f"[{i}/{len(files)}] {name}")
         download_file(name, DEST_DIR)
         time.sleep(WAIT_BETWEEN)
+    store_data_root(DEST_DIR)
     print("Done.")
+    print(f"nucres data root stored at {DEST_DIR}")
 
 if __name__ == "__main__":
     main()

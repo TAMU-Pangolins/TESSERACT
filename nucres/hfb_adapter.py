@@ -6,7 +6,7 @@ from common.densities_retrieval import (
     build_rho_interpolator, J_index
 )
 
-_DATA_ROOT = Path(__file__).resolve().parents[1] / "data" / "densities" / "level-densities-hfb"
+from .config import resolve_data_root
 
 
 def resolve_density_paths(
@@ -18,7 +18,10 @@ def resolve_density_paths(
     Returns (tab_path, cor_path_or_None), where files are strictly:
       zXXX.tab (required), zXXX.cor (optional)
     """
-    root = Path(data_root) if data_root is not None else _DATA_ROOT
+    if data_root is None:
+        root = resolve_data_root()
+    else:
+        root = Path(data_root)
     tab = root / f"z{Z:03d}.tab"
     if not tab.exists():
         raise FileNotFoundError(f"Missing level-density .tab file: {tab}")
