@@ -35,6 +35,18 @@ def _load_config_path() -> Optional[Path]:
     return None
 
 
+def _default_data_root() -> Path:
+    """
+    Ensure the checkout-local data directory exists and return it.
+    This keeps HFB assets alongside the repository (same level as `nucres/`).
+    """
+    try:
+        DEFAULT_RELATIVE_DATA.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:  # pragma: no cover - only occurs on read-only installs
+        raise FileNotFoundError(f"Cannot create default data directory at {DEFAULT_RELATIVE_DATA}") from exc
+    return DEFAULT_RELATIVE_DATA
+
+
 def resolve_data_root() -> Path:
     env_value = os.environ.get(ENV_VAR)
     if env_value:
@@ -44,15 +56,16 @@ def resolve_data_root() -> Path:
     cfg_path = _load_config_path()
     if cfg_path:
         return cfg_path
-    if DEFAULT_RELATIVE_DATA.exists():
-        return DEFAULT_RELATIVE_DATA
-    raise FileNotFoundError(
-        "nucres data root not found. Set the NUCRES_DATA_ROOT environment variable "
-        "or run download_ripl.py to fetch the density tables."
-    )
+    try:
+        return _default_data_root()
+    except FileNotFoundError as exc:
+        raise FileNotFoundError(
+            "nucres data root not found, and the default checkout-local directory could not be created. "
+            "Set the NUCRES_DATA_ROOT environment variable or run download_ripl.py to fetch the density tables."
+        ) from exc
 
 
 def ensure_data_root_env() -> Path:
     root = resolve_data_root()
-    os.environ.setdefault(ENV_VAR, str(root))
+    os.environ[ENV_VAR] = str(root)
     return root
