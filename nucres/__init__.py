@@ -4,9 +4,9 @@ ensure_data_root_env()
 
 from .api import (
     Resonance,
-    energy_grid,
     sigma_bw_constant,
     sigma_bw_energy_dep,
+    energy_grid,
     na_sigma_v_from_sigma,
     ReactionRateResult,
     HFBSamplerConfig,
@@ -20,11 +20,11 @@ from .api import (
 
 
 from .sampling import (
-    sample_er_sqrt_uniform, sample_er_increasing_pdf,
-    porter_thomas_factors, nonhomogeneous_poisson_placements
-)
-from .widths import (
+    sample_er_sqrt_uniform,
+    sample_er_increasing_pdf,
+    porter_thomas_factors,
+    nonhomogeneous_poisson_placements,
     mean_particle_width_from_strength,
     mean_particle_width_from_penetrability,
-    fluctuate_widths
+    fluctuate_widths,
 )

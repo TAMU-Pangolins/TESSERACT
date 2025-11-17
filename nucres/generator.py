@@ -6,10 +6,9 @@ from typing import Dict, List, Optional, Any
 
 import numpy as np
 
-from .bw import sigma_bw_constant
-from .constants import MASS_PROTON
+from .resonance import Resonance, sigma_bw_constant
+from .physics import MASS_PROTON
 from .hfb_adapter import build_density_grid
-from .types import Resonance
 from .rates import na_sigma_v_from_sigma, ReactionRateResult
 
 

@@ -5,15 +5,15 @@ from typing import Sequence
 
 import numpy as np
 
-from .constants import (
+from .physics import (
     AVOGADRO,
     BARNS_TO_M2,
     BOLTZMANN,
     EV_TO_J,
     MASS_PROTON,
     PI,
+    reduced_mass,
 )
-from .kinematics import reduced_mass
 
 _ENERGY_UNIT_TO_EV = {
     "ev": 1.0,

@@ -8,10 +8,9 @@ from typing import Optional
 import matplotlib.pyplot as plt
 import numpy as np
 
-from nucres.types import Resonance
-from nucres.kinematics import energy_grid
-from nucres.bw import sigma_bw_constant as bw
-from nucres.constants import MASS_PROTON
+from nucres import Resonance
+from nucres.physics import energy_grid, MASS_PROTON
+from nucres.resonance import sigma_bw_constant as bw
 from nucres.generator import HFBSamplerConfig, synthesize_sigma_from_hfb
 
 

@@ -6,7 +6,7 @@ from typing import Iterable, Optional, Sequence
 
 import numpy as np
 
-from .constants import MASS_PROTON
+from .physics import MASS_PROTON
 from .generator import HFBSamplerConfig, GeneratedSpectrum, synthesize_sigma_from_hfb
 from .rates import ReactionRateResult
 

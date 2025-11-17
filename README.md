@@ -34,15 +34,36 @@
 # Project Structure
 
 - **nucres/**  
-  - `api.py`, `__init__.py`, `constants.py`, `units.py`, `kinematics.py` — public API, physical constants, unit conversions, and basic kinematics helpers.  
-  - `types.py`, `bw.py`, `penetrability.py` — resonance dataclass plus Breit–Wigner cross-section primitives.  
-  - `sampling.py`, `widths.py`, `generator.py` — Porter–Thomas samplers, width utilities, and the HFB-driven cross section generator.  
-  - `model.py`, `rates.py`, `hfb_adapter.py` — high-level modeling API, cross section -> reaction rate conversion, and HFB density bridges.  
-  - `plotting.py` — optional visualization helpers for resonances/spectra.
+  - `api.py`, `__init__.py`- public API.  
+  
+  - `physics.py` - public API, physical constants, unit conversions, and basic kinematics helpers.  
+
+  - `resonance.py` - resonance dataclass plus single level Breit-Wigner sigma(E) (constant and energy-dependent widths), Coulomb penetrability via Coulomb wave functions f and g. 
+
+  - `sampling.py` - Porter–Thomas and inverse-CDF samplers, Poisson placement of levels, mean widths from strength/penetrability.
+
+  - `generator.py` - Monte Carlo synthesis of spectra using HFB level densities. Integrates sampled resonances with Breit-Wigner shapes. 
+
+  - `model.py`, `rates.py` - high-level modeling API, cross section -> reaction rate conversion
+
+  - `hfb_adapter.py` - parsing HFB combinatorial level density tables.
+
+  - `plotting.py` - optional visualization helpers for resonances/spectra.
 
 - **common/**  
   HFB density table parsers (`densities_retrieval.py`).
 
+- **data/**
+  All data, downloaded or otherwise set in the repository. 
+
 - **tests/**  
-  Unit tests for the generator and model APIs.
+  Unit tests for the generator and model APIs. (temporary) 
+
+
+# Developer Standards
+
+
+- Prefer stdlib first (`csv`, `pathlib.Path`, etc.) and keep dependencies to the existing set (`numpy`, `mpmath`, `matplotlib`)
+
+- Keep units consistent (MeV/eV barns as used in `nucres`), document inputs/outputs in docstrings, and return informative errors for missing datasets or bad inputs.
 
