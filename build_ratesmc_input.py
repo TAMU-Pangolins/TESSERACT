@@ -280,7 +280,7 @@ def parse_args() -> argparse.Namespace:
     strength_group = p.add_mutually_exclusive_group()
     strength_group.add_argument("--use-strength", dest="use_strength", action="store_true", default=True, help="Emit omega-gamma instead of explicit widths (default).")
     strength_group.add_argument("--use-widths", dest="use_strength", action="store_false", help="Emit explicit partial widths instead of omega-gamma.")
-    p.add_argument("--default-frac-unc", type=float, default=None, help="Fractional uncertainty to apply to Ecm and widths (e.g., 0.1 for 10%).")
+    p.add_argument("--default-frac-unc", type=float, default=0.1, help="Fractional uncertainty to apply to Ecm and widths (default 0.1 = 10%).")
     p.add_argument("--l1", type=int, default=0, help="Entrance channel orbital angular momentum L1.")
     p.add_argument("--l2", type=int, default=1, help="Exit channel orbital angular momentum / multipolarity L2.")
     p.add_argument("--l3", type=int, default=0, help="Spectator channel orbital angular momentum L3.")
