@@ -1,4 +1,4 @@
-# nucres or CrossSectionThingyizer3000Prime 
+#  thick target measurement comparison (THICC)
 
 
 
