@@ -34,7 +34,7 @@
 # Project Structure
 
 - **nucres/**  
-  - `api.py`, `__init__.py`- public API.  
+  - `api.py`, `__init__.py` - public API.  
   
   - `physics.py` - public API, physical constants, unit conversions, and basic kinematics helpers.  
 
@@ -51,9 +51,11 @@
   - `plotting.py` - optional visualization helpers for resonances/spectra.
 
 - **common/**  
+
   HFB density table parsers (`densities_retrieval.py`).
 
 - **data/**
+
   All data, downloaded or otherwise set in the repository. 
 
 - **tests/**  
