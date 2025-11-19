@@ -52,7 +52,7 @@ def inject_rows(template: Path, out_path: Path, rows: List[str], header_line: Op
     if header_line:
         text[header_idx] = header_line
     new_lines = text[:data_start] + rows + text[data_end:]
-    out_path.write_text("\n".join(new_lines) + "\n", encoding="ascii")
+    out_path.write_text("\n".join(new_lines) + "\n", encoding="utf-8")
 
 
 def _sanitize_reaction_name(name: str) -> str:
@@ -249,7 +249,13 @@ def build_ratesmc_input(args) -> None:
         U_offset_mev=args.U_offset_mev,
         seed=args.seed,
     )
-    generated = synthesize_sigma_from_hfb(cfg)
+    try:
+        generated = synthesize_sigma_from_hfb(cfg)
+    except FileNotFoundError as exc:
+        expected = Path(args.data_root) if args.data_root else Path(__file__).resolve().parent / "data" / "densities" / "level-densities-hfb"
+        raise FileNotFoundError(
+            f"Missing HFB level-density file for Z={Z_val}. "
+        ) from exc
 
     opts = RatesMCExportOptions(
         use_strength=args.use_strength,
