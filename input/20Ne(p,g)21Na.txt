@@ -1,0 +1,64 @@
+20Ne(p,g)21Na
+*************************************************** *************************************************** **********
+1 ! Zproj
+10 ! Ztarget
+0 ! Zexitparticle (=0 when only 2 channels open)
+1.008 ! Aproj
+19.992 ! Atarget
+0 ! Aexitparticle (=0 when only 2 channels open)
+0.5 ! Jproj
+0.0 ! Jtarget
+0 ! Jexitparticle (=0 when only 2 channels open)
+2431.69 ! projectile separation energy (keV)
+0 ! exit particle separation energy (=0 when only 2 channels o pen)
+1.25 ! Radius parameter R0 (fm)
+2 ! Gamma-ray channel number (=2 if ejectile is a g-ray; =3 oth erwise)
+*************************************************** *************************************************** **********
+1.0 ! Minimum energy for numerical integration (keV)
+5000 ! Number of random samples (>5000 for better statistics )
+0 ! =0 for rate output at all temperatures; =NT for rate output at selected temperatures
+*************************************************** *************************************************** **********
+Nonresonant Contribution
+S(keVb) S’(b) S’’(b/keV) fracErr Cutoff Energy (keV)
+18.14 -8.93e-3 5.776e-6 0.24 2000.0
+19.68 -0.144 7.394e-4 0.45 239.0
+*************************************************** *************************************************** **********
+Resonant Contribution
+Note: G1 = entrance channel, G2 = exit channel, G3 = spectator channel !! Ecm, Exf in (keV); wg, Gx in (eV) !!
+Note: if Er<0, theta^2=C2S*theta_sp^2 must be entered inst ead of entrance channel partial width
+Ecm DEcm wg Dwg J G1 DG1 L1 G2 DG2 L2 G3 DG3 L3 Exf Int
+-6.79 0.42 0 0 0.5 0.445 0.099 0 0.17 0.05 1 0 0 0 0.0 1
+366.2 0.5 1.1e-4 2.0e-5 0 0 0 0 0 0 0 0 0 0 0.0 0
+397.4 0.7 6.2e-5 1.2e-5 0 0 0 0 0 0 0 0 0 0 0.0 0
+1112.6 0.4 1.125 1.8e-2 0 0 0 0 0 0 0 0 0 0 0.0 0
+1247.2 0.4 0.035 0.01 0 0 0 0 0 0 0 0 0 0 0.0 0
+1430.5 0.5 0.050 0.015 0 0 0 0 0 0 0 0 0 0 0.0 0
+1737.9 0.7 0 0 1.5 1.8e5 1.5e4 1 0.50 0.15 1 0 0 0 332.0 1
+1862.6 0.6 2.40 0.70 0 0 0 0 0 0 0 0 0 0 0.0 0
+2036.2 0.7 0 0 1.5 2.1e4 3.0e3 2 0.80 0.20 1 0 0 0 0.0 1
+*************************************************** *************************************************** **********
+Upper Limits of Resonances
+Note: enter partial width upper limit by chosing non-zero va lue for PT, where PT=<theta^2> for particles and...
+Note: ...PT=<B> for g-rays [enter: "upper_limit 0.0"]; for each resonance: # upper limits < # open channels!
+Ecm DEcm Jr G1 DG1 L1 PT G2 DG2 L2 PT G3 DG3 L3 PT Exf Int
+!0.0 0.0 0.0 0.0 0.0 0 0 0.0 0.0 0 0 0.0 0.0 0 0 0.0 0
+*************************************************** *************************************************** **********
+Interference between Resonances [numerical integration o nly]
+Note: + for positive, - for negative interference; +- if inte rference sign is unknown
+Ecm DEcm Jr G1 DG1 L1 PT G2 DG2 L2 PT G3 DG3 L3 PT Exf
+!+-
+0.0 0.0 0.0 0.0 0.0 0 0 0.0 0.0 0 0 0.0 0.0 0 0 0.0
+0.0 0.0 0.0 0.0 0.0 0 0 0.0 0.0 0 0 0.0 0.0 0 0 0.0
+*************************************************** *************************************************** **********
+Comments:
+1. Nonresonant contribution from fits to direct capture dat a of Rolfs et al. 1975, renormalized using revised
+strength for the 1112.6 keV resonance and re-analysis of 16O (p,g) direct capture (Iliadis et al. 2008). Two
+terms are necessary to cover the full energy range of Rolfs et al. 1975.
+2. Energy of subthreshold state is based on Q=2431.69(14) ke V, which includes a new measurement of the mass of
+21Na by Mukherjee et al. 2008. Spectroscopic factor of 0.71( 14) is a weighted average of fits to direct
+capture and the resonance tail. The dimensionless reduced w idth is 0.609(61) (Iliadis 1997) and the gamma-ray
+partial width is from the lifetime measurement of Anttila et al. 1977.
+3. Information on resonances: adopted energies from ENSDF ( Firestone 2004), widths and strengths from Rolfs et
+al. 1975, and Endt and van der Leun 1978.
+References: Anttila et al. [8]; Endt and van der Leun [72]; Firestone [7 7]; Iliadis [115];
+Iliadis et al. [120]; Mukherjee et al. [155]; Rolfs et al. [177].

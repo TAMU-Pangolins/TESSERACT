@@ -15,7 +15,7 @@ class RatesMCExportOptions:
     """
 
     # Toggle between emitting an analytical strength (omega-gamma) or explicit widths
-    use_strength: bool = True
+    use_strength: bool = False
     # If set, apply this fractional uncertainty to all energies/widths/strengths; else 0
     default_frac_unc: Optional[float] = None
     # Orbital angular momenta / multipolarities for channels 1–3
@@ -25,7 +25,7 @@ class RatesMCExportOptions:
     # Excitation energy of populated level (keV)
     exf_keV: float = 0.0
     # Int flag (0 = analytical, 1 = numerical)
-    int_flag: int = 0
+    int_flag: int = 1
     # Whether to keep G3 columns; when False, G3 and DG3 are zeroed
     include_g3: bool = False
     # Optional override of projectile/target spins used in the statistical factor

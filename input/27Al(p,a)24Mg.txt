@@ -1,0 +1,158 @@
+27Al(p,a)24Mg
+*************************************************** *************************************************** **********
+1 ! Zproj
+13 ! Ztarget
+2 ! Zexitparticle (=0 when only 2 channels open)
+1.0078 ! Aproj
+26.9815 ! Atarget
+4.0026 ! Aexitparticle (=0 when only 2 channels open)
+0.5 ! Jproj
+2.5 ! Jtarget
+0.0 ! Jexitparticle (=0 when only 2 channels open)
+11585.11 ! projectile separation energy (keV)
+9984.14 ! exit particle separation energy (=0 when only 2 cha nnels open)
+1.25 ! Radius parameter R0 (fm)
+3 ! Gamma-ray channel number (=2 if ejectile is a g-ray; =3 oth erwise)
+*************************************************** *************************************************** **********
+1.0 ! Minimum energy for numerical integration (keV)
+5000 ! Number of random samples (>5000 for better statistics )
+0 ! =0 for rate output at all temperatures; =NT for rate output at selected temperatures
+*************************************************** *************************************************** **********
+Nonresonant contribution
+S(keVb) S’(b) S’’(b/keV) fracErr Cutoff Energy (keV)
+0.0 0.0 0.0 0.0 0.0
+0.0 0.0 0.0 0.0 0.0
+*************************************************** *************************************************** **********
+Resonant Contribution
+Note: G1 = entrance channel, G2 = exit channel, G3 = spectator channel !! Ecm, Exf in (keV); wg, Gx in (eV) !!
+Note: if Er<0, theta^2=C2S*theta_sp^2 must be entered inst ead of entrance channel partial width
+Ecm DEcm wg Dwg Jr G1 DG1 L1 G2 DG2 L2 G3 DG3 L3 Exf Int
+314.9 0.4 0 0 4 3.1e-3 1.2e-3 2 0.007 0.001 4 10 5 1 0.0 0
+390.9 0.3 0 0 4 1.2e-2 0.5e-2 2 0.011 0.002 4 10 5 1 0.0 0
+486.74 0.07 0 0 2 0.73 0.18 0 0.50 0.12 2 0.1 0.05 1 0.0 1
+609.49 0.04 0.275 0.069 0 0 0 0 0 0 0 0 0 0 0.0 0
+705.08 0.04 0.52 0.13 0 0 0 0 0 0 0 0 0 0 0.0 0
+855.85 0.05 0.83 0.21 0 0 0 0 0 0 0 0 0 0 0.0 0
+889.77 0.05 0.33 0.08 0 0 0 0 0 0 0 0 0 0 0.0 0
+903.54 0.05 4.3 0.4 0 0 0 0 0 0 0 0 0 0 0.0 0
+965.89 0.05 0.20 0.05 0 0 0 0 0 0 0 0 0 0 0.0 0
+1129.70 0.06 0.010 0.003 0 0 0 0 0 0 0 0 0 0 0.0 0
+1140.88 0.08 0 0 2 250.0 50.0 0 810.0 160.0 2 1.0 0.1 1 0.0 1
+1157.2 0.5 1.08 0.27 0 0 0 0 0 0 0 0 0 0 0.0 0
+1169.45 0.06 0.36 0.09 0 0 0 0 0 0 0 0 0 0 0.0 0
+1217.33 0.07 0.15 0.04 0 0 0 0 0 0 0 0 0 0 0.0 0
+1231.40 0.08 0.56 0.14 0 0 0 0 0 0 0 0 0 0 0.0 0
+1269.77 0.07 3.3 0.7 0 0 0 0 0 0 0 0 0 0 0.0 0
+1281.14 0.07 8.0e-3 2.1e-3 0 0 0 0 0 0 0 0 0 0 0.0 0
+1316.7 0.2 0 0 2 960.0 190.0 0 500.0 100.0 2 1.0 0.1 1 0.0 1
+1338.66 0.3 10.0 1.7 0 0 0 0 0 0 0 0 0 0 0.0 0
+1388.8 0.3 0 0 1 250 50 1 1.5e3 0.2e3 1 1.0 0.1 1 0.0 1
+1404.6 0.2 1.0e-3 2.5e-4 0 0 0 0 0 0 0 0 0 0 0.0 0
+1448.10 0.08 3.0e-3 7.5e-4 0 0 0 0 0 0 0 0 0 0 0.0 0
+1508.70 0.08 3.8 0.8 0 0 0 0 0 0 0 0 0 0 0.0 0
+1519.4 1.0 12.5 2.5 0 0 0 0 0 0 0 0 0 0 0.0 0
+1530.39 0.08 7.5e-3 1.9e-3 0 0 0 0 0 0 0 0 0 0 0.0 0
+1587.87 0.08 30.0 6.0 0 0 0 0 0 0 0 0 0 0 0.0 0
+1603.2 0.5 2.5 0.6 0 0 0 0 0 0 0 0 0 0 0.0 0
+1604.5 0.2 0.28 0.07 0 0 0 0 0 0 0 0 0 0 0.0 0
+1619.17 0.10 3.2 0.8 0 0 0 0 0 0 0 0 0 0 0.0 0
+1623.02 0.13 0.7 0.2 0 0 0 0 0 0 0 0 0 0 0.0 0
+1644.3 0.5 4.0 1.0 0 0 0 0 0 0 0 0 0 0 0.0 0
+1661.4 0.6 775. 75 0 0 0 0 0 0 0 0 0 0 0.0 0
+1686.1 0.5 8.0e-2 2.1e-2 0 0 0 0 0 0 0 0 0 0 0.0 0
+1735.02 0.09 0.10 0.03 0 0 0 0 0 0 0 0 0 0 0.0 0
+1775.2 0.5 4.5 0.9 0 0 0 0 0 0 0 0 0 0 0.0 0
+1829.9 0.5 26. 5.0 0 0 0 0 0 0 0 0 0 0 0.0 0
+1838.8 0.5 183. 17.0 0 0 0 0 0 0 0 0 0 0 0.0 0
+1898.2 0.5 16.8 3.3 0 0 0 0 0 0 0 0 0 0 0.0 0
+1906.3 0.6 592. 58.3 0 0 0 0 0 0 0 0 0 0 0.0 0
+1961.1 0.6 62.5 12.5 0 0 0 0 0 0 0 0 0 0 0.0 0
+1971.53 0.03 3.3e-2 0.8e-2 0 0 0 0 0 0 0 0 0 0 0.0 0
+1974.9 0.6 0.11 0.03 0 0 0 0 0 0 0 0 0 0 0.0 0
+1983.5 0.6 6.6e-2 1.7e-2 0 0 0 0 0 0 0 0 0 0 0.0 0
+2025.9 0.8 0.23 0.06 0 0 0 0 0 0 0 0 0 0 0.0 0
+2030.6 0.8 0.46 0.11 0 0 0 0 0 0 0 0 0 0 0.0 0
+2050.7 0.7 0.12 0.03 0 0 0 0 0 0 0 0 0 0 0.0 0
+2054.3 1.0 242.0 25.0 0 0 0 0 0 0 0 0 0 0 0.0 0
+2054.8 1.0 6.6e-2 1.7e-2 0 0 0 0 0 0 0 0 0 0 0.0 0
+2082.5 0.5 40.8 8.3 0 0 0 0 0 0 0 0 0 0 0.0 0
+2093.1 0.7 125.0 16.7 0 0 0 0 0 0 0 0 0 0 0.0 0
+2100.8 0.5 0.15 0.04 0 0 0 0 0 0 0 0 0 0 0.0 0
+2121.2 0.6 23.3 5.0 0 0 0 0 0 0 0 0 0 0 0.0 0
+2126.3 0.5 0.19 0.05 0 0 0 0 0 0 0 0 0 0 0.0 0
+2220.3 0.8 5.3 1.1 0 0 0 0 0 0 0 0 0 0 0.0 0
+2227.3 0.8 233.0 25.0 0 0 0 0 0 0 0 0 0 0 0.0 0
+2245.1 0.9 6.6e-2 1.7e-2 0 0 0 0 0 0 0 0 0 0 0.0 0
+2275.0 1.5 525. 50.0 0 0 0 0 0 0 0 0 0 0 0.0 0
+2288.4 1.2 916.7 167.0 0 0 0 0 0 0 0 0 0 0 0.0 0
+2316.1 1.1 4.3 1.1 0 0 0 0 0 0 0 0 0 0 0.0 0
+2355.3 1.0 525.0 50.0 0 0 0 0 0 0 0 0 0 0 0.0 0
+2382.7 0.8 30.0 5.8 0 0 0 0 0 0 0 0 0 0 0.0 0
+2386.8 0.8 250.0 25.0 0 0 0 0 0 0 0 0 0 0 0.0 0
+2394.4 0.8 5.4e-2 1.4e-2 0 0 0 0 0 0 0 0 0 0 0.0 0
+2397.7 1.1 26.6 5.0 0 0 0 0 0 0 0 0 0 0 0.0 0
+2427.2 1.0 6.0 1.5 0 0 0 0 0 0 0 0 0 0 0.0 0
+2480.4 3.0 575.0 50.7 0 0 0 0 0 0 0 0 0 0 0.0 0
+2504.6 3.0 492. 50.0 0 0 0 0 0 0 0 0 0 0 0.0 0
+2510.4 3.0 94.1 18.0 0 0 0 0 0 0 0 0 0 0 0.0 0
+2518.5 1.0 30.8 5.8 0 0 0 0 0 0 0 0 0 0 0.0 0
+2614.2 1.0 41.7 8.3 0 0 0 0 0 0 0 0 0 0 0.0 0
+2642.5 3.0 233.0 25.0 0 0 0 0 0 0 0 0 0 0 0.0 0
+2662.6 3.0 358.0 33.3 0 0 0 0 0 0 0 0 0 0 0.0 0
+2709.0 3.0 75.0 7.1 0 0 0 0 0 0 0 0 0 0 0.0 0
+2713.8 3.0 125.0 25.0 0 0 0 0 0 0 0 0 0 0 0.0 0
+2721.5 3.0 13.3 2.5 0 0 0 0 0 0 0 0 0 0 0.0 0
+2743.6 3.0 92.5 16.1 0 0 0 0 0 0 0 0 0 0 0.0 0
+2772.5 3.0 410.0 41.8 0 0 0 0 0 0 0 0 0 0 0.0 0
+2789.9 3.0 150.0 17.0 0 0 0 0 0 0 0 0 0 0 0.0 0
+2808.5 1.0 75.0 16.7 0 0 0 0 0 0 0 0 0 0 0.0 0
+2817.7 1.0 25.0 5.0 0 0 0 0 0 0 0 0 0 0 0.0 0
+2908.5 3.0 1883.0 300.4 0 0 0 0 0 0 0 0 0 0 0.0 0
+2908.5 3.0 166.0 16.7 0 0 0 0 0 0 0 0 0 0 0.0 0
+2930.7 3.0 82.5 12.9 0 0 0 0 0 0 0 0 0 0 0.0 0
+2938.4 3.0 433.0 41.7 0 0 0 0 0 0 0 0 0 0 0.0 0
+2966.1 1.0 37.5 9.4 0 0 0 0 0 0 0 0 0 0 0.0 0
+*************************************************** *************************************************** **********
+Upper Limits of Resonances
+Note: enter partial width upper limit by chosing non-zero va lue for PT, where PT=<theta^2> for particles and...
+Note: ...PT=<B> for g-rays [enter: "upper_limit 0.0"]; for each resonance: # upper limits < # open channels!
+Ecm DEcm Jr G1 DG1 L1 PT G2 DG2 L2 PT G3 DG3 L3 PT Exf Int
+71.5 0.5 2 7.4e-14 0.0 0 0.0045 0.14 0.07 2 0 0.035 0.009 1 0 0.0 1
+84.3 0.4 1 2.6e-12 0.0 1 0.0045 0.183 0.050 1 0 0.275 0.090 1 0 0. 0 1
+193.5 0.7 2 7.5e-4 0.0 0 0.0045 0.006 0.002 2 0 5.0 2.5 1 0 0.0 0
+214.7 0.4 3 9.7e-5 3.9e-5 1 0 0.001 0.0 3 0.010 0.50 0.25 1 0 0.0 0
+282.1 0.4 4 6.4e-5 2.6e-5 2 0 0.0035 0.0 4 0.010 1.0 0.5 1 0 0.0 0
+437.2 0.4 5 3.4e-5 0.0 3 0.0045 0.0073 0.0018 5 0 1.0 0.5 1 0 0.0 0
+*************************************************** *************************************************** **********
+Interference between Resonances [numerical integration o nly]
+Note: + for positive, - for negative interference; +- if inte rference sign is unknown
+Ecm DEcm Jr G1 DG1 L1 PT G2 DG2 L2 PT G3 DG3 L3 PT Exf
+!+-
+0.0 0.0 0.0 0.0 0.0 0 0 0.0 0.0 0 0 0.0 0.0 0 0 0.0
+0.0 0.0 0.0 0.0 0.0 0 0 0.0 0.0 0 0 0.0 0.0 0 0 0.0
+*************************************************** *************************************************** **********
+Comments:
+1. Resonance energies from Endt 1998.
+2. For measured resonance strengths assumed uncertainty of 25% if no value is listed in Endt 1998.
+3. For Er=71.5 keV: only upper limit can be obtained for weak l =0 component in presence of dominant l=2 proton
+transfer angular distribution.
+4. For Er=84.3 keV: partial widths adopted from Iliadis et al . 2001.
+5. The triplet Er=193.4, 193.5, 195.5 keV (Ex=11778.5, 1177 8.6, 11780.2 keV) cannot be resolved in (p,g), (p,a)
+or (3He,d) work; here we assume that total (p,a) strength is d ominated by the second state since it has been
+seen in 24Mg(a,g)28Si work; from Ga/G<1.2e-3 (Champagne et al. 1988) we find (i) Ga from measured (a,g)
+strength, and (ii) Gg>5 eV. We assume here as a crude estimate Gg=5 eV that should not influence the total
+rates significantly (shell model predicts Gg=2 eV; Endt and Booten 1993).
+6. Er=214.7 keV: Gg=0.5 eV is a guess (average for negative pa rity states in this Ex range).
+7. Er=282.1 keV: upper limit for Ga is obtained with Gg=1 eV (r ough guess) and measured branching ratios of
+Champagne et al. 1988.
+8. Er=314.9 keV: Gg=10 eV is a rough guess; however, the measu red branching ratios of Champagne et al. 1988 and
+the measured upper limit for the (p,a) strength (Timmermann et al. 1988) hint at a relatively large gamma-
+ray partial width.
+9. Er=348.4 keV disregarded since shell model (Endt 1998) pr edicts Jp=5+ (unnatural parity).
+10. Er=390.9 keV: see comments under 8.
+11. Er=399.9 keV disregarded since shell model (Endt 1998) p redicts Jp=1+ (unnatural parity).
+12. Er=430.6 keV disregarded since shell model (Endt 1998) p redicts Jp=3+ (unnatural parity).
+13. Er=437.2 keV: Gg/G=1 assumed; Gg=1 eV is a rough guess.
+14. Er=486.7 keV: partial widths calculated from measured ( p,g), (p,a) and (a,g) strengths.
+References: Champagne et al. [37]; Endt [70]; Endt and Booten [71]; I liadis et al. [117];
+Timmermann et al. [206].

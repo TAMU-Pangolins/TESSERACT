@@ -1,0 +1,78 @@
+16O(a,g)20Ne
+*************************************************** *************************************************** **********
+2 ! Zproj
+8 ! Ztarget
+0 ! Zexitparticle (=0 when only 2 channels open)
+4.0026 ! Aproj
+15.9949 ! Atarget
+0 ! Aexitparticle (=0 when only 2 channels open)
+0.0 ! Jproj
+0.0 ! Jtarget
+0 ! Jexitparticle (=0 when only 2 channels open)
+4729.85 ! projectile separation energy (keV)
+0 ! exit particle separation energy (=0 when only 2 channels o pen)
+1.25 ! Radius parameter R0 (fm)
+2 ! Gamma-ray channel number (=2 if ejectile is a g-ray; =3 oth erwise)
+*************************************************** *************************************************** **********
+2.0 ! Minimum energy for numerical integration (keV)
+5000 ! Number of random samples (>5000 for better statistics )
+0 ! =0 for rate output at all temperatures; =NT for rate output at selected temperatures
+*************************************************** *************************************************** **********
+Non-Resonant Contribution
+S(keVb) S’(b) S’’(b/keV) fracErr Cutoff Energy (keV)
+3.62e3 -0.6872 0.0 0.4 1500.0
+0.0 0.0 0.0 0.0 0.0
+*************************************************** *************************************************** **********
+Resonant Contribution
+Note: G1 = entrance channel, G2 = exit channel, G3 = spectator channel !! Ecm, Exf in (keV); wg, Gx in (eV) !!
+Note: if Er<0, theta^2=C2S*theta_sp^2 must be entered inst ead of entrance channel partial width
+Ecm DEcm wg Dwg Jr G1 DG1 L1 G2 DG2 L2 G3 DG3 L3 Exf Int
+891.6 1.7 0 0 3 2.4e-3 0.7e-3 3 2.7e-4 0.8e-4 1 0 0 0 1633.7 1
+1057.9 2.6 0 0 1 28.0 3.0 1 6.7e-3 1.0e-3 1 0 0 0 1633.7 1
+1995.2 5.0 0 0 0 1.9e4 0.9e3 0 7.1e-2 1.2e-2 2 0 0 0 1633.7 1
+2426.5 0.5 0 0 3 8.2e3 0.3e3 3 1.5e-3 0.2e-3 1 0 0 0 4247.7 1
+2461.2 3.0 0 0 0 3.4e3 0.2e3 0 4.4e-3 0.8e-3 2 0 0 0 1633.7 1
+2692.1 1.2 0 0 2 8.0e3 1.0e3 2 3.0e-2 4.0e-3 1 0 0 0 1633.7 1
+3103.6 1.5 0 0 2 2.0e3 0.5e3 2 6.9e-2 0.7e-2 2 0 0 0 0.0 1
+3978.2 7.0 0.21 0.05 0 0 0 0 0 0 0 0 0 0 0.0 0
+4047.8 2.2 1.35 0.15 0 0 0 0 0 0 0 0 0 0 0.0 0
+4301.2 7.0 3.05 0.38 0 0 0 0 0 0 0 0 0 0 0.0 0
+4386.2 3.0 0.18 0.02 0 0 0 0 0 0 0 0 0 0 0.0 0
+4753.2 3.0 1.3 0.5 0 0 0 0 0 0 0 0 0 0 0.0 0
+5260.2 8.0 8.0 3.0 0 0 0 0 0 0 0 0 0 0 0.0 0
+5543.4 1.9 19.5 1.5 0 0 0 0 0 0 0 0 0 0 0.0 0
+6360.2 3.0 30.2 3.5 0 0 0 0 0 0 0 0 0 0 0.0 0
+6540.2 5.0 2.06 0.25 0 0 0 0 0 0 0 0 0 0 0.0 0
+6828.2 4.0 0.41 0.05 0 0 0 0 0 0 0 0 0 0 0.0 0
+7198.2 4.0 0.23 0.05 0 0 0 0 0 0 0 0 0 0 0.0 0
+7221.2 4.0 0.131 0.002 0 0 0 0 0 0 0 0 0 0 0.0 0
+7491.2 4.0 1.41 0.23 0 0 0 0 0 0 0 0 0 0 0.0 0
+7526.2 3.0 6.6 0.8 0 0 0 0 0 0 0 0 0 0 0.0 0
+7671.2 5.0 1.94 0.15 0 0 0 0 0 0 0 0 0 0 0.0 0
+*************************************************** *************************************************** **********
+Upper Limits of Resonances
+Note: enter partial width upper limit by chosing non-zero va lue for PT, where PT=<theta^2> for particles and...
+Note: ...PT=<B> for g-rays [enter: "upper_limit 0.0"]; for each resonance: # upper limits < # open channels!
+Ecm DEcm Jr G1 DG1 L1 PT G2 DG2 L2 PT G3 DG3 L3 PT Exf Int
+!0.0 0.0 0.0 0.0 0.0 0 0 0.0 0.0 0 0 0.0 0.0 0 0 0.0 0
+*************************************************** *************************************************** **********
+Interference between Resonances [numerical integration o nly]
+Note: + for positive, - for negative interference; +- if inte rference sign is unknown
+Ecm DEcm Jr G1 DG1 L1 PT G2 DG2 L2 PT G3 DG3 L3 PT Exf
+!+-
+0.0 0.0 0.0 0.0 0.0 0 0 0.0 0.0 0 0 0.0 0.0 0 0 0.0
+0.0 0.0 0.0 0.0 0.0 0 0 0.0 0.0 0 0 0.0 0.0 0 0 0.0
+*************************************************** *************************************************** **********
+Comments:
+1. Resonance strengths from Tilley et al. 1998 (see also Angu lo et al. 1999).
+2. For Er<3.5 MeV (except for lowest resonances; see below), G and wg from Tilley et al. 1998, Mayer 2001 and
+Angulo et al. 1999 used to calculate partial widths.
+3. Direct capture S-factor estimated from transitions show n in Fig. 1 of Mohr 2005, but disregarding the
+transitions due to Er=1058 keV resonance (they taken into ac count in the resonance input); we increased the
+uncertainty slightly (40%) compared to Mohr 2005 (30%).
+4. Er=1058 keV: partial widths calculated from wg (Tilley et al. 1998) and Ga=28+-3 eV (MacArthur et al. 1980).
+5. Er=892 keV: partial widths calculated from wg (Tilley et a l. 1998) and tau=246 fs (weighted average of
+values in Ajzenberg-Selove 1972); solution of quadratic eq uation gives Gx=2.4e-3 eV and Gy=2.7e-4 eV; the
+larger value is identified with Ga, in agreement with (6Li,d ) measurement (Mao et al. 1996).
+References: Ajzenberg-Selove [3]; Angulo et al. [7]; MacArthur et a l. [144]; Mao, Fortune
+and Lacaze [149]; Mayer [150]; Mohr [152]; Tilley et al. [205].

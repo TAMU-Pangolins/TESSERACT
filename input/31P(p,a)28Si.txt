@@ -1,0 +1,100 @@
+31P(p,a)28Si
+*************************************************** *************************************************** **********
+1 ! Zproj
+15 ! Ztarget
+2 ! Zexitparticle (=0 when only 2 channels open)
+1.0078 ! Aproj
+30.9737 ! Atarget
+4.0026 ! Aexitparticle (=0 when only 2 channels open)
+0.5 ! Jproj
+0.5 ! Jtarget
+0.0 ! Jexitparticle (=0 when only 2 channels open)
+8863.78 ! projectile separation energy (keV)
+6947.82 ! exit particle separation energy (=0 when only 2 cha nnels open)
+1.25 ! Radius parameter R0 (fm)
+3 ! Gamma-ray channel number (=2 if ejectile is a g-ray; =3 oth erwise)
+*************************************************** *************************************************** **********
+1.0 ! Minimum energy for numerical integration (keV)
+5000 ! Number of random samples (>5000 for better statistics )
+0 ! =0 for rate output at all temperatures; =NT for rate output at selected temperatures
+*************************************************** *************************************************** **********
+Nonresonant contribution
+S(keVb) S’(b) S’’(b/keV) fracErr Cutoff Energy (keV)
+0.0 0.0 0.0 0.0 0.0
+0.0 0.0 0.0 0.0 0.0
+*************************************************** *************************************************** **********
+Resonant Contribution
+Note: G1 = entrance channel, G2 = exit channel, G3 = spectator channel !! Ecm, Exf in (keV); wg, Gx in (eV) !!
+Note: if Er<0, theta^2=C2S*theta_sp^2 must be entered inst ead of entrance channel partial width
+Ecm DEcm wg Dwg Jr G1 DG1 L1 G2 DG2 L2 G3 DG3 L3 Exf Int
+159.2 2.0 0 0 3 1.4e-11 0.6e-11 3 0.012 0.003 3 0.024 0.009 1 0.0 1
+599.4 1.0 2.5e-2 6.3e-3 0 0 0 0 0 0 0 0 0 0 0.0 0
+622.2 0.7 1.35 0.33 0 0 0 0 0 0 0 0 0 0 0.0 0
+846.8 0.5 1.40 0.35 0 0 0 0 0 0 0 0 0 0 0.0 0
+952.8 1.0 0.55 0.14 0 0 0 0 0 0 0 0 0 0 0.0 0
+984.0 3.0 14.0 1.5 0 0 0 0 0 0 0 0 0 0 0.0 0
+1118.7 0.6 4.75 0.50 0 0 0 0 0 0 0 0 0 0 0.0 0
+1358.7 0.8 20.0 2.0 0 0 0 0 0 0 0 0 0 0 0.0 0
+1423.7 1.5 8.5 1.0 0 0 0 0 0 0 0 0 0 0 0.0 0
+1428.8 1.5 13.3 1.5 0 0 0 0 0 0 0 0 0 0 0.0 0
+1591.2 3.0 87.5 10.0 0 0 0 0 0 0 0 0 0 0 0.0 0
+1662.9 3.0 23.2 2.5 0 0 0 0 0 0 0 0 0 0 0.0 0
+1760.7 3.0 22.5 8.8 0 0 0 0 0 0 0 0 0 0 0.0 0
+1836.3 1.0 2200.0 225.0 0 0 0 0 0 0 0 0 0 0 0.0 0
+1914.8 1.0 100.0 10.0 0 0 0 0 0 0 0 0 0 0 0.0 0
+1922.7 1.0 11.5 1.3 0 0 0 0 0 0 0 0 0 0 0.0 0
+1928.2 1.0 52.5 5.0 0 0 0 0 0 0 0 0 0 0 0.0 0
+1961.5 1.0 1650.0 175.0 0 0 0 0 0 0 0 0 0 0 0.0 0
+1962.8 1.0 97.5 10.0 0 0 0 0 0 0 0 0 0 0 0.0 0
+2051.3 3.0 275.0 28.0 0 0 0 0 0 0 0 0 0 0 0.0 0
+2186.9 3.0 205.0 22.5 0 0 0 0 0 0 0 0 0 0 0.0 0
+2360.2 3.0 21.8 2.3 0 0 0 0 0 0 0 0 0 0 0.0 0
+2370.0 3.0 525.0 50.0 0 0 0 0 0 0 0 0 0 0 0.0 0
+2582.0 3.0 135.0 15.0 0 0 0 0 0 0 0 0 0 0 0.0 0
+2621.7 3.0 72.5 7.5 0 0 0 0 0 0 0 0 0 0 0.0 0
+2719.5 3.0 160.0 17.5 0 0 0 0 0 0 0 0 0 0 0.0 0
+2722.5 3.0 82.5 10.0 0 0 0 0 0 0 0 0 0 0 0.0 0
+2739.9 3.0 13.0 1.3 0 0 0 0 0 0 0 0 0 0 0.0 0
+2742.8 3.0 2.5 0.3 0 0 0 0 0 0 0 0 0 0 0.0 0
+2744.7 3.0 925.0 175.0 0 0 0 0 0 0 0 0 0 0 0.0 0
+2765.1 3.0 1250.0 250.0 0 0 0 0 0 0 0 0 0 0 0.0 0
+2814.5 3.0 142.5 15.0 0 0 0 0 0 0 0 0 0 0 0.0 0
+2857.1 3.0 62.5 7.5 0 0 0 0 0 0 0 0 0 0 0.0 0
+2870.6 3.0 950.0 100.0 0 0 0 0 0 0 0 0 0 0 0.0 0
+2940.4 3.0 35.0 7.5 0 0 0 0 0 0 0 0 0 0 0.0 0
+2942.3 3.0 2500.0 500.0 0 0 0 0 0 0 0 0 0 0 0.0 0
+*************************************************** *************************************************** **********
+Upper Limits of Resonances
+Note: enter partial width upper limit by chosing non-zero va lue for PT, where PT=<theta^2> for particles and...
+Note: ...PT=<B> for g-rays [enter: "upper_limit 0.0"]; for each resonance: # upper limits < # open channels!
+Ecm DEcm Jr G1 DG1 L1 PT G2 DG2 L2 PT G3 DG3 L3 PT Exf Int
+195.2 2.0 1 6.4e-7 2.1e-7 1 0 1.2e-3 0.0 1 0.010 0.5 0.25 1 0 0.0 0
+201.2 2.0 4 1.0e-9 0.0 4 0.0045 0.1 0.05 4 0 6.3e-3 1.3e-3 1 0 0.0 1
+391.2 2.0 2 3.6e-4 0.6e-4 2 0 0.08 0.0 2 0.010 1.0 0.5 1 0 0.0 0
+*************************************************** *************************************************** **********
+Interference between Resonances [numerical integration o nly]
+Note: + for positive, - for negative interference; +- if inte rference sign is unknown
+Ecm DEcm Jr G1 DG1 L1 PT G2 DG2 L2 PT G3 DG3 L3 PT Exf
++-
+372.2 2.0 1 3.6e-3 1.0e-3 1 0 7.8 3.0 1 0 0.17 0.03 1 0 0.0
+1468.1 1.5 1 3800.0 600.0 1 0 2375.0 705.0 1 0 0.39 0.11 1 0 0.0
+*************************************************** *************************************************** **********
+Comments:
+1. Resonance energies from Endt 1998.
+2. For measured resonance strengths assumed uncertainty of 25% if no value is listed in Endt 1998.
+3. Assumed that doublet Ex=9023 (3-) + 9024 [6-(4-)] keV is do minated by former, natural parity, state.
+4. Gg=0.5 eV for Er=195 keV [Ex=9059 keV; Jp=(1,2)-] is a gues s; furthermore, Jp=1- assumed since it better
+reproduces measured (p,g) resonance strength.
+5. For Er=201 keV (4+): Gg<<Ga according to MacArthur et al. 1 985; thus Gg=6.3e-3 eV is given by measured (a,g)
+resonance strength, while Ga is in the range of 0.03 - 0.2 eV.
+6. Level at Ex=9138 keV is disregarded since it originates fr om an unpublished study (see Endt 1998); it has
+not been observed in proton transfer work.
+7. No indication that Ex=9170 keV level (Er=306 keV) decays b y emission of alpha-particles (Ross et al. 1995);
+disregarded the level here in agreement with unnatural pari ty assignment from the shell model (Endt 1998).
+8. For Er=391 keV, Gg=1 eV is a rough estimate; Ga/Gg<0.08 (Ro ss et al. 1995) yields then Ga<0.08 eV.
+9. Er=372 keV (Ex=9236 keV; 1-): partial widths are found fro m measured (p,g), (p,a) and (a,g) strengths; in
+particular, we disregard the other component in the doublet [Ex=9235 keV; (2+ to 5+)] for which the shell
+model assigns Jp=5+ (Endt 1998).
+10. Er=1468 keV (Ex=10333 keV; Jp=1-): partial widths calcu lated from measured (p,g) and (p,a) strengths,
+together with measured Gp (Kalifa et al. 1978).
+References: Endt [70]; Kalifa et al. [124]; MacArthur et al. [145]; Ross et al. [180].

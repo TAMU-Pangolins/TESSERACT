@@ -1,0 +1,97 @@
+20Ne(a,g)24Mg
+*************************************************** *************************************************** **********
+2 ! Zproj
+10 ! Ztarget
+1 ! Zexitparticle (=0 when only 2 channels open)
+4.0026 ! Aproj
+19.992 ! Atarget
+1.0078 ! Aexitparticle (=0 when only 2 channels open)
+0.0 ! Jproj
+0.0 ! Jtarget
+0.5 ! Jexitparticle (=0 when only 2 channels open)
+9316.55 ! projectile separation energy (keV)
+11692.68 ! exit particle separation energy (=0 when only 2 ch annels open)
+1.25 ! Radius parameter R0 (fm)
+2 ! Gamma-ray channel number (=2 if ejectile is a g-ray; =3 oth erwise)
+*************************************************** *************************************************** **********
+2.0 ! Minimum energy for numerical integration (keV)
+5000 ! Number of random samples (>5000 for better statistics )
+0 ! =0 for rate output at all temperatures; =NT for rate output at selected temperatures
+*************************************************** *************************************************** **********
+Nonresonant Contribution
+S(keVb) S’(b) S’’(b/keV) fracErr Cutoff Energy (keV)
+9.61e4 -12.9 0.0 0.79 1500.0
+0.0 0.0 0.0 0.0 0.0
+*************************************************** *************************************************** **********
+Resonant Contribution
+Note: G1 = entrance channel, G2 = exit channel, G3 = spectator channel !! Ecm, Exf in (keV); wg, Gx in (eV) !!
+Note: if Er<0, theta^2=C2S*theta_sp^2 must be entered inst ead of entrance channel partial width
+Ecm DEcm wg Dwg J G1 DG1 L1 G2 DG2 L2 G3 DG3 L3 Exf Int
+794.4 0.4 2.9e-4 6.0e-5 0 0 0 0 0 0 0 0 0 0 0.0 0
+1016.74 0.13 3.0e-4 6.0e-5 0 0 0 0 0 0 0 0 0 0 0.0 0
+1043.96 0.13 0.0 0.0 2 9.6e-5 2.0e-5 2 0.44 0.09 2 0 0 0 1369.0 1
+1363.2 0.4 0.0 0.0 0 1.9 0.6 0 0.19 0.10 2 0 0 0 1369.0 1
+1414.24 0.11 2.6e-3 0.5e-4 0 0 0 0 0 0 0 0 0 0 0.0 0
+1600.41 0.17 0.0 0.0 0 7.0 0.8 2 0.47 0.11 2 0 0 0 1369.0 1
+1699.3 0.7 1.5 0.2 0 0 0 0 0 0 0 0 0 0 0.0 0
+1845.5 0.8 0.23 0.05 0 0 0 0 0 0 0 0 0 0 0.0 0
+1891.9 1.6 2.7e-3 1.4e-3 0 0 0 0 0 0 0 0 0 0 0.0 0
+1900.24 0.19 1.7 0.2 0 0 0 0 0 0 0 0 0 0 0.0 0
+2073.3 1.1 0.0 0.0 0 500.0 125.0 1 0.16 0.03 1 0 0 0 1369.0 1
+2135.96 0.13 1.2 0.2 0 0 0 0 0 0 0 0 0 0 0.0 0
+2201.7 0.6 0.0 0.0 0 500.0 125.0 2 0.14 0.03 2 0 0 0 1369.0 1
+2279.5 0.8 0.041 0.009 0 0 0 0 0 0 0 0 0 0 0.0 0
+2379.1 0.6 0.0 0.0 0 1.6 0.6 4 0.10 0.05 2 0 0 0 9301.0 1
+2411.6 1.0 0.0 0.0 0 1.0e+4 2.0e+3 0 0.35 0.05 2 0 0 0 1369.0 1
+2548.4 1.3 0.0 0.0 0 7.0e+3 3.0e+3 1 0.39 0.06 1 0 0 0 0.0 1
+2653.1 1.0 0.0 0.0 0 2.4e+3 500.0 2 0.13 0.02 2 0.046 0.010 0 136 9.0 1
+2685.8 2.0 0.33 0.04 0 0 0 0 0 0 0 0 0 0 0.0 0
+2698.7 0.8 0.0 0.0 0 700.0 200.0 3 0.14 0.07 1 0 0 0 1369.0 1
+2732.6 2.0 0.0 0.0 0 7.1 2.1 4 2.4 0.30 2 4.9e-3 1.3e-3 2 4123.0 1
+2802.95 0.18 0.0 0.0 0 1.9e+3 300.0 2 0.26 0.04 2 0 0 0 9516.0 1
+2844.05 0.16 0.0 0.0 0 5.7e+3 400.0 4 0.092 0.030 2 0 0 0 4123.0 1
+3086.8 0.7 0.0 0.0 0 98.3 44.5 2 2.33 1.09 2 13.4 2.5 0 4238.0 1
+3124.0 3.0 0.13 0.02 0 0 0 0 0 0 0 0 0 0 0.0 0
+3151.0 3.0 0.0 0.0 0 3.8e+3 300.0 2 0.22 0.11 2 0 0 0 0.0 1
+3187.0 3.0 0.0 0.0 0 2.3e+3 300.0 4 0.66 0.08 2 0 0 0 1369.0 1
+3260.0 3.0 0.0 0.0 0 6.2e+3 300.0 4 0.088 0.044 2 100.0 43.0 2 0. 0 1
+3320.3 0.6 0.0 0.0 0 22.7 3.1 4 0.87 0.45 2 7.3 3.7 2 4123.0 1
+3420.6 0.9 0.0 0.0 0 4.29e+3 860.0 2 0.13 0.07 2 3.2e+3 1.1e+3 0 0.0 1
+3489.4 0.8 0.0 0.0 0 420.0 180.0 2 0.78 0.39 2 850.0 660.0 0 0.0 1
+3544.0 3.0 0.37 0.05 0 0 0 0 0 0 0 0 0 0 0.0 0
+3727.0 3.0 0.0 0.0 0 2.8e+3 600.0 0 0.71 0.09 1 0 0 0 9967.0 1
+3733.67 0.14 0.0 0.0 0 20.2 6.2 3 5.45 1.00 1 61.4 1.64 1 4123.0 1
+3739.0 3.0 0.60 0.08 0 0 0 0 0 0 0 0 0 0 0.0 0
+3770.2 0.7 0.0 0.0 0 498.0 233.0 2 3.6 0.6 1 6.0e+3 3.0e+3 0 5235 .0 1
+4090.0 5.0 1.4 0.7 0 0 0 0 0 0 0 0 0 0 0.0 0
+4119.0 5.0 0.69 0.1 0 0 0 0 0 0 0 0 0 0 0.0 0
+4450.0 3.0 0.17 0.03 0 0 0 0 0 0 0 0 0 0 0.0 0
+4700.0 3.0 5.9 2.9 0 0 0 0 0 0 0 0 0 0 0.0 0
+4759.0 4.0 24.0 5.0 0 0 0 0 0 0 0 0 0 0 0.0 0
+4781.0 4.0 1.3 0.2 0 0 0 0 0 0 0 0 0 0 0.0 0
+4829.0 4.0 1.5 0.2 0 0 0 0 0 0 0 0 0 0 0.0 0
+5008.0 4.0 6.4 0.7 0 0 0 0 0 0 0 0 0 0 0.0 0
+*************************************************** *************************************************** **********
+Upper Limits of Resonances
+Note: enter partial width upper limit by chosing non-zero va lue for PT, where PT=<theta^2> for particles and...
+Note: ...PT=<B> for g-rays [enter: "upper_limit 0.0"]; for each resonance: # upper limits < # open channels!
+Ecm DEcm Jr G1 DG1 L1 PT G2 DG2 L2 PT G3 DG3 L3 PT Exf Int
+-15.40 0.08 2.0 0.64 0.0 2 0.01 0.094 0.027 2 0 0.0 0.0 0 0 1369.0 1
+-11.16 0.24 0.0 0.81 0.0 0 0.01 3.8e-3 7.7e-4 2 0 0.0 0.0 0 0 1369 .0 1
+215.93 0.10 2.0 1.08e-20 0.0 2 0.01 0.060 0.027 2 0 0.0 0.0 0 0 13 69.0 1
+*************************************************** *************************************************** **********
+Interference between Resonances [numerical integration o nly]
+Note: + for positive, - for negative interference; +- if inte rference sign is unknown
+Ecm DEcm Jr G1 DG1 L1 PT G2 DG2 L2 PT G3 DG3 L3 PT Exf
+!+-
+0.0 0.0 0.0 0.0 0.0 0 0 0.0 0.0 0 0 0.0 0.0 0 0 0.0
+0.0 0.0 0.0 0.0 0.0 0 0 0.0 0.0 0 0 0.0 0.0 0 0 0.0
+*************************************************** *************************************************** **********
+Comments:
+1. Nonresonant contribution from (6Li,d) relative spectro scopic factors of Anantaraman et al. 1977, normalized
+as described in Paper II.
+2. Information on resonances: adopted energies and total wi dths from ENSDF (Firestone 2007); strengths from
+Smulders 1965 (corrected by Schmalbrock et al. 1983), Highl and and Thwaites 1968 (renormalized), Fifield et
+al. 1978, 1979 (with updated stopping powers), Schmalbrock et al. 1983, and Endt and van der Leun 1978.
+References: Anantaraman et al. [6]; Endt and van der Leun [72]; Fiﬁe ld et al. [79]; Fire-
+stone [78]; Highland and Thwaites [107]; Schmalbrock et al. [185]; Smulde rs [193].

@@ -1,0 +1,60 @@
+18F(p,g)19Ne
+*************************************************** *************************************************** **********
+1 ! Zproj
+9 ! Ztarget
+2 ! Zexitparticle (=0 when only 2 channels open)
+1.0078 ! Aproj
+18.001 ! Atarget
+4.0026 ! Aexitparticle (=0 when only 2 channels open)
+0.5 ! Jproj
+1.0 ! Jtarget
+0.0 ! Jexitparticle (=0 when only 2 channels open)
+6411.2 ! projectile separation energy (keV)
+3529.1 ! exit particle separation energy (=0 when only 2 chan nels open)
+1.25 ! Radius parameter R0 (fm)
+2 ! Gamma-ray channel number (=2 if ejectile is a g-ray; =3 oth erwise)
+*************************************************** *************************************************** **********
+1.0 ! Minimum energy for numerical integration (keV)
+5000 ! Number of random samples (>5000 for better statistics )
+0 ! =0 for rate output at all temperatures; =NT for rate output at selected temperatures
+*************************************************** *************************************************** **********
+Nonresonant Contribution
+S(keVb) S’(b) S’’(b/keV) fracErr Cutoff Energy (keV)
+34.0 4.1e-4 0.0 14.1 1000.0
+0.0 0.0 0.0 0.0 0.0
+*************************************************** *************************************************** **********
+Resonant Contribution
+Note: G1 = entrance channel, G2 = exit channel, G3 = spectator channel !! Ecm, Exf in (keV); wg, Gx in (eV) !!
+Note: if Er<0, theta^2=C2S*theta_sp^2 must be entered inst ead of entrance channel partial width
+Ecm DEcm wg Dwg Jr G1 DG1 L1 G2 DG2 L2 G3 DG3 L3 Exf Int
+-121.0 6.0 0 0 0.5 0.087 0.026 0 1.3 2.1 1 1.2e4 0.4e4 1 0.0 1
+8.0 6.0 0 0 1.5 7.2e-36 2.1e-36 1 1.3 2.1 1 4.e3 2.e3 2 0.0 1
+330.0 6.0 0 0 1.5 2.22 0.69 1 5.0 2.6 2 5.7e3 0.7e3 2 275.0 1
+*************************************************** *************************************************** **********
+Upper Limits of Resonances
+Note: enter partial width upper limit by chosing non-zero va lue for PT, where PT=<theta^2> for particles and...
+Note: ...PT=<B> for g-rays [enter: "upper_limit 0.0"]; for each resonance: # upper limits < # open channels!
+Ecm DEcm Jr G1 DG1 L1 PT G2 DG2 L2 PT G3 DG3 L3 PT Exf Int
+26.0 9.0 0.5 2.2e-17 0.0 1 0.0045 1.3 2.1 1 0 2.16e5 0.19e5 0 0 0. 0 1
+287.0 6.0 2.5 2.4e-2 0.0 2 0.0045 0.29 0.15 1 0 1.2e3 0.3e3 3 0 16 16.0 1
+450.0 6.0 3.5 1.0 0.0 3 0.0045 2.3 1.2 1 0 1.2e3 0.3e3 4 0 238.0 1
+827.0 6.0 1.5 700.0 0.0 0 0.0045 1.3 2.1 1 0 6.0e3 5.2e3 1 0 0.0 1
+842.0 10.0 0.5 1.8e3 0.0 0 0.0045 1.3 2.1 1 0 2.3e4 2.0e4 1 0 0.0 1
+*************************************************** *************************************************** **********
+Interference between Resonances [numerical integration o nly]
+Note: + for positive, - for negative interference; +- if inte rference sign is unknown
+Ecm DEcm Jr G1 DG1 L1 PT G2 DG2 L2 PT G3 DG3 L3 PT Exf
++-
+38.0 7.0 1.5 1.17e-11 0.35e-11 0 0 1.1 0.6 1 0 1.3e3 0.4e3 1 0 275 .0
+664.7 1.6 1.5 1.52e4 0.10e4 0 0 1.3 2.1 1 0 2.38e4 0.12e4 1 0 0.0
+*************************************************** *************************************************** **********
+Comments:
+1. Radiative widths are scaled from analog levels (Nessaraj a et al. 2007) when possible. Otherwise, typical
+values and uncertainties are adopted from statistics of rad iative widths in 19F.
+2. The direct capture contribution is adopted from the calcu lation of Utku et al. 1998 using 18O+p spectroscopic
+factors.
+3. For an interpretation of the large fractional uncertaint y of the direct capture S-factor, see the numerical
+example at the end of Sec. 5.1.2 in Paper I; the values of E[x]= 34.0 keVb and fracErr=sqrt(V[x])/E[x]=14.1
+entered here correspond to a median value of 2.4 keVb with a fa ctor of 10 uncertainty.
+4. Otherwise, the same input data as for the 18F(p,a) reactio n are used.
+References: Nesaraja et al. [159]; Utku et al. [212].

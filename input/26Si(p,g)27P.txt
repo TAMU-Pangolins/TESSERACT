@@ -1,0 +1,50 @@
+26Si(p,g)27P
+*************************************************** *************************************************** **********
+1 ! Zproj
+14 ! Ztarget
+0 ! Zexitparticle (=0 when only 2 channels open)
+1.0078 ! Aproj
+25.9923 ! Atarget
+0 ! Aexitparticle (=0 when only 2 channels open)
+0.5 ! Jproj
+0.0 ! Jtarget
+0.0 ! Jexitparticle (=0 when only 2 channels open)
+861.0 ! projectile separation energy (keV)
+0.0 ! exit particle separation energy (=0 when only 2 channel s open)
+1.25 ! Radius parameter R0 (fm)
+2 ! Gamma-ray channel number (=2 if ejectile is a g-ray; =3 oth erwise)
+*************************************************** *************************************************** **********
+1.0 ! Minimum energy for numerical integration (keV)
+7000 ! Number of random samples (>5000 for better statistics )
+0 ! =0 for rate output at all temperatures; =NT for rate output at selected temperatures
+*************************************************** *************************************************** **********
+Nonresonant contribution
+S(keVb) S’(b) S’’(b/keV) fracErr Cutoff Energy (keV)
+5.45e1 -1.66e-2 4.00e-6 0.4 4100.0
+0.0 0.0 0.0 0.0 0.0
+*************************************************** *************************************************** **********
+Resonant Contribution
+Note: G1 = entrance channel, G2 = exit channel, G3 = spectator channel !! Ecm, Exf in (keV); wg, Gx in (eV) !!
+Note: if Er<0, theta^2=C2S*theta_sp^2 must be entered inst ead of entrance channel partial width
+Ecm DEcm wg Dwg J G1 DG1 L1 G2 DG2 L2 G3 DG3 L3 Exf Int
+259 28 0 0 1.5 1.8e-4 0.72e-4 2 3.4e-3 1.7e-3 1 0 0 0 0.0 1
+772 33 0 0 2.5 4.3 1.7 2 3.3e-4 1.7e-4 2 0 0 0 0.0 1
+1090 100 0 0 2.5 4.4 1.8 2 6.0e-4 3.0e-4 2 0 0 0 0.0 1
+*************************************************** *************************************************** **********
+Upper Limits of Resonances
+Note: enter partial width upper limit by chosing non-zero va lue for PT, where PT=<theta^2> for particles and...
+Note: ...PT=<B> for g-rays [enter: "upper_limit 0.0"]; for each resonance: # upper limits < # open channels!
+Ecm DEcm Jr G1 DG1 L1 PT G2 DG2 L2 PT G3 DG3 L3 PT Exf Int
+!0.0 0.0 0.0 0.0 0.0 0 0 0.0 0.0 0 0 0.0 0.0 0 0 0.0 0
+*************************************************** *************************************************** **********
+Interference between Resonances [numerical integration o nly]
+Note: + for positive, - for negative interference; +- if inte rference sign is unknown
+Ecm DEcm Jr G1 DG1 L1 PT G2 DG2 L2 PT G3 DG3 L3 PT Exf
+!+-
+0.0 0.0 0.0 0.0 0.0 0 0 0.0 0.0 0 0 0.0 0.0 0 0 0.0
+0.0 0.0 0.0 0.0 0.0 0 0 0.0 0.0 0 0 0.0 0.0 0 0 0.0
+*************************************************** *************************************************** **********
+Comments:
+1. S-factor for direct capture to ground state calculated wi th C2S=0.58 from 27Mg mirror state.
+2. The next resonances are expected at energies in excess of E r=2 MeV (see Moon et al. 2005).
+References: Moon et al. [153].

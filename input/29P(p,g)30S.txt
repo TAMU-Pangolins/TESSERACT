@@ -1,0 +1,61 @@
+29P(p,g)30S
+*************************************************** *************************************************** **********
+1 ! Zproj
+15 ! Ztarget
+0 ! Zexitparticle (=0 when only 2 channels open)
+1.0078 ! Aproj
+28.982 ! Atarget
+0 ! Aexitparticle (=0 when only 2 channels open)
+0.5 ! Jproj
+0.5 ! Jtarget
+0.0 ! Jexitparticle (=0 when only 2 channels open)
+4399.0 ! projectile separation energy (keV)
+0.0 ! exit particle separation energy (=0 when only 2 channel s open)
+1.25 ! Radius parameter R0 (fm)
+2 ! Gamma-ray channel number (=2 if ejectile is a g-ray; =3 oth erwise)
+*************************************************** *************************************************** **********
+1.0 ! Minimum energy for numerical integration (keV)
+5000 ! Number of random samples (>5000 for better statistics )
+0 ! =0 for rate output at all temperatures; =NT for rate output at selected temperatures
+*************************************************** *************************************************** **********
+Nonresonant contribution
+S(keVb) S’(b) S’’(b/keV) fracErr Cutoff Energy (keV)
+7.3e1 -1.25e-2 0.0 0.4 1000.0
+0.0 0.0 0.0 0.0 0.0
+*************************************************** *************************************************** **********
+Resonant Contribution
+Note: G1 = entrance channel, G2 = exit channel, G3 = spectator channel !! Ecm, Exf in (keV); wg, Gx in (eV) !!
+Note: if Er<0, theta^2=C2S*theta_sp^2 must be entered inst ead of entrance channel partial width
+Ecm DEcm wg Dwg J G1 DG1 L1 G2 DG2 L2 G3 DG3 L3 Exf Int
+305.0 6.0 0 0 3 2.7e-5 1.1e-5 2 4.9e-3 2.5e-3 1 0 0 0 0.0 1
+489.0 40.0 0 0 2 2.2e-2 0.9e-2 2 4.2e-3 2.1e-3 1 0 0 0 0.0 1
+737.0 4.0 0 0 3 2.2e-1 0.9e-1 2 8.2e-3 4.1e-3 1 0 0 0 0.0 1
+818.4 3.1 0 0 3 3.6e-1 1.4e-1 3 9.4e-3 4.7e-3 1 0 0 0 0.0 1
+990.0 4.0 0 0 2 6.3e0 2.5e0 2 0.01 5.0e-3 1 0 0 0 0.0 0
+*************************************************** *************************************************** **********
+Upper Limits of Resonances
+Note: enter partial width upper limit by chosing non-zero va lue for PT, where PT=<theta^2> for particles and...
+Note: ...PT=<B> for g-rays [enter: "upper_limit 0.0"]; for each resonance: # upper limits < # open channels!
+Ecm DEcm Jr G1 DG1 L1 PT G2 DG2 L2 PT G3 DG3 L3 PT Exf Int
+769.0 7.0 4 3.5e-4 0.0 4 0.0045 5.5e-3 2.8e-3 1 0 0 0 0 0 0.0 1
+769.0 7.0 0 1.1e1 0.0 0 0.0045 7.7e-3 3.9e-3 1 0 0 0 0 0 0.0 1
+1443.0 5.0 4 1.0e-1 0.0 4 0.0045 2.7e-2 1.4e-2 1 0 0 0 0 0 0.0 1
+*************************************************** *************************************************** **********
+Interference between Resonances [numerical integration o nly]
+Note: + for positive, - for negative interference; +- if inte rference sign is unknown
+Ecm DEcm Jr G1 DG1 L1 PT G2 DG2 L2 PT G3 DG3 L3 PT Exf
+!+-
+0.0 0.0 0.0 0.0 0.0 0 0 0.0 0.0 0 0 0.0 0.0 0 0 0.0
+0.0 0.0 0.0 0.0 0.0 0 0 0.0 0.0 0 0 0.0 0.0 0 0 0.0
+*************************************************** *************************************************** **********
+Comments:
+1. Resonance energies calculated from excitation energies (Endt 1990 and Tab. I of Bardayan et al. 2007) and
+Q-value, except for Er=489 keV, which is based on the IMME (se e Iliadis et al. 2001).
+2. The spin-parity assignments are not unambiguous; they ar e based on experimental Jp restrictions (Endt 1990,
+Bardayan et al. 2007) and application of the IMME (Iliadis et al. 2001).
+3. Proton partial widths are computed using C2S of mirror sta tes from (d,p) transfer experiment (Mackh et al.
+1973).
+4. Gamma-ray partial widths are computed from measured life times of 30Si mirror states, except for Er=990 keV
+for which Gg=0.012 eV is a rough estimate (application of RUL s to the known g-ray branchings of the mirror
+state yields Gg<0.1 eV for this level).
+References: Bardayan et al. [20]; Endt [69]; Iliadis et al. [117]; Makh et al [143].

@@ -1,0 +1,91 @@
+18O(a,g)22Ne
+*************************************************** *************************************************** **********
+2 ! Zproj
+8 ! Ztarget
+0 ! Zexitparticle (=0 when only 2 channels open)
+4.0026 ! Aproj
+17.9992 ! Atarget
+1.009 ! Aexitparticle (=0 when only 2 channels open)
+0.0 ! Jproj
+0.0 ! Jtarget
+0.5 ! Jexitparticle (=0 when only 2 channels open)
+9668.1 ! projectile separation energy (keV)
+10364.3 ! exit particle separation energy (=0 when only 2 cha nnels open)
+1.25 ! Radius parameter R0 (fm)
+2 ! Gamma-ray channel number (=2 if ejectile is a g-ray; =3 oth erwise)
+*************************************************** *************************************************** **********
+2.0 ! Minimum energy for numerical integration (keV)
+5000 ! Number of random samples (>5000 for better statistics )
+0 ! =0 for rate output at all temperatures; =NT for rate output at selected temperatures
+*************************************************** *************************************************** **********
+Non-Resonant Contribution
+S(keVb) S’(b) S’’(b/keV) fracErr Cutoff Energy (keV)
+6.7e4 -39.6 1.4e-2 0.5 2500.0
+0.0 0.0 0.0 0.0 0.0
+*************************************************** *************************************************** **********
+Resonant Contribution
+Note: G1 = entrance channel, G2 = exit channel, G3 = spectator channel !! Ecm, Exf in (keV); wg, Gx in (eV) !!
+Note: if Er<0, theta^2=C2S*theta_sp^2 must be entered inst ead of entrance channel partial width
+Ecm DEcm wg Dwg Jr G1 DG1 L1 G2 DG2 L2 G3 DG3 L3 Exf Int
+57.0 7.0 0 0 2 2.0e-41 1.6e-41 2 0.1 0.01 1 0 0 0 0.0 0
+398.0 8.0 4.8e-7 2.4e-7 0 0 0 0 0 0 0 0 0 0 0.0 0
+469.0 7.0 7.1e-7 1.7e-7 0 0 0 0 0 0 0 0 0 0 0.0 0
+541.6 0.8 0 0 1 7.63e-5 0.63e-5 1 11.2 3.3 1 0 0 0 0.0 1
+613.5 0.8 4.9e-4 0.4e-4 0 0 0 0 0 0 0 0 0 0 0.0 0
+628.0 0.8 1.2e-3 0.1e-3 0 0 0 0 0 0 0 0 0 0 0.0 0
+947.2 4.1 4.1e-4 1.0e-4 0 0 0 0 0 0 0 0 0 0 0.0 0
+1025.8 3.3 1.3e-3 0.2e-3 0 0 0 0 0 0 0 0 0 0 0.0 0
+1082.2 3.3 1.0e-3 0.2e-3 0 0 0 0 0 0 0 0 0 0 0.0 0
+1190.2 3.3 2.2e-3 0.3e-3 0 0 0 0 0 0 0 0 0 0 0.0 0
+1254.8 4.1 6.5e-2 0.8e-2 0 0 0 0 0 0 0 0 0 0 0.0 0
+1362.0 5.0 2.0e-4 0.5e-4 0 0 0 0 0 0 0 0 0 0 0.0 0
+1460.1 4.1 1.8e-3 0.3e-3 0 0 0 0 0 0 0 0 0 0 0.0 0
+1526.4 3.3 7.2e-3 1.1e-3 0 0 0 0 0 0 0 0 0 0 0.0 0
+1602.5 4.1 7.0e-3 1.1e-3 0 0 0 0 0 0 0 0 0 0 0.0 0
+1799.6 4.1 0.48 0.07 0 0 0 0 0 0 0 0 0 0 0.0 0
+2017.9 5.0 0 0 2 500.0 170.0 2 7.7 2.3 1 4500.0 1500.0 0 1275.0 1
+2083.9 10.0 0 0 1 3410.0 1023.0 1 0.29 0.10 1 7590.0 2277.0 1 0.0 1
+2217.9 10.0 0 0 1 3400.0 1133.0 1 0.71 0.24 1 6600.0 2200.0 1 0.0 1
+2611.9 10.0 0 0 1 6600.0 2200.0 1 4.7 1.6 1 5.9e4 2.0e4 1 0.0 1
+*************************************************** *************************************************** **********
+Upper Limits of Resonances
+Note: enter partial width upper limit by chosing non-zero va lue for PT, where PT=<theta^2> for particles and...
+Note: ...PT=<B> for g-rays [enter: "upper_limit 0.0"]; for each resonance: # upper limits < # open channels!
+Ecm DEcm Jr G1 DG1 L1 PT G2 DG2 L2 PT G3 DG3 L3 PT Exf Int
+174.0 8.0 0 1.5e-17 0.0 0 0.01 0.1 0.01 1 0 0 0 0 0 0.0 0
+*************************************************** *************************************************** **********
+Interference between Resonances [numerical integration o nly]
+Note: + for positive, - for negative interference; +- if inte rference sign is unknown
+Ecm DEcm Jr G1 DG1 L1 PT G2 DG2 L2 PT G3 DG3 L3 PT Exf
+!+-
+0.0 0.0 0.0 0.0 0.0 0 0 0.0 0.0 0 0 0.0 0.0 0 0 0.0
+0.0 0.0 0.0 0.0 0.0 0 0 0.0 0.0 0 0 0.0 0.0 0 0 0.0
+*************************************************** *************************************************** **********
+Comments:
+1. Direct capture S-factor from Trautvetter et al. 1978; for different results, see Buchmann et al. 1988 or
+Descouvemont 1988.
+2. For all resonances above and including Er=947 keV, energi es and strengths are adopted from Trautvetter et
+al. 1978.
+3. Er=398-628 keV: resonance energies from either Endt 1998 or Vogelaar et al. 1990; resonance strengths from
+Vogelaar et al. 1990 and Dababneh et al. 2003. Note that for th e very weakly observed Er=398 keV resonance
+we adopt a strength uncertainty that is larger (50%) than the published value (Dababneh et al. 2003).
+4. Er=542 keV: Ga calculated from measured resonance streng th; Gg is equal to the total width (Berg and Wiehard
+1979).
+5. Er=57 keV: we assume Jp=2+, based on the fact that la=2 part ial waves describe the measured 18O(6Li,d)22Ne
+angular distribution better than the originally suggested Jp=3- assignment (Giesen et al. 1994); for the
+reported alpha-particle spectroscopic factor we assume an uncertainty of a factor of 2.
+6. Er=174 keV: the level is very weakly populated in the 18O(6 Li,d)22Ne work of Giesen et al. 1994; in fact,
+even an la=0 transfer cannot be excluded, as can be seen by com paring the angular distributions for this
+excitation energy range (Tab. 6 in Giesen et al. 1994); thus w e treat the estimated la=0 spectroscopic
+factor as an upper limit (this procedure differs from the one in the work of Giesen et al. 1994, where an
+Jp=2+ assignment was adopted).
+7. Er=1255 keV: the total width is known for this level (G=Gn= 25 keV), but not enough information is available
+to deduce the gamma-ray and alpha-particle partial widths f rom the measured (a,g) resonance strength; thus
+we do not take the tail of this broad resonance into account.
+8. Er>2 MeV: we believe that Angulo et al. 1999 (NACRE) have mi sinterpreted the "Gg" values listed in Graff et
+al. 1968 and Chouraqui et al. 1970 as resonance strengths; th us the reported NACRE strengths for these high-
+energy resonances are likely erroneous. We derive alpha-pa rticle, gamma-ray and neutron partial widths from
+the information provided in Graff et al. 1968, Chouraqui et a l. 1970 and Goldberg et al. 2004.
+References:BergandWiehard[28];Buchmann,D’AuriaandMcCorqu odale[31];Chouraqui
+et al.[41];Dababnehet al.[50];Descouvemont[57];Endt [70];Giesenet al.[87];Goldberg
+et al. [89]; Graﬀ et al. [95]; Trautvetter et al. [209]; Vogelaar et al. [217 ].

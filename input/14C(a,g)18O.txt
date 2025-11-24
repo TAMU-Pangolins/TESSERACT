@@ -1,0 +1,61 @@
+14C(a,g)18O
+*************************************************** *************************************************** **********
+2 ! Zproj
+6 ! Ztarget
+0 ! Zexitparticle (=0 when only 2 channels open)
+4.0026 ! Aproj
+14.003242 ! Atarget
+0 ! Aexitparticle (=0 when only 2 channels open)
+0.0 ! Jproj
+0.0 ! Jtarget
+0 ! Jexitparticle (=0 when only 2 channels open)
+6226.3 ! projectile separation energy (keV)
+0 ! exit particle separation energy (=0 when only 2 channels o pen)
+1.25 ! Radius parameter R0 (fm)
+2 ! Gamma-ray channel number (=2 if ejectile is a g-ray; =3 oth erwise)
+*************************************************** *************************************************** **********
+1.0 ! Minimum energy for numerical integration (keV)
+5000 ! Number of random samples (>5000 for better statistics )
+0 ! =0 for rate output at all temperatures; =NT for rate output at selected temperatures
+*************************************************** *************************************************** **********
+Nonresonant Contribution
+S(keVb) S’(b) S’’(b/keV) fracErr Cutoff Energy (keV)
+3.98e3 1.6 1.64e-3 1.53 2000.0
+0.0 0.0 0.0 0.0 0.0
+*************************************************** *************************************************** **********
+Resonant Contribution
+Note: G1 = entrance channel, G2 = exit channel, G3 = spectator channel !! Ecm, Exf in (keV); wg, Gx in (eV) !!
+Note: if Er<0, theta^2=C2S*theta_sp^2 must be entered inst ead of entrance channel partial width
+Ecm DEcm wg Dwg J G1 DG1 L1 G2 DG2 L2 G3 DG3 L3 Exf Int
+-28.1 0.7 0 0 1.0 0.025 0.020 1 0.178 0.029 1 0 0 0 0.0 1
+890.6 1.3 0.45 0.09 3.0 0 0 0 0 0 0 0 0 0 0.0 0
+1389.6 0.9 1.23 0.25 4.0 0 0 0 0 0 0 0 0 0 0.0 0
+1638.0 5.0 0.47 0.14 1.0 0 0 0 0 0 0 0 0 0 0.0 0
+1811.5 0.9 3.22 0.64 1.0 0 0 0 0 0 0 0 0 0 0.0 0
+1899.0 2.0 2.92 0.58 5.0 0 0 0 0 0 0 0 0 0 0.0 0
+1987.0 4.0 0 0 2.0 1.0e3 0.8e3 2 0.412 0.093 2 0 0 0 1982.0 1
+2056.0 3.0 0 0 3.0 8.0e3 1.0e3 3 0.488 0.129 1 0 0 0 3555.0 1
+*************************************************** *************************************************** *********
+Upper Limits of Resonances
+Note: enter partial width upper limit by chosing non-zero va lue for PT, where PT=<theta^2> for particles and...
+Note: ...PT=<B> for g-rays [enter: "upper_limit 0.0"]; for each resonance: # upper limits < # open channels!
+Ecm DEcm Jr G1 DG1 L1 PT G2 DG2 L2 PT G3 DG3 L3 PT Exf Int
+178.1 1.3 3 0.9e-15 0.0 3 0.010 0.022 0.017 1 0 0.0 0.0 0 0 1980.0 1
+*************************************************** *************************************************** **********
+Interference between Resonances [numerical integration o nly]
+Note: + for positive, - for negative interference; +- if inte rference sign is unknown
+Ecm DEcm Jr G1 DG1 L1 PT G2 DG2 L2 PT G3 DG3 L3 PT Exf
+!+-
+0.0 0.0 0.0 0.0 0.0 0 0 0.0 0.0 0 0 0.0 0.0 0 0 0.0
+0.0 0.0 0.0 0.0 0.0 0 0 0.0 0.0 0 0 0.0 0.0 0 0 0.0
+*************************************************** *************************************************** **********
+Comments:
+1. Following Gai et al. 1987, Goerres et al. 1992 and Lugaro et al. 2004, we consider 9 natural parity levels,
+including one below threshold.
+2. Resonance energies are derived from excitation energies (Tilley et al. 1995) and Q-value (Audi et al. 2003).
+3. Seven resonance strengths and radiative widths are taken from Gai et al. 1987.
+4. Alpha-particle widths for the -28 and 178 keV resonances a re extracted from the alpha transfer experiment of
+Cunsolo et al. 1981, assuming a factor of two uncertainty.
+5. Non-resonant contribution is adopted from Goerres et al. 1992.
+References: Audi et al. [11]; Cunsolo et al. [49]; Gai et al. [86]; G¨ orre s et al. [93]; Lugaro
+et al. [139]; Tilley et al. [204].

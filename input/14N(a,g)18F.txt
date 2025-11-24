@@ -1,0 +1,78 @@
+14N(a,g)18F
+*************************************************** *************************************************** **********
+2 ! Zproj
+7 ! Ztarget
+0 ! Zexitparticle (=0 when only 2 channels open)
+4.0026 ! Aproj
+14.003 ! Atarget
+0 ! Aexitparticle (=0 when only 2 channels open)
+0.0 ! Jproj
+1.0 ! Jtarget
+0 ! Jexitparticle (=0 when only 2 channels open)
+4414.6 ! projectile separation energy (keV)
+0 ! exit particle separation energy (=0 when only 2 channels o pen)
+1.25 ! Radius parameter R0 (fm)
+2 ! Gamma-ray channel number (=2 if ejectile is a g-ray; =3 oth erwise)
+*************************************************** *************************************************** **********
+2.0 ! Minimum energy for numerical integration (keV)
+5000 ! Number of random samples (>5000 for better statistics )
+0 ! =0 for rate output at all temperatures; =NT for rate output at selected temperatures
+*************************************************** *************************************************** **********
+Nonresonant Contribution
+S(keVb) S’(b) S’’(b/keV) fracErr Cutoff Energy (keV)
+8.5e1 0.0 0.0 0.79 2000.0
+0.0 0.0 0.0 0.0 0.0
+*************************************************** *************************************************** **********
+Resonant Contribution
+Note: G1 = entrance channel, G2 = exit channel, G3 = spectator channel !! Ecm, Exf in (keV); wg, Gx in (eV) !!
+Note: if Er<0, theta^2=C2S*theta_sp^2 must be entered inst ead of entrance channel partial width
+Ecm DEcm wg Dwg Jr G1 DG1 L1 G2 DG2 L2 G3 DG3 L3 Exf Int
+445.4 2.1 0 0 1.0 4.5e-5 0.4e-5 1 0.011 0.003 1 0 0 0 1041.6 1
+883.0 1.6 21.0e-3 1.5e-3 0 0 0 0 0 0 0 0 0 0 0.0 0
+1087.4 2.1 0.0057 0.0010 0 0 0 0 0 0 0 0 0 0 0.0 0
+1190.26 0.57 1.35 0.10 0 0 0 0 0 0 0 0 0 0 0.0 0
+1257.0 0.5 0.45 0.02 0 0 0 0 0 0 0 0 0 0 0.0 0
+1375.2 0.6 0.016 0.006 0 0 0 0 0 0 0 0 0 0 0.0 0
+1681.8 1.2 0.066 0.013 0 0 0 0 0 0 0 0 0 0 0.0 0
+1693.4 3.0 0.027 0.010 0 0 0 0 0 0 0 0 0 0 0.0 0
+1825.8 0.9 1.18 0.22 0 0 0 0 0 0 0 0 0 0 0.0 0
+1827.4 3.0 1.32 0.24 0 0 0 0 0 0 0 0 0 0 0.0 0
+1895.9 0.9 0.17 0.04 0 0 0 0 0 0 0 0 0 0 0.0 0
+1970.9 1.8 0.53 0.13 0 0 0 0 0 0 0 0 0 0 0.0 0
+2070.3 1.6 0.053 0.020 0 0 0 0 0 0 0 0 0 0 0.0 0
+2152.4 1.6 0.097 0.020 0 0 0 0 0 0 0 0 0 0 0.0 0
+2229.1 0.9 0.90 0.17 0 0 0 0 0 0 0 0 0 0 0.0 0
+2362.4 1.5 0.04 0.02 0 0 0 0 0 0 0 0 0 0 0.0 0
+*************************************************** *************************************************** **********
+Upper Limits of Resonances
+Note: enter partial width upper limit by chosing non-zero va lue for PT, where PT=<theta^2> for particles and...
+Note: ...PT=<B> for g-rays [enter: "upper_limit 0.0"]; for each resonance: # upper limits < # open channels!
+Ecm DEcm Jr G1 DG1 L1 PT G2 DG2 L2 PT G3 DG3 L3 PT Exf Int
+237.4 2.1 4.0 4.1e-15 0.0 4 0.00001 0.1 0.01 1 0.0 0 0 0 0.0 1121. 4 0
+*************************************************** *************************************************** **********
+Interference between Resonances [numerical integration o nly]
+Note: + for positive, - for negative interference; +- if inte rference sign is unknown
+Ecm DEcm Jr G1 DG1 L1 PT G2 DG2 L2 PT G3 DG3 L3 PT Exf
+!+-
+0.0 0.0 0.0 0.0 0.0 0 0 0.0 0.0 0 0 0.0 0.0 0 0 0.0
+0.0 0.0 0.0 0.0 0.0 0 0 0.0 0.0 0 0 0.0 0.0 0 0 0.0
+*************************************************** *************************************************** **********
+Comments:
+1. Direct capture S-factor from Goerres et al. 2000. Note tha t it is not based on experimental spectroscopic
+factors, but was estimated using an alpha-particle spectro scopic factor of Sa=0.1 for all final states; we
+assign a factor 2 uncertainty to the S-factor (yielding a fra ctional uncertainty of 0.79; see the numerical
+example at the end of Sec. 5.1.2 of Paper I).
+2. Er=237 keV: (i) for estimation of upper limit on alpha-par ticle partial width, see comments in Paper II;
+(ii) value of Gg=0.1+-0.01 eV is a guess (inconsequential si nce Ga<<Gg).
+3. Er=445 keV: partial widths computed using measured reson ance strength (Goerres et al. 2000) and measured
+lifetime (Rolfs, Berka and Azuma 1973).
+4. Ex=4964 keV (Er=549 keV with Jp;T=2+;1) disregarded (iso spin-forbidden decay).
+5. Ex=5603/5605 keV (Er=1189/1190 keV): doublet; measured summed strength adopted here.
+6. Strengths for other resonances adopted from Becker et al. 1982; Goerres et al. 2000; Kieser et al. 1979; and
+Rolfs, Charlesworth and Azuma 1973.
+7. Levels with Jp=0+ can be disregarded since their populati on as resonances in 14N+a is forbidden according to
+angular momentum selection rules.
+8. We disregard Ex=4848 keV (Jp=5-; Er=434 keV) since this (u nobserved) l=5 resonance is presumably negligible
+compared to observed Er=445 keV (l=1) resonance.
+References: Becker et al. [24]; G¨ orres et al. [88]; Kieser et al. [127]; Rolfs, Berka and
+Azuma [178]; Rolfs, Charlesworth and Azuma [179].

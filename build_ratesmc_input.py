@@ -77,13 +77,13 @@ class TemplateMetadata:
     targ_A_token: Optional[str]
 
 
-def _resolve_paths(template_arg: Optional[Path], output_arg: Optional[Path]) -> Tuple[Path, Optional[Path]]:
+def _resolve_paths(template_arg: Optional[Path], output_arg: Optional[Path], output_dir: Optional[Path]) -> Tuple[Path, Optional[Path], Optional[Path]]:
     script_dir = Path(__file__).resolve().parent
     default_template = script_dir / "RatesMC.in"
     template = template_arg if template_arg is not None else default_template
     if template is None or not template.exists():
         raise FileNotFoundError("Template RatesMC.in not provided and default ./RatesMC.in not found.")
-    return template, output_arg
+    return template, output_arg, output_dir
 
 
 def _parse_first_value(line: str) -> Optional[str]:
@@ -192,11 +192,14 @@ def _parse_template_metadata(lines: List[str]) -> TemplateMetadata:
 
 
 def build_ratesmc_input(args) -> None:
-    template_path, output_arg = _resolve_paths(args.template, args.output)
+    template_path, output_arg, output_dir = _resolve_paths(args.template, args.output, args.output_dir)
     lines = template_path.read_text().splitlines()
     metadata = _parse_template_metadata(lines)
     reaction_line = metadata.reaction or "RatesMC"
     auto_output = template_path.parent / f"{_sanitize_reaction_name(reaction_line)}.in"
+    if output_dir is not None:
+        auto_output = Path(output_dir) / _sanitize_reaction_name(reaction_line) / f"{_sanitize_reaction_name(reaction_line)}.in"
+        auto_output.parent.mkdir(parents=True, exist_ok=True)
     output_path = output_arg if output_arg is not None else auto_output
 
     Z_val = args.Z if args.Z is not None else metadata.Z
@@ -280,18 +283,19 @@ def build_ratesmc_input(args) -> None:
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Generate a RatesMC.in with resonant rows from the model output.")
     p.add_argument("--template", type=Path, default=None, help="Template RatesMC.in to start from (defaults to ./RatesMC.in next to this script).")
-    p.add_argument("--output", type=Path, default=None, help="Destination path for the filled RatesMC.in (defaults to <reaction>.in next to the template).")
+    p.add_argument("--output", type=Path, default=None, help="Destination path for the filled RatesMC.in (defaults to <reaction>.in next to the template, or inside --output-dir/<reaction>/ if provided).")
+    p.add_argument("--output-dir", type=Path, default=None, help="Optional base directory; if set, outputs go to <output-dir>/<reaction>/<reaction>.in.")
 
     # Export options
     strength_group = p.add_mutually_exclusive_group()
-    strength_group.add_argument("--use-strength", dest="use_strength", action="store_true", default=True, help="Emit omega-gamma instead of explicit widths (default).")
-    strength_group.add_argument("--use-widths", dest="use_strength", action="store_false", help="Emit explicit partial widths instead of omega-gamma.")
+    strength_group.add_argument("--use-strength", dest="use_strength", action="store_true", default=False, help="Emit omega-gamma instead of explicit widths.")
+    strength_group.add_argument("--use-widths", dest="use_strength", action="store_false", help="Emit explicit partial widths instead of omega-gamma (default).")
     p.add_argument("--default-frac-unc", type=float, default=0.1, help="Fractional uncertainty to apply to Ecm and widths (default 0.1 = 10%).")
     p.add_argument("--l1", type=int, default=0, help="Entrance channel orbital angular momentum L1.")
     p.add_argument("--l2", type=int, default=1, help="Exit channel orbital angular momentum / multipolarity L2.")
     p.add_argument("--l3", type=int, default=0, help="Spectator channel orbital angular momentum L3.")
     p.add_argument("--exf-kev", type=float, default=0.0, help="Excitation energy of populated level (keV).")
-    p.add_argument("--int-flag", type=int, choices=(0, 1), default=0, help="RatesMC integration flag (0 analytical, 1 numerical).")
+    p.add_argument("--int-flag", type=int, choices=(0, 1), default=1, help="RatesMC integration flag (0 analytical, 1 numerical).")
     p.add_argument("--include-g3", action="store_true", help="If set, keep G3/DG3 columns (default zeros).")
     p.add_argument("--j-proj", type=float, default=None, help="Override projectile spin for omega-gamma (defaults to Resonance.s1).")
     p.add_argument("--j-targ", type=float, default=None, help="Override target spin for omega-gamma (defaults to Resonance.s2).")

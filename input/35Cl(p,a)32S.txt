@@ -1,0 +1,179 @@
+35Cl(p,a)32S
+*************************************************** *************************************************** **********
+1 ! Zproj
+17 ! Ztarget
+2 ! Zexitparticle (=0 when only 2 channels open)
+1.0078 ! Aproj
+34.9688 ! Atarget
+4.0026 ! Aexitparticle (=0 when only 2 channels open)
+0.5 ! Jproj
+1.5 ! Jtarget
+0.0 ! Jexitparticle (=0 when only 2 channels open)
+8506.97 ! projectile separation energy (keV)
+6640.76 ! exit particle separation energy (=0 when only 2 cha nnels open)
+1.25 ! Radius parameter R0 (fm)
+3 ! Gamma-ray channel number (=2 if ejectile is a g-ray; =3 oth erwise)
+*************************************************** *************************************************** **********
+1.0 ! Minimum energy for numerical integration (keV)
+10000 ! Number of random samples (>5000 for better statistic s)
+0 ! =0 for rate output at all temperatures; =NT for rate output at selected temperatures
+*************************************************** *************************************************** **********
+Nonresonant contribution
+S(keVb) S’(b) S’’(b/keV) fracErr Cutoff Energy (keV)
+2.8e-4 -2.5e-6 1.9e-7 0.4 850.0
+0.0 0.0 0.0 0.0 0.0
+*************************************************** *************************************************** **********
+Resonant Contribution
+Note: G1 = entrance channel, G2 = exit channel, G3 = spectator channel !! Ecm, Exf in (keV); wg, Gx in (eV) !!
+Note: if Er<0, theta^2=C2S*theta_sp^2 must be entered inst ead of entrance channel partial width
+Ecm DEcm wg Dwg Jr G1 DG1 L1 G2 DG2 L2 G3 DG3 L3 Exf Int
+402.0 1.0 0 0 2.0 1.1e-4 0.6e-4 0 9.8e-3 3.6e-3 2 0.5 0.25 1 0.0 0
+849.0 0.8 0.15 0.04 0 0 0 0 0 0 0 0 0 0 0.0 0
+858.9 0.8 1.00 0.25 0 0 0 0 0 0 0 0 0 0 0.0 0
+941.1 0.9 0.23 0.06 0 0 0 0 0 0 0 0 0 0 0.0 0
+958.9 0.5 0.063 0.016 0 0 0 0 0 0 0 0 0 0 0.0 0
+987.3 1.2 0.024 0.006 0 0 0 0 0 0 0 0 0 0 0.0 0
+1088.4 0.7 1.5 0.4 0 0 0 0 0 0 0 0 0 0 0.0 0
+1160.0 1.0 0.88 0.22 0 0 0 0 0 0 0 0 0 0 0.0 0
+1196.2 1.4 0.25 0.06 0 0 0 0 0 0 0 0 0 0 0.0 0
+1230.5 0.8 0.39 0.10 0 0 0 0 0 0 0 0 0 0 0.0 0
+1382.3 0.5 1.8 0.4 0 0 0 0 0 0 0 0 0 0 0.0 0
+1395.1 0.5 0.35 0.09 0 0 0 0 0 0 0 0 0 0 0.0 0
+1475.6 1.6 2.75 0.69 0 0 0 0 0 0 0 0 0 0 0.0 0
+1484.9 1.6 7.5 1.9 0 0 0 0 0 0 0 0 0 0 0.0 0
+1537.4 1.2 3.0 0.8 0 0 0 0 0 0 0 0 0 0 0.0 0
+1543.6 1.5 30.0 7.5 0 0 0 0 0 0 0 0 0 0 0.0 0
+1587.9 1.5 0.75 0.19 0 0 0 0 0 0 0 0 0 0 0.0 0
+1592.4 0.6 22.5 5.6 0 0 0 0 0 0 0 0 0 0 0.0 0
+1660.4 0.5 1.9 0.5 0 0 0 0 0 0 0 0 0 0 0.0 0
+1666.4 0.5 18.8 4.7 0 0 0 0 0 0 0 0 0 0 0.0 0
+1694.2 2.0 10.0 2.5 0 0 0 0 0 0 0 0 0 0 0.0 0
+1753.5 2.0 1.00 0.25 0 0 0 0 0 0 0 0 0 0 0.0 0
+1760.3 0.5 1.6 0.4 0 0 0 0 0 0 0 0 0 0 0.0 0
+1774.1 1.0 0.33 0.08 0 0 0 0 0 0 0 0 0 0 0.0 0
+1794.5 0.9 1.6 0.4 0 0 0 0 0 0 0 0 0 0 0.0 0
+1812.5 1.5 10.0 2.5 0 0 0 0 0 0 0 0 0 0 0.0 0
+1870.1 2.0 0.75 0.19 0 0 0 0 0 0 0 0 0 0 0.0 0
+1932.3 2.0 31.3 7.8 0 0 0 0 0 0 0 0 0 0 0.0 0
+1968.3 2.0 0.59 0.15 0 0 0 0 0 0 0 0 0 0 0.0 0
+1980.9 2.0 7.5 1.9 0 0 0 0 0 0 0 0 0 0 0.0 0
+2016.9 2.0 6.3 1.6 0 0 0 0 0 0 0 0 0 0 0.0 0
+2051.8 2.0 17.5 4.4 0 0 0 0 0 0 0 0 0 0 0.0 0
+2061.6 2.0 0.43 0.11 0 0 0 0 0 0 0 0 0 0 0.0 0
+2085.9 2.0 27.5 6.9 0 0 0 0 0 0 0 0 0 0 0.0 0
+2109.2 2.0 7.5 1.9 0 0 0 0 0 0 0 0 0 0 0.0 0
+2143.6 1.1 125.0 31.3 0 0 0 0 0 0 0 0 0 0 0.0 0
+2156.8 2.0 5.0 1.3 0 0 0 0 0 0 0 0 0 0 0.0 0
+2167.5 2.0 2.4 0.6 0 0 0 0 0 0 0 0 0 0 0.0 0
+2193.4 1.5 10.0 2.5 0 0 0 0 0 0 0 0 0 0 0.0 0
+2194.7 1.2 23.8 6.0 0 0 0 0 0 0 0 0 0 0 0.0 0
+2231.7 10.0 42.5 10.6 0 0 0 0 0 0 0 0 0 0 0.0 0
+2252.1 2.0 20.0 5.0 0 0 0 0 0 0 0 0 0 0 0.0 0
+2256.9 2.0 3.3 0.8 0 0 0 0 0 0 0 0 0 0 0.0 0
+2273.5 2.0 7.5 1.9 0 0 0 0 0 0 0 0 0 0 0.0 0
+2282.2 3.0 1.6 0.4 0 0 0 0 0 0 0 0 0 0 0.0 0
+2309.4 3.0 0.46 0.11 0 0 0 0 0 0 0 0 0 0 0.0 0
+2325.3 1.5 3.9 1.0 0 0 0 0 0 0 0 0 0 0 0.0 0
+2345.0 1.5 36.3 9.1 0 0 0 0 0 0 0 0 0 0 0.0 0
+2358.0 7.0 23.8 5.9 0 0 0 0 0 0 0 0 0 0 0.0 0
+2395.3 3.0 48.8 12.2 0 0 0 0 0 0 0 0 0 0 0.0 0
+2410.3 2.7 0.88 0.22 0 0 0 0 0 0 0 0 0 0 0.0 0
+2427.1 2.7 0.88 0.22 0 0 0 0 0 0 0 0 0 0 0.0 0
+2431.6 2.7 0.63 0.15 0 0 0 0 0 0 0 0 0 0 0.0 0
+2453.3 2.5 103.8 25.9 0 0 0 0 0 0 0 0 0 0 0.0 0
+2469.2 2.5 18.8 4.7 0 0 0 0 0 0 0 0 0 0 0.0 0
+2486.5 2.5 8.8 2.2 0 0 0 0 0 0 0 0 0 0 0.0 0
+2522.7 3.0 100.0 25.0 0 0 0 0 0 0 0 0 0 0 0.0 0
+2536.7 2.6 20.0 5.0 0 0 0 0 0 0 0 0 0 0 0.0 0
+2543.1 3.0 62.5 15.6 0 0 0 0 0 0 0 0 0 0 0.0 0
+2556.1 3.0 51.3 12.8 0 0 0 0 0 0 0 0 0 0 0.0 0
+2583.6 2.8 3.0 0.8 0 0 0 0 0 0 0 0 0 0 0.0 0
+2602.6 2.8 3.1 0.8 0 0 0 0 0 0 0 0 0 0 0.0 0
+2613.0 3.5 13.8 3.4 0 0 0 0 0 0 0 0 0 0 0.0 0
+2616.2 2.6 32.5 8.1 0 0 0 0 0 0 0 0 0 0 0.0 0
+2628.0 2.7 53.8 13.4 0 0 0 0 0 0 0 0 0 0 0.0 0
+2652.9 3.0 52.5 13.1 0 0 0 0 0 0 0 0 0 0 0.0 0
+2699.2 2.9 1.6 0.4 0 0 0 0 0 0 0 0 0 0 0.0 0
+2703.0 2.7 113.0 28.1 0 0 0 0 0 0 0 0 0 0 0.0 0
+2717.0 3.0 57.5 14.4 0 0 0 0 0 0 0 0 0 0 0.0 0
+2735.5 3.0 500.0 125.0 0 0 0 0 0 0 0 0 0 0 0.0 0
+2741.2 3.0 36.3 9.1 0 0 0 0 0 0 0 0 0 0 0.0 0
+2770.6 2.8 27.5 6.9 0 0 0 0 0 0 0 0 0 0 0.0 0
+2796.4 3.0 1.4 0.3 0 0 0 0 0 0 0 0 0 0 0.0 0
+2804.9 2.8 18.8 4.7 0 0 0 0 0 0 0 0 0 0 0.0 0
+2831.8 3.0 11.3 2.8 0 0 0 0 0 0 0 0 0 0 0.0 0
+2837.3 3.0 17.5 4.4 0 0 0 0 0 0 0 0 0 0 0.0 0
+*************************************************** *************************************************** **********
+Upper Limits of Resonances
+Note: enter partial width upper limit by chosing non-zero va lue for PT, where PT=<theta^2> for particles and...
+Note: ...PT=<B> for g-rays [enter: "upper_limit 0.0"]; for each resonance: # upper limits < # open channels!
+Ecm DEcm Jr G1 DG1 L1 PT G2 DG2 L2 PT G3 DG3 L3 PT Exf Int
+48.5 0.6 2.0 3.3e-24 1.3e-24 0 0 3.7e-2 0.0 2 0.010 0.5 0.25 1 0 0 .0 0
+86.0 4.0 3.0 4.2e-17 0.0 1 0.0045 1.4e-2 0.0 3 0.010 0.5 0.25 1 0 0.0 0
+165.0 3.0 1.0 8.6e-10 3.4e-10 1 0 2.0e-3 0.0 1 0.010 0.5 0.25 1 0 0.0 0
+232.0 4.0 3.0 1.8e-7 0.0 1 0.0045 6.0e-2 0.0 3 0.010 0.5 0.25 1 0 0.0 0
+299.4 1.8 1.0 4.0e-5 1.3e-5 1 0 4.0e-2 0.0 1 0.010 0.5 0.25 1 0 0. 0 0
+340.0 4.0 2.0 1.5e-4 0.0 0 0.0045 6.0e-1 0.0 2 0.010 0.5 0.25 1 0 0.0 0
+379.9 4.0 2.0 5.0e-5 0.0 0 0.0045 4.0e-3 0.0 2 0.010 0.5 0.25 1 0 0.0 0
+414.0 3.0 3.0 1.4e-5 5.6e-6 3 0 3.0e-2 0.0 3 0.010 0.5 0.25 1 0 0. 0 0
+431.0 0.7 3.0 1.5e-2 0.3e-2 1 0 0.01 0.0 3 0.010 0.5 0.25 1 0 0.0 0
+506.9 0.9 5.0 8.7e-4 2.2e-4 3 0 0.015 0.0 5 0.010 0.5 0.25 1 0 0.0 0
+517.3 0.6 2.0 5.1e-2 1.0e-2 0 0 2.5 0.0 2 0.010 0.5 0.25 1 0 0.0 0
+558.6 0.9 3.0 5.1e-2 2.0e-2 1 0 7.1e-3 0.0 3 0.010 0.035 0.007 1 0 0.0 0
+610.3 1.1 1.0 9.1 0.0 1 0.0045 12.0 0.0 1 0.010 0.5 0.25 1 0 0.0 0
+625.2 0.6 3.0 12.0 0.0 1 0.0045 1.5 0.0 3 0.010 0.5 0.25 1 0 0.0 0
+637.4 0.7 2.0 42.0 0.0 0 0.0045 5.9 0.0 2 0.010 0.5 0.25 1 0 0.0 0
+684.8 1.1 3.0 31.0 0.0 1 0.0045 2.3 0.0 3 0.010 0.5 0.25 1 0 0.0 0
+733.2 1.1 1.0 59.0 0.0 1 0.0045 27.0 0.0 1 0.010 0.5 0.25 1 0 0.0 0
+741.1 1.1 1.0 65.0 0.0 1 0.0045 28.0 0.0 1 0.010 0.5 0.25 1 0 0.0 0
+751.0 1.2 3.0 78.0 0.0 1 0.0045 3.5 0.0 3 0.010 0.5 0.25 1 0 0.0 0
+*************************************************** *************************************************** **********
+Interference between Resonances [numerical integration o nly]
+Note: + for positive, - for negative interference; +- if inte rference sign is unknown
+Ecm DEcm Jr G1 DG1 L1 PT G2 DG2 L2 PT G3 DG3 L3 PT Exf
+!+-
+0.0 0.0 0.0 0.0 0.0 0 0 0.0 0.0 0 0 0.0 0.0 0 0 0.0
+0.0 0.0 0.0 0.0 0.0 0 0 0.0 0.0 0 0 0.0 0.0 0 0 0.0
+*************************************************** *************************************************** **********
+Comments:
+1. Measured resonance energies and strengths from Bosnjako vic et al. 1968 and Endt and van der Leun 1978; note
+that no carefully measured (p,a) strength exists for this re action.
+2. Er=49 keV: adopted upper limit of Ga equal the single-part icle estimate; Gg=0.5 eV is a rough estimate.
+3. Er=165 keV: spin/parity not known unambiguously, but Jp= 1-, 2+, 3- most likely (from info obtained in
+(3He,d) and (6Li,d) studies). Here we assume Jp=1- (Jp=2+ or 3- does not change Gp much since the quantity
+(2J+1)C2S was measured in (3He,d) work [Iliadis et al. 1994] ); upper limit for Ga is derived from strength
+measured in 32S(a,g)36Ar reaction, while Gg=0.5 eV is a roug h guess.
+4. Er=299 keV: Gp from measured (p,g) strength; Gg=0.5 eV is a rough estimate; rough upper limit for Ga is then
+obtained using Ga/Gg<0.08 from Ross et al. 1995.
+5. Er=340 keV: spin/parity ambiguous; assumed Jp=2+ (s-wav e) for upper limit; Gp obtained with C2S<0.0067
+from Iliadis et al. 1994; upper limit on Ga is the single-part icle value; Gg=0.5 eV is a rough guess.
+6. Er=380 keV: upper limits for Gp and Ga are obtained from upp er limits of (p,g) and (a,g) strengths (Iliadis
+et al. 1994), together with Gg/G=1 from Ross et al. 1995; Gg=0 .5 eV is a rough guess. Spin/parity of 2+
+assumed for s-wave resonance.
+7. Er=402 keV: only (p,g) and (a,g) strengths have been measu red; state not observed in (3He,d); we derived
+Gp and Gg assuming that G=Gg, but the assumption G=Ga is certa inly not excluded; Gg=0.5 eV is a rough
+estimate. Better estimates cannot be derived at present.
+8. Er=414 keV: assume here that 8919 keV level (Roepke et al. 2 002) is the same as 8923 keV state (Iliadis et
+al. 1994); spin/parity can then be restricted to Jp=(3-5)-. Stripping data are best described by l=3,
+although a small l=1 component cannot be excluded; the l=1 co mponent from fit yields a (p,g) resonance
+strength in excess of experimental upper limit; thus we assu me pure l=3 transfer. Value of Gg=0.5 eV is a
+rough guess, while Ga<0.03 eV is then obtained from Ga/G (Ros s et al. 1995).
+9. Er=431 keV: from analog assignments, Endt 1998 suggests J p=3-, implying l=1+3; Ga is obtained with
+Ga/Gg<0.02 (Ross et al. 1995) and Gg=0.5 eV (rough guess).
+10. Er=507 keV: from energy arguments it can be concluded tha t most of the transfer strength arises from 9014
+keV component of 9014+9024 keV doublet; furthermore, from a nalog assignments Endt 1998 suggests Jp=5-,
+implying l=3; value for Ga represents single-particle esti mate, while Gg=0.5 eV is a rough guess.
+11. Er=517 keV: from analog assignments, Endt 1998 suggests Jp=2+, implying l=0+2; we assume G=Gg; value of Ga
+represents single-particle estimate, while Gg=0.5 eV is a g uess.
+12. Er=559 keV: value for Gg is obtained from measured (p,g) s trength since G=Gp (Ross et al. 1995); upper limit
+for Ga is calculated from Gp (stripping) and measured upper l imit of Ga/G (Ross et al. 1995).
+13. For upper limit resonances at Er=610-751 keV, we adopted single-particle estimates as upper limits for Gp
+and Ga; Gg=0.5 eV is a rough guess.
+14. Er=86 and 232 keV: levels at Ex=8593 and 8739 keV have been observed by Roepke et al. 2002; from gamma-ray
+decay it can be concluded that Jp=(3-,4-,5-,...); for upper limit contribution we assume Jp=3-; levels are
+not observed in (3He,d) study of Iliadis et al. 1994, implyin g upper limits of C2S<0.01; values of Ga
+represent single-particle estimates, while Gg=0.5 eV is a r ough guess.
+15. Nonresonant S-factor describes low-energy tails of bro ad resonances in the Er=1231-2194 keV region (info
+from Endt and van der Leun 1978).
+References: Bosnjakovic et al. [30]; Endt and van der Leun [72]; End t [70]; Iliadis et al.
+[113]; R¨ opke et al. [173]; Ross et al [180].

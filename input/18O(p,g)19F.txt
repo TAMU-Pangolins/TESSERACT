@@ -1,0 +1,75 @@
+18O(p,g)19F
+*************************************************** *************************************************** **********
+1 ! Zproj
+8 ! Ztarget
+2 ! Zexitparticle (=0 when only 2 channels open)
+1.0078 ! Aproj
+17.999 ! Atarget
+4.0026 ! Aexitparticle (=0 when only 2 channels open)
+0.5 ! Jproj
+0.0 ! Jtarget
+0.0 ! Jexitparticle (=0 when only 2 channels open)
+7994.8 ! projectile separation energy (keV)
+4013.74 ! exit particle separation energy (=0 when only 2 cha nnels open)
+1.25 ! Radius parameter R0 (fm)
+2 ! Gamma-ray channel number (=2 if ejectile is a g-ray; =3 oth erwise)
+*************************************************** *************************************************** **********
+1.0 ! Minimum energy for numerical integration (keV)
+5000 ! Number of random samples (>5000 for better statistics )
+0 ! =0 for rate output at all temperatures; =NT for rate output at selected temperatures
+*************************************************** *************************************************** **********
+Nonresonant Contribution
+S(keVb) S’(b) S’’(b/keV) fracErr Cutoff Energy (keV)
+1.57e1 0.34e-3 -2.42e-6 0.4 1000.0
+0.0 0.0 0.0 0.0 0.0
+*************************************************** *************************************************** **********
+Resonant Contribution
+Note: G1 = entrance channel, G2 = exit channel, G3 = spectator channel !! Ecm, Exf in (keV); wg, Gx in (eV) !!
+Note: if Er<0, theta^2=C2S*theta_sp^2 must be entered inst ead of entrance channel partial width
+Ecm DEcm wg Dwg Jr G1 DG1 L1 G2 DG2 L2 G3 DG3 L3 Exf Int
+19.3 0.7 0 0 2.5 2.3e-19 0.5e-19 2 2.3 1.0 1 2.5e3 1.0e3 3 0.0 1
+142.9 0.1 0 0 0.5 1.67e-1 0.12e-1 0 0.72 0.15 1 1.23e2 0.24e2 1 0 .0 1
+204.2 1.0 5.0e-6 1.0e-6 0 0 0 0 0 0 0 0 0 0 0.0 0
+259.5 2.6 3.7e-5 0.5e-5 0 0 0 0 0 0 0 0 0 0 0.0 0
+315.2 1.3 0 0 2.5 1.9e-2 0.3e-2 2 0.78 0.34 1 47.0 19.0 3 0.0 1
+588.7 1.7 1.0e-2 0.2e-2 0 0 0 0 0 0 0 0 0 0 0.0 0
+597.1 1.2 0 0 1.5 1.4e2 0.7e2 1 0.71 0.39 1 2.0e3 0.1e3 2 0.0 1
+798.4 1.6 0 0 0.5 24.6e3 1.4e3 0 2.5 0.4 1 20.e3 1.0e3 1 0.0 1
+931.9 2.8 0 0 1.5 76.0 7.0 1 0.34 0.06 1 3.5e3 0.3e3 2 0.0 1
+1106.2 4.0 0.29 0.03 0 0 0 0 0 0 0 0 0 0 0.0 0
+1172.2 1.5 0 0 0.5 0.38e3 0.03e3 0 1.4 1.0 1 5.4e3 0.38e3 1 0.0 1
+1323.2 2.1 0.08 0.01 0 0 0 0 0 0 0 0 0 0 0.0 0
+1326.2 1.2 0 0 0.5 0.22e3 0.02e3 0 3.4 1.7 1 4.7e3 0.4e3 1 0.0 1
+1541.6 2.1 0.025 0.005 0 0 0 0 0 0 0 0 0 0 0.0 0
+1571.0 3.0 0.041 0.010 0 0 0 0 0 0 0 0 0 0 0.0 0
+1580.0 4.0 0.06 0.01 0 0 0 0 0 0 0 0 0 0 0.0 0
+1591.0 3.0 0.025 0.004 0 0 0 0 0 0 0 0 0 0 0.0 0
+1672.7 1.6 0 0 1.5 2.0e3 0.6e3 2 1.0 0.4 1 1.4e3 0.4e3 1 0.0 1
+1825.2 1.2 2.8 0.7 0 0 0 0 0 0 0 0 0 0 0.0 0
+1879.2 1.9 0.13 0.04 0 0 0 0 0 0 0 0 0 0 0.0 0
+1892.0 3.0 0 0 0.5 11.e3 3.0e3 0 0.36 0.20 1 18.0e3 5.4e3 1 0.0 1
+*************************************************** *************************************************** **********
+Upper Limits of Resonances
+Note: enter partial width upper limit by chosing non-zero va lue for PT, where PT=<theta^2> for particles and...
+Note: ...PT=<B> for g-rays [enter: "upper_limit 0.0"]; for each resonance: # upper limits < # open channels!
+Ecm DEcm Jr G1 DG1 L1 PT G2 DG2 L2 PT G3 DG3 L3 PT Exf Int
+89.0 3.0 1.5 8.0e-8 2.5e-8 1 0 0.60 0.25 1 0 3.0e3 0.0 2 0.010 0.0 1
+*************************************************** *************************************************** **********
+Interference between Resonances [numerical integration o nly]
+Note: + for positive, - for negative interference; +- if inte rference sign is unknown
+Ecm DEcm Jr G1 DG1 L1 PT G2 DG2 L2 PT G3 DG3 L3 PT Exf
+!+-
+0.0 0.0 0.0 0.0 0.0 0 0 0.0 0.0 0 0 0.0 0.0 0 0 0.0
+0.0 0.0 0.0 0.0 0.0 0 0 0.0 0.0 0 0 0.0 0.0 0 0 0.0
+*************************************************** *************************************************** **********
+Comments:
+1. Almost the same input data as in Angulo et al. 1999 (NACRE) a re adopted here; however, we obtain the resonant
+rate contributions by numerical integration, whenever pos sible.
+2. Proton width for Er=19 keV from Champagne and Pitt 1986 and La Cognata et al. 2008, while total and
+radiative widths are from a private communication quoted in Wiescher et al. 1980.
+3. Proton, total and radiative widths for Er=89 keV are adopt ed from Lorentz-Wirzba et al. 1979, Tilley et al.
+1995 and a private communication quoted in Wiescher et al. 19 80, respectively.
+4. Direct capture S-factor adopted from Wiescher et al. 1980 .
+5. Above T=5 GK the rate is extrapolated using the MOST Hauser -Feshbach rate.
+References: Angulo et al. [7]; Champagne and Pitt [36]; La Cognata et al. [132]; Lorentz-
+Wirzba et al. [136]; Tilley et al. [204]; Wiescher et al. [219].

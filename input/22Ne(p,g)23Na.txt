@@ -1,0 +1,108 @@
+22Ne(p,g)23Na
+*************************************************** *************************************************** **********
+1 ! Zproj
+10 ! Ztarget
+0 ! Zexitparticle (=0 when only 2 channels open)
+1.0078 ! Aproj
+21.991 ! Atarget
+0 ! Aexitparticle (=0 when only 2 channels open)
+0.5 ! Jproj
+0.0 ! Jtarget
+0.0 ! Jexitparticle (=0 when only 2 channels open)
+8794.11 ! projectile separation energy (keV)
+0.0 ! exit particle separation energy (=0 when only 2 channel s open)
+1.25 ! Radius parameter R0 (fm)
+2 ! Gamma-ray channel number (=2 if ejectile is a g-ray; =3 oth erwise)
+*************************************************** *************************************************** **********
+1.0 ! Minimum energy for numerical integration (keV)
+5000 ! Number of random samples (>5000 for better statistics )
+0 ! =0 for rate output at all temperatures; =NT for rate output at selected temperatures
+*************************************************** *************************************************** **********
+Nonresonant contribution
+S(keVb) S’(b) S’’(b/keV) fracErr Cutoff Energy (keV)
+6.2e1 0.0 0.0 0.4 1500.0
+0.0 0.0 0.0 0.0 0.0
+*************************************************** *************************************************** **********
+Resonant Contribution
+Note: G1 = entrance channel, G2 = exit channel, G3 = spectator channel !! Ecm, Exf in (keV); wg, Gx in (eV) !!
+Note: if Er<0, theta^2=C2S*theta_sp^2 must be entered inst ead of entrance channel partial width
+Ecm DEcm wg Dwg Jr G1 DG1 L1 G2 DG2 L2 G3 DG3 L3 Exf Int
+35.4 0.7 0 0 0.5 3.1e-15 1.2e-15 0 2.2 1.0 1 0 0 0 0.0 1
+150.9 2.0 0 0 3.5 2.3e-9 9.2e-10 3 0.02 0.01 1 0 0 0 0.0 1
+417.0 0.8 0.065 0.015 0 0 0 0 0 0 0 0 0 0 0.0 0
+458.2 0.8 0.45 0.1 0 0 0 0 0 0 0 0 0 0 0.0 0
+601.9 0.3 0.03 0.01 0 0 0 0 0 0 0 0 0 0 0.0 0
+610.3 0.3 2.8 0.3 0 0 0 0 0 0 0 0 0 0 0.0 0
+631.4 0.4 0.35 0.1 0 0 0 0 0 0 0 0 0 0 0.0 0
+693.3 0.7 0.13 0.04 0 0 0 0 0 0 0 0 0 0 0.0 0
+813.7 0.2 7.0 2.5 0 0 0 0 0 0 0 0 0 0 0.0 0
+857.3 0.5 1.8 0.9 0 0 0 0 0 0 0 0 0 0 0.0 0
+861.1 1.0 1.05 0.5 0 0 0 0 0 0 0 0 0 0 0.0 0
+879.5 1.0 0.8 0.25 0 0 0 0 0 0 0 0 0 0 0.0 0
+888.2 0.3 0.35 0.1 0 0 0 0 0 0 0 0 0 0 0.0 0
+906.3 1.0 6.0 2.0 0 0 0 0 0 0 0 0 0 0 0.0 0
+937.91 0.07 0.4 0.1 0 0 0 0 0 0 0 0 0 0 0.0 0
+960.9 0.5 2.4 0.7 0 0 0 0 0 0 0 0 0 0 0.0 0
+1021.0 0.4 0.9 0.2 0 0 0 0 0 0 0 0 0 0 0.0 0
+1040.7 1.0 2.15 0.55 0 0 0 0 0 0 0 0 0 0 0.0 0
+1055.2 0.5 2.15 0.55 0 0 0 0 0 0 0 0 0 0 0.0 0
+1096.1 0.6 1.5 0.4 0 0 0 0 0 0 0 0 0 0 0.0 0
+1122.2 0.6 0.6 0.15 0 0 0 0 0 0 0 0 0 0 0.0 0
+1208.5 0.6 1.1 0.3 0 0 0 0 0 0 0 0 0 0 0.0 0
+1221.9 0.4 10.5 1.0 0 0 0 0 0 0 0 0 0 0 0.0 0
+1254.3 0.6 0.2 0.05 0 0 0 0 0 0 0 0 0 0 0.0 0
+1275.9 0.6 2.75 0.7 0 0 0 0 0 0 0 0 0 0 0.0 0
+1281.1 0.5 1.2 0.3 0 0 0 0 0 0 0 0 0 0 0.0 0
+1290.3 0.2 0.8 0.2 0 0 0 0 0 0 0 0 0 0 0.0 0
+1319.9 0.5 0.65 0.15 0 0 0 0 0 0 0 0 0 0 0.0 0
+1331.0 0.5 1.4 0.35 0 0 0 0 0 0 0 0 0 0 0.0 0
+1374.7 0.2 2.7 0.7 0 0 0 0 0 0 0 0 0 0 0.0 0
+1436.7 0.3 4.5 1.0 0 0 0 0 0 0 0 0 0 0 0.0 0
+1448.8 1.4 1.1 0.3 0 0 0 0 0 0 0 0 0 0 0.0 0
+1486.6 0.6 1.4 0.35 0 0 0 0 0 0 0 0 0 0 0.0 0
+1523.1 0.6 5.0 1.5 0 0 0 0 0 0 0 0 0 0 0.0 0
+1543.7 0.7 1.05 0.25 0 0 0 0 0 0 0 0 0 0 0.0 0
+1551.1 0.7 4.5 1.0 0 0 0 0 0 0 0 0 0 0 0.0 0
+1558.9 0.7 3.0 0.75 0 0 0 0 0 0 0 0 0 0 0.0 0
+1645.6 1.0 6.5 1.5 0 0 0 0 0 0 0 0 0 0 0.0 0
+1653.7 1.2 1.75 0.45 0 0 0 0 0 0 0 0 0 0 0.0 0
+1683.8 0.7 2.55 0.65 0 0 0 0 0 0 0 0 0 0 0.0 0
+1706.8 0.7 3.3 0.85 0 0 0 0 0 0 0 0 0 0 0.0 0
+1712.8 0.7 0.5 0.15 0 0 0 0 0 0 0 0 0 0 0.0 0
+1724.1 0.7 2.2 0.55 0 0 0 0 0 0 0 0 0 0 0.0 0
+1739.1 0.7 0.75 0.2 0 0 0 0 0 0 0 0 0 0 0.0 0
+1754.2 0.9 5.5 1.5 0 0 0 0 0 0 0 0 0 0 0.0 0
+1779.5 0.8 1.15 0.3 0 0 0 0 0 0 0 0 0 0 0.0 0
+1821.8 0.8 3.75 0.95 0 0 0 0 0 0 0 0 0 0 0.0 0
+*************************************************** *************************************************** **********
+Upper Limits of Resonances
+Note: enter partial width upper limit by chosing non-zero va lue for PT, where PT=<theta^2> for particles and...
+Note: ...PT=<B> for g-rays [enter: "upper_limit 0.0"]; for each resonance: # upper limits < # open channels!
+Ecm DEcm Jr G1 DG1 L1 PT G2 DG2 L2 PT G3 DG3 L3 PT Exf Int
+27.9 3.0 4.5 5.2e-26 0.0 5 0.0045 0.1 0.01 1 0 0 0 0 0 0.0 0
+177.9 2.0 0.5 2.6e-6 0.0 0 0.0045 0.1 0.01 1 0 0 0 0 0 0.0 0
+247.9 1.0 3.5 3.3e-8 0.0 4 0.0045 0.04 0.02 1 0 0 0 0 0 0.0 1
+277.9 3.0 0.5 2.2e-6 0.0 0 0.0045 0.1 0.01 1 0 0 0 0 0 0.0 0
+308.9 3.0 0.5 2.2e-6 0.0 0 0.0045 0.1 0.01 1 0 0 0 0 0 0.0 0
+318.9 3.0 0.5 3.0e-6 0.0 0 0.0045 0.1 0.01 1 0 0 0 0 0 0.0 0
+352.9 5.0 0.5 6.0e-4 0.0 0 0.0045 0.1 0.01 1 0 0 0 0 0 0.0 0
+376.9 3.0 0.5 6.0e-4 0.0 0 0.0045 0.1 0.01 1 0 0 0 0 0 0.0 0
+*************************************************** *************************************************** **********
+Interference between Resonances [numerical integration o nly]
+Note: + for positive, - for negative interference; +- if inte rference sign is unknown
+Ecm DEcm Jr G1 DG1 L1 PT G2 DG2 L2 PT G3 DG3 L3 PT Exf
+!+-
+0.0 0.0 0.0 0.0 0.0 0 0 0.0 0.0 0 0 0.0 0.0 0 0 0.0
+0.0 0.0 0.0 0.0 0.0 0 0 0.0 0.0 0 0 0.0 0.0 0 0 0.0
+*************************************************** *************************************************** **********
+Comments:
+1. Information for Er>400 keV from Endt 1990 (strengths norm alized relative to Er=1222 keV).
+2. Er=178, 278-377 keV: s-wave resonances (Jp=1/2+) assume d for upper limit; value of Gg=0.1+-0.01 eV is a guess
+(inconsequential since Gp<<Gg); Gp upper limit values calc ulated from strength upper limits of Goerres et al.
+1983.
+3. Er=28 keV: h-wave resonance (Jp=9/2-) assumed for upper l imit; Gg=0.1+-0.01 eV is a guess (inconsequential).
+4. Er=151 keV: contrary to Hale et al. 2001, we adopt C2S=0.00 11 (see Hale’s Ph.D. thesis).
+5. Er=248 keV: g-wave resonance (Jp=7/2+) assumed for upper limit.
+6. Direct capture S-factor adopted from Goerres et al. 1983, with uncertainty estimate from Hale et al. 2001.
+7. Levels at Ex=8862, 8894 and 9000 keV (Powers et al. 1971) ha ve been disregarded.
+References: Endt [69]; G¨ orres et al. [91]; Hale et al. [100]; Powers et al. [167].
