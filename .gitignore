@@ -3,3 +3,5 @@
 *.tab
 __pycache__/
 *.pyc
+.thicc/
+input/18F(p,a)15O.in'
