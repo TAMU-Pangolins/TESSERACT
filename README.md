@@ -6,25 +6,24 @@
     
 1. Download the code:
         
-        git clone https://github.com/aldusv/crosseccy
+        git clone https://github.com/aldusv/THICC
 
 
-2. Download the RIPL-3 data using the provided helper: (inside the project root)
+2. Download the RIPL-3 data using the provided helper (inside the project root): 
 
     ```
     python download_ripl.py
     ```
 
-3. Install into your environment. (inside the project root)
-
+3. Install dependencies (using [uv](https://docs.astral.sh/uv/)). The lockfile is built for Python 3.9–3.11; use 3.11 for a guaranteed resolver fit.
     ```
-    pip install -e .
+    uv sync --python 3.11
     ```
 
 4. Verify the setup. (inside the project root)
 
     ```
-    python -c "import nucres, json; print('nucres ready, data root =', nucres.config.resolve_data_root())"
+    uv run -- python -c "import nucres, json; print('nucres ready, data root =', nucres.config.resolve_data_root())"
     ```
 
 

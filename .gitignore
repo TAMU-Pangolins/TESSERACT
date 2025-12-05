@@ -3,3 +3,4 @@
 *.tab
 __pycache__/
 *.pyc
+*.venv

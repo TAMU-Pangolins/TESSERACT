@@ -43,11 +43,32 @@ def _find_resonant_block(lines: List[str]) -> Tuple[int, int, int]:
     return header_idx, data_start, data_end
 
 
-def inject_rows(template: Path, out_path: Path, rows: List[str], header_line: Optional[str] = None) -> None:
+def _override_random_samples(lines: List[str], n_samples: int) -> None:
+    """
+    Replace the line that sets the number of random samples with the provided value.
+    """
+    pattern = re.compile(r"^(\s*)[-+]?\d+(?:\.\d+)?(\s*!\s*Number of random samples.*)$", re.IGNORECASE)
+    for idx, line in enumerate(lines):
+        match = pattern.match(line)
+        if match:
+            lines[idx] = f"{match.group(1)}{n_samples}{match.group(2)}"
+            return
+    raise ValueError("Could not find the 'Number of random samples' line in template.")
+
+
+def inject_rows(
+    template: Path,
+    out_path: Path,
+    rows: List[str],
+    header_line: Optional[str] = None,
+    n_random_samples: Optional[int] = None,
+) -> None:
     """
     Replace the resonant contribution rows in the template with the provided rows and write to out_path.
     """
-    text = template.read_text().splitlines()
+    text = template.read_text(encoding="utf-8").splitlines()
+    if n_random_samples is not None:
+        _override_random_samples(text, n_random_samples)
     header_idx, data_start, data_end = _find_resonant_block(text)
     if header_line:
         text[header_idx] = header_line
@@ -193,7 +214,7 @@ def _parse_template_metadata(lines: List[str]) -> TemplateMetadata:
 
 def build_ratesmc_input(args) -> None:
     template_path, output_arg, output_dir = _resolve_paths(args.template, args.output, args.output_dir)
-    lines = template_path.read_text().splitlines()
+    lines = template_path.read_text(encoding="utf-8").splitlines()
     metadata = _parse_template_metadata(lines)
     reaction_line = metadata.reaction or "RatesMC"
     auto_output = template_path.parent / f"{_sanitize_reaction_name(reaction_line)}.in"
@@ -276,8 +297,17 @@ def build_ratesmc_input(args) -> None:
 
     rows, widths = render_rows(generated.resonances, opts)
     header_line = resonant_header_line(widths)
-    inject_rows(template_path, output_path, rows, header_line=header_line)
-    print(f"Wrote RatesMC.in with {len(rows)} resonances to {output_path}")
+    inject_rows(
+        template_path,
+        output_path,
+        rows,
+        header_line=header_line,
+        n_random_samples=args.n_random_samples,
+    )
+    count = len(rows)
+    print(f"Wrote RatesMC.in with {count} resonances to {output_path}")
+    if count == 0:
+        print("No resonances generated; check binning widths (E-min, E-max, delta-E) and related inputs.")
 
 
 def parse_args() -> argparse.Namespace:
@@ -290,7 +320,7 @@ def parse_args() -> argparse.Namespace:
     strength_group = p.add_mutually_exclusive_group()
     strength_group.add_argument("--use-strength", dest="use_strength", action="store_true", default=False, help="Emit omega-gamma instead of explicit widths.")
     strength_group.add_argument("--use-widths", dest="use_strength", action="store_false", help="Emit explicit partial widths instead of omega-gamma (default).")
-    p.add_argument("--default-frac-unc", type=float, default=0.1, help="Fractional uncertainty to apply to Ecm and widths (default 0.1 = 10%).")
+    p.add_argument("--default-frac-unc", type=float, default=0.1, help="Fractional uncertainty to apply to Ecm and widths (default 0.1 = 10%%).")
     p.add_argument("--l1", type=int, default=0, help="Entrance channel orbital angular momentum L1.")
     p.add_argument("--l2", type=int, default=1, help="Exit channel orbital angular momentum / multipolarity L2.")
     p.add_argument("--l3", type=int, default=0, help="Spectator channel orbital angular momentum L3.")
@@ -300,6 +330,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--j-proj", type=float, default=None, help="Override projectile spin for omega-gamma (defaults to Resonance.s1).")
     p.add_argument("--j-targ", type=float, default=None, help="Override target spin for omega-gamma (defaults to Resonance.s2).")
     p.add_argument("--precision", type=int, default=3, help="Decimal digits for non-Ecm columns (mantissa).")
+    p.add_argument("--n-random-samples", type=int, default=1, help="Number of random samples (>5000 recommended for better statistics).")
 
     # HFB sampler / generator options
     p.add_argument("--Z", type=int, default=None, help="Proton number for the density grid lookup (default: parsed from template).")
