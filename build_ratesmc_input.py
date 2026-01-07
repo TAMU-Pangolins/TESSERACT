@@ -337,7 +337,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--data-root", type=Path, default=None, help="Override path to HFB density tables.")
     p.add_argument("--A", type=int, default=None, help="Mass number slice for density grid (default: parsed from template).")
     p.add_argument("--J", type=float, default=None, help="Resonance spin used in generated spectrum (default: first J in template).")
-    p.add_argument("--pi", type=int, choices=(-1, 1), default=1, help="Parity (±1).")
+    p.add_argument("--pi", type=int, choices=(-1, 1), default=1, help="Parity (+-1).")
     p.add_argument("--s1", type=float, default=None, help="Projectile spin (default: template Jproj).")
     p.add_argument("--s2", type=float, default=None, help="Target spin (default: template Jtarget).")
     p.add_argument("--m1", type=float, default=None, help="Projectile mass (kg).")
@@ -362,3 +362,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+

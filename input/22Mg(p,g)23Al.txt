@@ -17,6 +17,7 @@
 1.0 ! Minimum energy for numerical integration (keV)
 7000 ! Number of random samples (>5000 for better statistics )
 0 ! =0 for rate output at all temperatures; =NT for rate output at selected temperatures
+0 0 ! (Res, E) =0 for no correlation. =1 for correlation
 *************************************************** *************************************************** **********
 Nonresonant contribution
 S(keVb) S’(b) S’’(b/keV) fracErr Cutoff Energy (keV)
@@ -26,22 +27,22 @@ S(keVb) S’(b) S’’(b/keV) fracErr Cutoff Energy (keV)
 Resonant Contribution
 Note: G1 = entrance channel, G2 = exit channel, G3 = spectator channel !! Ecm, Exf in (keV); wg, Gx in (eV) !!
 Note: if Er<0, theta^2=C2S*theta_sp^2 must be entered inst ead of entrance channel partial width
-Ecm DEcm wg Dwg J G1 DG1 L1 G2 DG2 L2 G3 DG3 L3 Exf Int
-405 27 0 0 0.5 74 30 0 7.2e-7 1.4e-7 2 0 0 0 0.0 1
-1651 40 0 0 1.5 912 365 2 8.3e-4 4.2e-4 1 0 0 0 0.0 1
+Ecm DEcm wg Dwg J G1 DG1 L1 G2 DG2 L2 G3 DG3 L3 Exf Int Corr/Frac
+405 27 0 0 0.5 74 30 0 7.2e-7 1.4e-7 2 0 0 0 0.0 1 1
+1651 40 0 0 1.5 912 365 2 8.3e-4 4.2e-4 1 0 0 0 0.0 1 1
 *************************************************** *************************************************** **********
 Upper Limits of Resonances
 Note: enter partial width upper limit by chosing non-zero va lue for PT, where PT=<theta^2> for particles and...
 Note: ...PT=<B> for g-rays [enter: "upper_limit 0.0"]; for each resonance: # upper limits < # open channels!
-Ecm DEcm Jr G1 DG1 L1 PT G2 DG2 L2 PT G3 DG3 L3 PT Exf Int
-!0.0 0.0 0.0 0.0 0.0 0 0 0.0 0.0 0 0 0.0 0.0 0 0 0.0 0
+Ecm DEcm Jr G1 DG1 L1 PT DPT G2 DG2 L2 PT DPT G3 DG3 L3 PT DPT Exf Int
+!0.0 0.0 0.0 0.0 0.0 0 0 0 0.0 0.0 0 0 0 0.0 0.0 0 0 0 0.0 0
 *************************************************** *************************************************** **********
 Interference between Resonances [numerical integration o nly]
 Note: + for positive, - for negative interference; +- if inte rference sign is unknown
-Ecm DEcm Jr G1 DG1 L1 PT G2 DG2 L2 PT G3 DG3 L3 PT Exf
+Ecm DEcm Jr G1 DG1 L1 PT DPT G2 DG2 L2 PT DPT G3 DG3 L3 PT DPT Exf
 !+-
-0.0 0.0 0.0 0.0 0.0 0 0 0.0 0.0 0 0 0.0 0.0 0 0 0.0
-0.0 0.0 0.0 0.0 0.0 0 0 0.0 0.0 0 0 0.0 0.0 0 0 0.0
+0.0 0.0 0.0 0.0 0.0 0 0 0 0.0 0.0 0 0 0 0.0 0.0 0 0 0 0.0
+0.0 0.0 0.0 0.0 0.0 0 0 0 0.0 0.0 0 0 0 0.0 0.0 0 0 0 0.0
 *************************************************** *************************************************** **********
 Comments:
 1. S-factor for direct capture to ground state calculated wi th C2S=0.22 from 23Ne mirror state.

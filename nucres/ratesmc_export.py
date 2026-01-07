@@ -4,8 +4,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable, List, Optional, Tuple
 
-from .resonance import Resonance
 from .physics import spin_stat_factor
+from .resonance import Resonance
 
 
 @dataclass
@@ -32,7 +32,7 @@ class RatesMCExportOptions:
     j_proj: Optional[float] = None
     j_targ: Optional[float] = None
     # Formatting
-    precision: int = 3   # decimals for non-Ecm columns
+    precision: int = 3  # decimals for non-Ecm columns
     ecm_decimals: int = 3
 
 
@@ -55,6 +55,7 @@ class RatesMCRow:
     Exf: float
     Int: int
 
+
 COLUMN_SPECS = [
     ("Ecm", 9, "float"),
     ("DEcm", 6, "float"),
@@ -75,11 +76,17 @@ COLUMN_SPECS = [
 ]
 
 
-def omega_gamma(res: Resonance, j_proj: Optional[float] = None, j_targ: Optional[float] = None) -> float:
+def omega_gamma(
+    res: Resonance, j_proj: Optional[float] = None, j_targ: Optional[float] = None
+) -> float:
     """
     Compute strength omega-gamma (eV) from partial widths.
     """
-    g = spin_stat_factor(res.J, j_proj if j_proj is not None else res.s1, j_targ if j_targ is not None else res.s2)
+    g = spin_stat_factor(
+        res.J,
+        j_proj if j_proj is not None else res.s1,
+        j_targ if j_targ is not None else res.s2,
+    )
     gt = res.Gamma_i + res.Gamma_o
     if gt <= 0.0:
         return 0.0
@@ -177,7 +184,9 @@ def _row_as_strings(row: RatesMCRow, opts: RatesMCExportOptions) -> List[str]:
     return formatted
 
 
-def render_rows(resonances: Iterable[Resonance], opts: RatesMCExportOptions) -> Tuple[List[str], List[int]]:
+def render_rows(
+    resonances: Iterable[Resonance], opts: RatesMCExportOptions
+) -> Tuple[List[str], List[int]]:
     """
     Convert a list of Resonance objects to formatted RatesMC lines.
     """
@@ -189,16 +198,24 @@ def render_rows(resonances: Iterable[Resonance], opts: RatesMCExportOptions) -> 
     for row in rows_raw:
         for idx, val in enumerate(row):
             widths[idx] = max(widths[idx], len(val))
-    lines = [" ".join(val.rjust(widths[idx]) for idx, val in enumerate(row)) for row in rows_raw]
+    lines = [
+        " ".join(val.rjust(widths[idx]) for idx, val in enumerate(row))
+        for row in rows_raw
+    ]
     return lines, widths
 
 
 def resonant_header_line(widths: Optional[List[int]] = None) -> str:
     active_widths = widths or [len(label) for label, _, _ in COLUMN_SPECS]
-    return " ".join(label.ljust(active_widths[idx]) for idx, (label, _, _) in enumerate(COLUMN_SPECS))
+    return " ".join(
+        label.ljust(active_widths[idx])
+        for idx, (label, _, _) in enumerate(COLUMN_SPECS)
+    )
 
 
-def write_resonant_block(dest: Path, rows: List[str], header: Optional[str] = None) -> None:
+def write_resonant_block(
+    dest: Path, rows: List[str], header: Optional[str] = None
+) -> None:
     """
     Write a resonant contribution block (header + rows) to a file.
     """
