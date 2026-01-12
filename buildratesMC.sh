@@ -12,16 +12,15 @@ Output_dir="outputs/"
 # OPTION B: Select specific files
 # -------------------------
 input_files=(
-    "${Input_dir}18F(p,a)15O.txt"
-    "${Input_dir}18F(p,g)19Ne.txt"
+    "${Input_dir}22Mg(p,g)23Al.txt"
 )
 
 # -------------------------
 # E_min and E_max arrays (may be shorter!). If length of E_min and E_max don't match with each other or with length of input_files then default E_min and E_max values will be used.
 # -------------------------
-E_min=(0.1 0.1)          # Example: only 1 value
-E_max=(10.0 10.0)  # Example: more values than needed
-
+E_min=(0.)          # Example: only 1 value
+E_max=(3.8)  # Example: more values than needed
+bin_width=(0.1)
 # -------------------------
 # Default values
 # -------------------------
@@ -64,6 +63,7 @@ for ((i=0; i<${#input_files[@]}; i++)); do
         --output-dir "$Output_dir" \
         --E-min-mev "$Emin_val" \
         --E-max-mev "$Emax_val"
+        # --delta-E-mev "$bin_width"
 
     echo "Generated RatesMC input file for $filename in $Output_dir"
     echo "------------------------------------------------------------"
