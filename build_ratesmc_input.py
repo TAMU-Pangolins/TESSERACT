@@ -103,7 +103,8 @@ def _resolve_paths(template_arg: Optional[Path], output_arg: Optional[Path], out
     default_template = script_dir / "RatesMC.in"
     template = template_arg if template_arg is not None else default_template
     if template is None or not template.exists():
-        raise FileNotFoundError("Template RatesMC.in not provided and default ./RatesMC.in not found.")
+        print(f'{script_dir}')
+        raise FileNotFoundError(f"Template RatesMC.in not provided and default ./RatesMC.in not found.")
     return template, output_arg, output_dir
 
 
