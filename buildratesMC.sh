@@ -20,7 +20,8 @@ input_files=(
 # -------------------------
 E_min=(0.01)          # Example: only 1 value
 E_max=(3.8)  # Example: more values than needed
-bin_width=(0.1)
+bin_width=(0.1 0.2)
+samples=5000
 # -------------------------
 # Default values
 # -------------------------
@@ -56,15 +57,22 @@ for ((i=0; i<${#input_files[@]}; i++)); do
         echo "⚠️  WARNING: No E_max value for $filename → using default ($DEFAULT_EMAX)"
     fi
 
-    echo "Processing $filename (E_min=$Emin_val, E_max=$Emax_val)"
+    for ((j=0; j<${#bin_width[@]}; j++)); do
 
-    python build_ratesmc_input.py \
-        --template "$file" \
-        --output-dir "$Output_dir" \
-        --E-min-mev "$Emin_val" \
-        --E-max-mev "$Emax_val" \
-        --delta-E-mev "$bin_width"
+        echo "Processing $filename (E_min=$Emin_val, E_max=$Emax_val, bin_width=${bin_width[j]})"
+        mkdir -p "${Output_dir}22Mg(a,p)25Al/RUN_$j"
 
+        python build_ratesmc_input.py \
+            --template "$file" \
+            --output-dir "$Output_dir" \
+            --E-min-mev "$Emin_val" \
+            --E-max-mev "$Emax_val" \
+            --delta-E-mev "${bin_width[j]}" \
+            --n-density-points "$samples" \
+            --seed 42
+
+        mv "${Output_dir}22Mg(a,p)25Al/22Mg(a,p)25Al.in" "${Output_dir}22Mg(a,p)25Al/RUN_$j/"
+    done
     echo "Generated RatesMC input file for $filename in $Output_dir"
     echo "------------------------------------------------------------"
 done
