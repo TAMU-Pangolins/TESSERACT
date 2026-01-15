@@ -31,7 +31,7 @@ class HFBSamplerConfig:
     n_density_points: int = 2001
     n_sigma_points: int = 4000
     U_offset_mev: float = 8.0
-    seed: Optional[int] = None
+    seed: Optional[int] = 42
 
 
 @dataclass
