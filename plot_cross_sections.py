@@ -50,24 +50,26 @@ def extract_data(file):
 
 df = extract_data(file)
 df = df.sort_values(by='Ecm',ascending=True)
-E_cm = df['Ecm']
-gamma_i = df['G1']
-gamma_o = df['G2']
-Jr = df['Jr']
-l1 = df['L1']
-l2 = df['L2']
+E_cm = df['Ecm'].values*1e-3
+gamma_i = df['G1'].values
+gamma_o = df['G2'].values
+Jr = df['Jr'].values
+l1 = df['L1'].values
+l2 = df['L2'].values
 L = l1 + l2
-
+print(type(L[0]))
 
 xs_lst = []
 
 # Read inputs as strings first
 E_min_in = input("Enter minimum energy [MeV] for integration (press Enter for default): ")
-E_min = float(E_min_in) if E_min_in.strip() else np.min(E_cm*10**(-3))
+E_min = float(E_min_in) if E_min_in.strip() else np.min(E_cm)
+E_min = np.round(E_min,2)
 print(E_min)
 
 E_max_in = input("Enter maximum energy [MeV] for integration (press Enter for default): ")
-E_max = float(E_max_in) if E_max_in.strip() else np.max(E_cm*10**(-3))
+E_max = float(E_max_in) if E_max_in.strip() else np.max(E_cm)
+E_max = np.round(E_max,2)
 print(E_max)
 
 dE_in    = input("Enter bin width [MeV] for integration: ")
@@ -79,18 +81,22 @@ N_bins = 50
 
 E_bins = np.arange(E_min,E_max+dE,dE)
 
+E_cm = np.round(E_cm,2)
+print(E_cm)
 for E0 in E_bins:
     E1 = E0 + dE
-
     # internal grid (MeV or eV consistently)
     E_int = np.linspace(E0, E1, N_bins)
 
     xs_total = np.zeros_like(E_int)
 
     # sum over resonances
-    E_res = np.where((E_cm >= E0) & (E_cm <= E1))
 
-    if E_res:
+    E_res = np.where((E_cm >= E0) & (E_cm <= E1))
+    print(E0,E1)
+    print(E_res)
+
+    if E_res[0].size > 0:
 
         for i in range(len(E_res)):
 
@@ -115,11 +121,11 @@ for E0 in E_bins:
             xs_total += xs_r
     else:
     	xs_total += 0
-    	
+
     # integrate over the bin
     xs_int = np.trapezoid(xs_total, E_int)
     xs_bin.append(xs_int)
-    print(E0)
+#    print(E0)
 
 #E_lst = np.arange(E_min,E_max+dE,dE)
 
@@ -135,12 +141,12 @@ fig = plt.figure(figsize=(8,6))
 
 plt.plot(E_bins,xs_bin,lw=2,label=rf"$\Delta$E = {dE} MeV")
 
-plt.yscale('log')
+#plt.yscale('log')
 plt.title('22Mg(a,p)25Al')
 plt.legend()
 plt.xlabel('MeV')
 plt.ylabel('Barns')
 
-plt.savefig('22Mg_ap_25Al.png')
+#plt.savefig('22Mg_ap_25Al.png')
 
 plt.show()
