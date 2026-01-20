@@ -88,27 +88,34 @@ for E0 in E_bins:
     xs_total = np.zeros_like(E_int)
 
     # sum over resonances
-    for i in range(len(E_cm)):
-        r_i = Resonance(
-            E_cm[i]*10**3,      # resonance energy Er in eV
-            Jr[i],
-            0, 0,
-            3.65e-26,
-            6.64e-27,
-            gamma_i[i],        # Gamma_i at Er (from table)
-            gamma_o[i],        # Gamma_o (from table)
-        )
+    E_res = np.where((E_cm >= E0) & (E_cm <= E1))
 
-        xs_r = sigma_bw_energy_dep(
-            E_int*10**6, #eV
-            r_i,
-            12, 2, 22, 4,
-            L[i],
-            gamma2_mev=0.0   # not used since Gamma_i is known
-        )
+    if E_res:
 
-        xs_total += xs_r
+        for i in range(len(E_res)):
 
+            r_i = Resonance(
+                E_res[i]*10**3,      # resonance energy Er in eV
+                Jr[i],
+                0, 0,
+                3.65e-26,
+                6.64e-27,
+                gamma_i[i],        # Gamma_i at Er (from table)
+                gamma_o[i],        # Gamma_o (from table)
+            )
+
+            xs_r = sigma_bw_energy_dep(
+                E_int*10**6, #eV
+                r_i,
+                12, 2, 22, 4,
+                L[i],
+                gamma2_mev=0.0   # not used since Gamma_i is known
+            )
+
+            xs_total += xs_r
+    else:
+    	xs_total += 0
+    	
     # integrate over the bin
     xs_int = np.trapezoid(xs_total, E_int)
     xs_bin.append(xs_int)
