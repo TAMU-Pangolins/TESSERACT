@@ -57,7 +57,6 @@ Jr = df['Jr'].values
 l1 = df['L1'].values
 l2 = df['L2'].values
 L = l1 + l2
-print(type(L[0]))
 
 xs_lst = []
 
@@ -72,81 +71,77 @@ E_max = float(E_max_in) if E_max_in.strip() else np.max(E_cm)
 E_max = np.round(E_max,2)
 print(E_max)
 
-dE_in    = input("Enter bin width [MeV] for integration: ")
-dE    = float(dE_in)
+dE_in    = input("Enter bin width(s) [MeV] separated by commas: ")
+dE_lst = [float(x.strip()) for x in dE_in.split(",")]
 
-xs_bin = []
+fig = plt.figure(figsize=(8,6))
+for dE in dE_lst:
+    print(f"Running for dE = {dE} MeV")
+    xs_bin = []
 
-N_bins = 50
+    N_bins = 50
 
-E_bins = np.arange(E_min,E_max+dE,dE)
+    E_bins = np.arange(E_min,E_max+dE,dE)
 
-E_cm = np.round(E_cm,2)
-print(E_cm)
-for E0 in E_bins:
-    E1 = E0 + dE
+    E_cm = np.round(E_cm,2)
+
+    for E0 in E_bins:
+        E1 = E0 + dE
     # internal grid (MeV or eV consistently)
-    E_int = np.linspace(E0, E1, N_bins)
+        E_int = np.linspace(E0, E1, N_bins)
 
-    xs_total = np.zeros_like(E_int)
+        xs_total = np.zeros_like(E_int)
 
     # sum over resonances
 
-    E_res = np.where((E_cm >= E0) & (E_cm <= E1))
-    print(E0,E1)
-    print(E_res)
+        idx = np.where((E_cm >= E0) & (E_cm <= E1))[0]
 
-    if E_res[0].size > 0:
+        if idx.size > 0:
 
-        for i in range(len(E_res)):
+            #print(E0,E1)
 
-            r_i = Resonance(
-                E_res[i]*10**3,      # resonance energy Er in eV
-                Jr[i],
-                0, 0,
-                3.65e-26,
-                6.64e-27,
-                gamma_i[i],        # Gamma_i at Er (from table)
-                gamma_o[i],        # Gamma_o (from table)
-            )
+            for i in idx:
 
-            xs_r = sigma_bw_energy_dep(
-                E_int*10**6, #eV
-                r_i,
-                12, 2, 22, 4,
-                L[i],
-                gamma2_mev=0.0   # not used since Gamma_i is known
-            )
+                r_i = Resonance(
+                    E_cm[i]*10**6,      # resonance energy Er in eV
+                    Jr[i],
+                    0, 0,
+                    3.65e-26,
+                    6.64e-27,
+                    gamma_i[i],        # Gamma_i at Er (from table)
+                    gamma_o[i],        # Gamma_o (from table)
+                )
 
-            xs_total += xs_r
-    else:
-    	xs_total += 0
+                xs_r = sigma_bw_energy_dep(
+                    E_int*10**6, #eV
+                    r_i,
+                    12, 2, 22, 4,
+                    L[i],
+                    gamma2_mev=0.0   # not used since Gamma_i is known
+                )
+
+                xs_total += xs_r
+        else:
+    	    xs_total += 0
 
     # integrate over the bin
-    xs_int = np.trapezoid(xs_total, E_int)
-    xs_bin.append(xs_int)
-#    print(E0)
+        xs_int = np.trapezoid(xs_total, E_int)
+        xs_bin.append(xs_int)
+    print("*************************************************************")
 
-#E_lst = np.arange(E_min,E_max+dE,dE)
-
-#for i in range(len(E_cm)):
-    # extracting resonance information
-#    r_i = Resonance(E_cm[i],Jr[i],0,0,3.65*10**(-26),6.64*10**(-27),gamma_i[i],gamma_o[i])
-    # generating cross sections
-#    xs = sigma_bw_energy_dep([E_cm[i]],r_i,12,2,22,4,L[i],0)
-#    xs_lst.append(xs)
+    E_bins = np.array(E_bins)
+    xs_bin = np.array(xs_bin)
 
 
-fig = plt.figure(figsize=(8,6))
+    plt.scatter(E_bins,xs_bin*1e3,s=20,label=rf"$\Delta$E = {dE} MeV")
+    plt.plot(E_bins,xs_bin*1e3)
 
-plt.plot(E_bins,xs_bin,lw=2,label=rf"$\Delta$E = {dE} MeV")
-
-#plt.yscale('log')
+plt.yscale('log')
 plt.title('22Mg(a,p)25Al')
 plt.legend()
 plt.xlabel('MeV')
-plt.ylabel('Barns')
+plt.ylabel('mb')
 
-#plt.savefig('22Mg_ap_25Al.png')
+plt.savefig('22Mg_ap_25Al.png')
 
 plt.show()
