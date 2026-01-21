@@ -38,13 +38,9 @@ class HFBSamplerConfig:
     n_density_points: int = 2001
     n_sigma_points: int = 4000
     U_offset_mev: float = 8.0
-<<<<<<< Updated upstream
-    seed: Optional[int] = 42
-=======
     seed: Optional[int] = None
     sample_J: bool = True
     auto_l1: bool = True
->>>>>>> Stashed changes
 
 
 @dataclass
