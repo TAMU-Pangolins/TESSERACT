@@ -3,9 +3,7 @@ import numpy as np
 from io import StringIO
 import pandas as pd
 from nucres.resonance import Resonance, sigma_bw_energy_dep
-from scipy.interpolate import make_interp_spline
 
-#resonance_i = Resonance(1,0.5,0.5,0.5,3.65*10**(-26),6.64*10**(-27),1,1)
 output_dir = 'outputs/22Mg(a,p)25Al/'
 file = output_dir +'RUN_0/22Mg(a,p)25Al.in'
 #bin_width = [0.1,0.2]
@@ -57,6 +55,32 @@ Jr = df['Jr'].values
 l1 = df['L1'].values
 l2 = df['L2'].values
 L = l1 + l2
+
+xs_unint = []
+for j in range(len(E_cm)):
+
+	r_j = Resonance(E_cm[j]*10**6,      # resonance energy Er in eV
+            Jr[j],
+            0, 0,
+            3.65e-26,
+            6.64e-27,
+            gamma_i[j],        # Gamma_i at Er (from table)
+            gamma_o[j],        # Gamma_o (from table)
+    )
+
+
+	xs_j = sigma_bw_energy_dep(
+            E_cm[j]*10**6, #eV
+            r_j,
+            12, 2, 22, 4,
+            L[j],
+            gamma2_mev=0.0   # not used since Gamma_i is known
+    )
+
+	xs_unint.append(xs_j)
+
+xs_unint = np.array(xs_unint)
+
 
 xs_lst = []
 
@@ -131,11 +155,14 @@ for dE in dE_lst:
 
     E_bins = np.array(E_bins)
     xs_bin = np.array(xs_bin)
+    
 
 
     plt.scatter(E_bins,xs_bin*1e3,s=20,label=rf"$\Delta$E = {dE} MeV")
     plt.plot(E_bins,xs_bin*1e3)
 
+plt.scatter(E_cm,xs_unint,color='k',label = 'Before integration')
+plt.plot(E_cm,xs_unint,color='k',ls='--')
 plt.yscale('log')
 plt.title('22Mg(a,p)25Al')
 plt.legend()
