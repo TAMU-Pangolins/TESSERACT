@@ -70,7 +70,7 @@ for j in range(len(E_cm)):
 
 
 	xs_j = sigma_bw_energy_dep(
-            E_cm[j]*10**6, #eV
+            [E_cm[j]*10**6], #eV
             r_j,
             12, 2, 22, 4,
             L[j],
