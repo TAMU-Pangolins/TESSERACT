@@ -28,6 +28,10 @@ class RatesMCExportOptions:
     int_flag: int = 1
     # Whether to keep G3 columns; when False, G3 and DG3 are zeroed
     include_g3: bool = False
+    # Include Corr/Frac column when template expects it.
+    include_corr_frac: bool = False
+    # Value for Corr/Frac column (0 = no correlation by default).
+    corr_frac_value: int = 0
     # Optional override of projectile/target spins used in the statistical factor
     j_proj: Optional[float] = None
     j_targ: Optional[float] = None
@@ -54,9 +58,10 @@ class RatesMCRow:
     L3: int
     Exf: float
     Int: int
+    corr_frac: int
 
 
-COLUMN_SPECS = [
+BASE_COLUMN_SPECS = [
     ("Ecm", 9, "float"),
     ("DEcm", 6, "float"),
     ("wg", 11, "sci"),
@@ -74,6 +79,13 @@ COLUMN_SPECS = [
     ("Exf", 6, "float"),
     ("Int", 3, "int"),
 ]
+
+
+def _column_specs(opts: Optional[RatesMCExportOptions]) -> List[Tuple[str, int, str]]:
+    specs = list(BASE_COLUMN_SPECS)
+    if opts is not None and opts.include_corr_frac:
+        specs.append(("Corr/Frac", 9, "int"))
+    return specs
 
 
 def omega_gamma(
@@ -133,15 +145,16 @@ def resonance_to_row(res: Resonance, opts: RatesMCExportOptions) -> RatesMCRow:
         Jr=res.J,
         G1=G1,
         DG1=DG1,
-        L1=opts.l1,
+        L1=res.L1 if res.L1 is not None else opts.l1,
         G2=G2,
         DG2=DG2,
-        L2=opts.l2,
+        L2=res.L2 if res.L2 is not None else opts.l2,
         G3=G3,
         DG3=DG3,
-        L3=opts.l3,
+        L3=res.L3 if res.L3 is not None else opts.l3,
         Exf=opts.exf_keV,
         Int=opts.int_flag,
+        corr_frac=opts.corr_frac_value,
     )
 
 
@@ -159,28 +172,30 @@ def _format_value(value: float, decimals: int, kind: str) -> str:
 
 
 def _row_as_strings(row: RatesMCRow, opts: RatesMCExportOptions) -> List[str]:
-    values = [
-        row.Ecm,
-        row.DEcm,
-        row.wg,
-        row.Dwg,
-        row.Jr,
-        row.G1,
-        row.DG1,
-        row.L1,
-        row.G2,
-        row.DG2,
-        row.L2,
-        row.G3,
-        row.DG3,
-        row.L3,
-        row.Exf,
-        row.Int,
-    ]
+    values = {
+        "Ecm": row.Ecm,
+        "DEcm": row.DEcm,
+        "wg": row.wg,
+        "Dwg": row.Dwg,
+        "Jr": row.Jr,
+        "G1": row.G1,
+        "DG1": row.DG1,
+        "L1": row.L1,
+        "G2": row.G2,
+        "DG2": row.DG2,
+        "L2": row.L2,
+        "G3": row.G3,
+        "DG3": row.DG3,
+        "L3": row.L3,
+        "Exf": row.Exf,
+        "Int": row.Int,
+        "Corr/Frac": row.corr_frac,
+    }
     formatted = []
-    for (label, _, kind), value in zip(COLUMN_SPECS, values):
+    specs = _column_specs(opts)
+    for label, _, kind in specs:
         decimals = opts.ecm_decimals if label == "Ecm" else opts.precision
-        formatted.append(_format_value(value, decimals, kind))
+        formatted.append(_format_value(values[label], decimals, kind))
     return formatted
 
 
@@ -194,7 +209,8 @@ def render_rows(
     for res in resonances:
         row = resonance_to_row(res, opts)
         rows_raw.append(_row_as_strings(row, opts))
-    widths = [len(label) for label, _, _ in COLUMN_SPECS]
+    specs = _column_specs(opts)
+    widths = [len(label) for label, _, _ in specs]
     for row in rows_raw:
         for idx, val in enumerate(row):
             widths[idx] = max(widths[idx], len(val))
@@ -205,11 +221,13 @@ def render_rows(
     return lines, widths
 
 
-def resonant_header_line(widths: Optional[List[int]] = None) -> str:
-    active_widths = widths or [len(label) for label, _, _ in COLUMN_SPECS]
+def resonant_header_line(
+    widths: Optional[List[int]] = None, opts: Optional[RatesMCExportOptions] = None
+) -> str:
+    specs = _column_specs(opts)
+    active_widths = widths or [len(label) for label, _, _ in specs]
     return " ".join(
-        label.ljust(active_widths[idx])
-        for idx, (label, _, _) in enumerate(COLUMN_SPECS)
+        label.ljust(active_widths[idx]) for idx, (label, _, _) in enumerate(specs)
     )
 
 

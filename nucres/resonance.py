@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from functools import lru_cache
+from typing import Optional
 
 import mpmath as mp
 import numpy as np
@@ -26,6 +27,9 @@ class Resonance:
     m2: float  # kg
     Gamma_i: float  # eV at E_r (set to >0 if known; else set 0 and use gamma2 in energy-dependent call)
     Gamma_o: float  # eV
+    L1: Optional[int] = None
+    L2: Optional[int] = None
+    L3: Optional[int] = None
 
 
 def channel_radius_fm(A1, A2, r0=1.25):
@@ -90,12 +94,10 @@ def sigma_bw_constant(E_eV, r):
     ErJ = ev_to_j(r.E_r)
 
     BW = (EiJ * EoJ) / ((EJ - ErJ) ** 2 + (EtJ / 2.0) ** 2)
-    return S * (PI / k ** 2) * BW * M_TO_BARNS
+    return S * (PI / k**2) * BW * M_TO_BARNS
 
 
-def sigma_bw_energy_dep(
-    E_eV, r, Z1, Z2, A1, A2, l, gamma2_mev, r0=1.25, P_interp=None
-):
+def sigma_bw_energy_dep(E_eV, r, Z1, Z2, A1, A2, l, gamma2_mev, r0=1.25, P_interp=None):
     """
     Same Breit-Wigner, but Gamma_i(E) scales with penetrability:
       Gamma_i(E) = Gamma_i(E_r) * P_l(E)/P_l(E_r).
@@ -135,4 +137,4 @@ def sigma_bw_energy_dep(
     ErJ = ev_to_j(r.E_r)
 
     BW = (EiJ * EoJ) / ((EJ - ErJ) ** 2 + (EtJ / 2.0) ** 2)
-    return S * (PI / k ** 2) * BW * M_TO_BARNS
+    return S * (PI / k**2) * BW * M_TO_BARNS

@@ -4,12 +4,17 @@ import argparse
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Tuple, Optional
+from typing import List, Optional, Tuple
 
 from nucres.generator import HFBSamplerConfig, synthesize_sigma_from_hfb
-from nucres.ratesmc_export import RatesMCExportOptions, render_rows, resonant_header_line
 from nucres.physics import MASS_PROTON
+from nucres.ratesmc_export import (
+    RatesMCExportOptions,
+    render_rows,
+    resonant_header_line,
+)
 from nucres.read_qvals import interpret_z_token, mass_from_token
+
 
 def _find_resonant_block(lines: List[str]) -> Tuple[int, int, int]:
     """
@@ -30,7 +35,9 @@ def _find_resonant_block(lines: List[str]) -> Tuple[int, int, int]:
             header_idx = j
             break
     if header_idx is None:
-        raise ValueError("Could not find the resonant contribution header line following the section marker.")
+        raise ValueError(
+            "Could not find the resonant contribution header line following the section marker."
+        )
 
     data_start = header_idx + 1
     data_end = len(lines)
@@ -43,11 +50,18 @@ def _find_resonant_block(lines: List[str]) -> Tuple[int, int, int]:
     return header_idx, data_start, data_end
 
 
+def _template_has_corr_frac(lines: List[str]) -> bool:
+    header_idx, _, _ = _find_resonant_block(lines)
+    return "corr/frac" in lines[header_idx].lower()
+
+
 def _override_random_samples(lines: List[str], n_samples: int) -> None:
     """
     Replace the line that sets the number of random samples with the provided value.
     """
-    pattern = re.compile(r"^(\s*)[-+]?\d+(?:\.\d+)?(\s*!\s*Number of random samples.*)$", re.IGNORECASE)
+    pattern = re.compile(
+        r"^(\s*)[-+]?\d+(?:\.\d+)?(\s*!\s*Number of random samples.*)$", re.IGNORECASE
+    )
     for idx, line in enumerate(lines):
         match = pattern.match(line)
         if match:
@@ -98,13 +112,17 @@ class TemplateMetadata:
     targ_A_token: Optional[str]
 
 
-def _resolve_paths(template_arg: Optional[Path], output_arg: Optional[Path], output_dir: Optional[Path]) -> Tuple[Path, Optional[Path], Optional[Path]]:
+def _resolve_paths(
+    template_arg: Optional[Path], output_arg: Optional[Path], output_dir: Optional[Path]
+) -> Tuple[Path, Optional[Path], Optional[Path]]:
     script_dir = Path(__file__).resolve().parent
     default_template = script_dir / "RatesMC.in"
     template = template_arg if template_arg is not None else default_template
     if template is None or not template.exists():
-        print(f'{script_dir}')
-        raise FileNotFoundError(f"Template RatesMC.in not provided and default ./RatesMC.in not found.")
+        print(f"{script_dir}")
+        raise FileNotFoundError(
+            f"Template RatesMC.in not provided and default ./RatesMC.in not found."
+        )
     return template, output_arg, output_dir
 
 
@@ -214,13 +232,20 @@ def _parse_template_metadata(lines: List[str]) -> TemplateMetadata:
 
 
 def build_ratesmc_input(args) -> None:
-    template_path, output_arg, output_dir = _resolve_paths(args.template, args.output, args.output_dir)
+    template_path, output_arg, output_dir = _resolve_paths(
+        args.template, args.output, args.output_dir
+    )
     lines = template_path.read_text(encoding="utf-8").splitlines()
     metadata = _parse_template_metadata(lines)
+    include_corr_frac = _template_has_corr_frac(lines)
     reaction_line = metadata.reaction or "RatesMC"
     auto_output = template_path.parent / f"{_sanitize_reaction_name(reaction_line)}.in"
     if output_dir is not None:
-        auto_output = Path(output_dir) / _sanitize_reaction_name(reaction_line) / f"{_sanitize_reaction_name(reaction_line)}.in"
+        auto_output = (
+            Path(output_dir)
+            / _sanitize_reaction_name(reaction_line)
+            / f"{_sanitize_reaction_name(reaction_line)}.in"
+        )
         auto_output.parent.mkdir(parents=True, exist_ok=True)
     output_path = output_arg if output_arg is not None else auto_output
 
@@ -229,6 +254,8 @@ def build_ratesmc_input(args) -> None:
     s1_val = args.s1 if args.s1 is not None else metadata.s1
     s2_val = args.s2 if args.s2 is not None else metadata.s2
     J_val = args.J if args.J is not None else metadata.J
+    if J_val is None and args.sample_J and A_val is not None:
+        J_val = 0.5 if (A_val % 2 == 1) else 0.0
     try:
         proj_mass_auto = mass_from_token(metadata.proj_A_token, metadata.proj_Z)
     except KeyError:
@@ -237,8 +264,16 @@ def build_ratesmc_input(args) -> None:
         targ_mass_auto = mass_from_token(metadata.targ_A_token, metadata.Z)
     except KeyError:
         targ_mass_auto = None
-    m1_val = args.m1 if args.m1 is not None else (proj_mass_auto if proj_mass_auto is not None else MASS_PROTON)
-    m2_val = args.m2 if args.m2 is not None else (targ_mass_auto if targ_mass_auto is not None else MASS_PROTON)
+    m1_val = (
+        args.m1
+        if args.m1 is not None
+        else (proj_mass_auto if proj_mass_auto is not None else MASS_PROTON)
+    )
+    m2_val = (
+        args.m2
+        if args.m2 is not None
+        else (targ_mass_auto if targ_mass_auto is not None else MASS_PROTON)
+    )
 
     missing = []
     if Z_val is None:
@@ -249,10 +284,13 @@ def build_ratesmc_input(args) -> None:
         missing.append("s1 (projectile spin)")
     if s2_val is None:
         missing.append("s2 (target spin)")
-    if J_val is None:
+    if J_val is None and not args.sample_J:
         missing.append("J (resonance spin)")
     if missing:
-        raise ValueError("Unable to infer required parameters from template; please supply: " + ", ".join(missing))
+        raise ValueError(
+            "Unable to infer required parameters from template; please supply: "
+            + ", ".join(missing)
+        )
 
     cfg = HFBSamplerConfig(
         Z=Z_val,
@@ -273,11 +311,20 @@ def build_ratesmc_input(args) -> None:
         n_sigma_points=args.n_sigma_points,
         U_offset_mev=args.U_offset_mev,
         seed=args.seed,
+        sample_J=args.sample_J,
+        auto_l1=args.auto_l1,
     )
     try:
         generated = synthesize_sigma_from_hfb(cfg)
     except FileNotFoundError as exc:
-        expected = Path(args.data_root) if args.data_root else Path(__file__).resolve().parent / "data" / "densities" / "level-densities-hfb"
+        expected = (
+            Path(args.data_root)
+            if args.data_root
+            else Path(__file__).resolve().parent
+            / "data"
+            / "densities"
+            / "level-densities-hfb"
+        )
         raise FileNotFoundError(
             f"Missing HFB level-density file for Z={Z_val}. "
         ) from exc
@@ -291,13 +338,15 @@ def build_ratesmc_input(args) -> None:
         exf_keV=args.exf_kev,
         int_flag=args.int_flag,
         include_g3=args.include_g3,
+        include_corr_frac=include_corr_frac,
+        corr_frac_value=0,
         j_proj=args.j_proj,
         j_targ=args.j_targ,
         precision=args.precision,
     )
 
     rows, widths = render_rows(generated.resonances, opts)
-    header_line = resonant_header_line(widths)
+    header_line = resonant_header_line(widths, opts)
     inject_rows(
         template_path,
         output_path,
@@ -308,50 +357,225 @@ def build_ratesmc_input(args) -> None:
     count = len(rows)
     print(f"Wrote RatesMC.in with {count} resonances to {output_path}")
     if count == 0:
-        print("No resonances generated; check binning widths (E-min, E-max, delta-E) and related inputs.")
+        print(
+            "No resonances generated; check binning widths (E-min, E-max, delta-E) and related inputs."
+        )
 
 
 def parse_args() -> argparse.Namespace:
-    p = argparse.ArgumentParser(description="Generate a RatesMC.in with resonant rows from the model output.")
-    p.add_argument("--template", type=Path, default=None, help="Template RatesMC.in to start from (defaults to ./RatesMC.in next to this script).")
-    p.add_argument("--output", type=Path, default=None, help="Destination path for the filled RatesMC.in (defaults to <reaction>.in next to the template, or inside --output-dir/<reaction>/ if provided).")
-    p.add_argument("--output-dir", type=Path, default=None, help="Optional base directory; if set, outputs go to <output-dir>/<reaction>/<reaction>.in.")
+    p = argparse.ArgumentParser(
+        description="Generate a RatesMC.in with resonant rows from the model output."
+    )
+    p.add_argument(
+        "--template",
+        type=Path,
+        default=None,
+        help="Template RatesMC.in to start from (defaults to ./RatesMC.in next to this script).",
+    )
+    p.add_argument(
+        "--output",
+        type=Path,
+        default=None,
+        help="Destination path for the filled RatesMC.in (defaults to <reaction>.in next to the template, or inside --output-dir/<reaction>/ if provided).",
+    )
+    p.add_argument(
+        "--output-dir",
+        type=Path,
+        default=None,
+        help="Optional base directory; if set, outputs go to <output-dir>/<reaction>/<reaction>.in.",
+    )
 
     # Export options
     strength_group = p.add_mutually_exclusive_group()
-    strength_group.add_argument("--use-strength", dest="use_strength", action="store_true", default=False, help="Emit omega-gamma instead of explicit widths.")
-    strength_group.add_argument("--use-widths", dest="use_strength", action="store_false", help="Emit explicit partial widths instead of omega-gamma (default).")
-    p.add_argument("--default-frac-unc", type=float, default=0.1, help="Fractional uncertainty to apply to Ecm and widths (default 0.1 = 10%%).")
-    p.add_argument("--l1", type=int, default=0, help="Entrance channel orbital angular momentum L1.")
-    p.add_argument("--l2", type=int, default=1, help="Exit channel orbital angular momentum / multipolarity L2.")
-    p.add_argument("--l3", type=int, default=0, help="Spectator channel orbital angular momentum L3.")
-    p.add_argument("--exf-kev", type=float, default=0.0, help="Excitation energy of populated level (keV).")
-    p.add_argument("--int-flag", type=int, choices=(0, 1), default=1, help="RatesMC integration flag (0 analytical, 1 numerical).")
-    p.add_argument("--include-g3", action="store_true", help="If set, keep G3/DG3 columns (default zeros).")
-    p.add_argument("--j-proj", type=float, default=None, help="Override projectile spin for omega-gamma (defaults to Resonance.s1).")
-    p.add_argument("--j-targ", type=float, default=None, help="Override target spin for omega-gamma (defaults to Resonance.s2).")
-    p.add_argument("--precision", type=int, default=3, help="Decimal digits for non-Ecm columns (mantissa).")
-    p.add_argument("--n-random-samples", type=int, default=1, help="Number of random samples (>5000 recommended for better statistics).")
+    strength_group.add_argument(
+        "--use-strength",
+        dest="use_strength",
+        action="store_true",
+        default=False,
+        help="Emit omega-gamma instead of explicit widths.",
+    )
+    strength_group.add_argument(
+        "--use-widths",
+        dest="use_strength",
+        action="store_false",
+        help="Emit explicit partial widths instead of omega-gamma (default).",
+    )
+    p.add_argument(
+        "--default-frac-unc",
+        type=float,
+        default=0.001,
+        help="Fractional uncertainty to apply to Ecm and widths (default 0.001 = 0.1%%).",
+    )
+    p.add_argument(
+        "--l1",
+        type=int,
+        default=0,
+        help="Entrance channel orbital angular momentum L1.",
+    )
+    p.add_argument(
+        "--l2",
+        type=int,
+        default=1,
+        help="Exit channel orbital angular momentum / multipolarity L2.",
+    )
+    p.add_argument(
+        "--l3",
+        type=int,
+        default=0,
+        help="Spectator channel orbital angular momentum L3.",
+    )
+    p.add_argument(
+        "--exf-kev",
+        type=float,
+        default=0.0,
+        help="Excitation energy of populated level (keV).",
+    )
+    p.add_argument(
+        "--int-flag",
+        type=int,
+        choices=(0, 1),
+        default=1,
+        help="RatesMC integration flag (0 analytical, 1 numerical).",
+    )
+    p.add_argument(
+        "--include-g3",
+        action="store_true",
+        help="If set, keep G3/DG3 columns (default zeros).",
+    )
+    p.add_argument(
+        "--j-proj",
+        type=float,
+        default=None,
+        help="Override projectile spin for omega-gamma (defaults to Resonance.s1).",
+    )
+    p.add_argument(
+        "--j-targ",
+        type=float,
+        default=None,
+        help="Override target spin for omega-gamma (defaults to Resonance.s2).",
+    )
+    p.add_argument(
+        "--precision",
+        type=int,
+        default=3,
+        help="Decimal digits for non-Ecm columns (mantissa).",
+    )
+    p.add_argument(
+        "--n-random-samples",
+        type=int,
+        default=1,
+        help="Number of random samples (>5000 recommended for better statistics).",
+    )
 
     # HFB sampler / generator options
-    p.add_argument("--Z", type=int, default=None, help="Proton number for the density grid lookup (default: parsed from template).")
-    p.add_argument("--data-root", type=Path, default=None, help="Override path to HFB density tables.")
-    p.add_argument("--A", type=int, default=None, help="Mass number slice for density grid (default: parsed from template).")
-    p.add_argument("--J", type=float, default=None, help="Resonance spin used in generated spectrum (default: first J in template).")
+    p.add_argument(
+        "--Z",
+        type=int,
+        default=None,
+        help="Proton number for the density grid lookup (default: parsed from template).",
+    )
+    p.add_argument(
+        "--data-root",
+        type=Path,
+        default=None,
+        help="Override path to HFB density tables.",
+    )
+    p.add_argument(
+        "--A",
+        type=int,
+        default=None,
+        help="Mass number slice for density grid (default: parsed from template).",
+    )
+    p.add_argument(
+        "--J",
+        type=float,
+        default=None,
+        help="Resonance spin used in generated spectrum (default: first J in template).",
+    )
     p.add_argument("--pi", type=int, choices=(-1, 1), default=1, help="Parity (+-1).")
-    p.add_argument("--s1", type=float, default=None, help="Projectile spin (default: template Jproj).")
-    p.add_argument("--s2", type=float, default=None, help="Target spin (default: template Jtarget).")
+    p.add_argument(
+        "--s1",
+        type=float,
+        default=None,
+        help="Projectile spin (default: template Jproj).",
+    )
+    p.add_argument(
+        "--s2",
+        type=float,
+        default=None,
+        help="Target spin (default: template Jtarget).",
+    )
     p.add_argument("--m1", type=float, default=None, help="Projectile mass (kg).")
     p.add_argument("--m2", type=float, default=None, help="Target mass (kg).")
-    p.add_argument("--Gamma-i-mean-eV", type=float, default=1.0, help="Mean entrance width for PT sampling (eV).")
-    p.add_argument("--Gamma-o-mean-eV", type=float, default=1.0, help="Mean exit width for PT sampling (eV).")
-    p.add_argument("--delta-E-mev", type=float, default=0.05, help="Bin width for level placements (MeV).")
-    p.add_argument("--E-min-mev", type=float, default=0.1, help="Lower energy bound (MeV).")
-    p.add_argument("--E-max-mev", type=float, default=2.0, help="Upper energy bound (MeV).")
-    p.add_argument("--n-density-points", type=int, default=2001, help="Grid points for density interpolation.")
-    p.add_argument("--n-sigma-points", type=int, default=4000, help="Resolution for sigma(E) (used only for plotting/save).")
-    p.add_argument("--U-offset-mev", type=float, default=8.0, help="Excitation offset added to E_lab in density lookup.")
+    p.add_argument(
+        "--Gamma-i-mean-eV",
+        type=float,
+        default=1.0,
+        help="Mean entrance width for PT sampling (eV).",
+    )
+    p.add_argument(
+        "--Gamma-o-mean-eV",
+        type=float,
+        default=1.0,
+        help="Mean exit width for PT sampling (eV).",
+    )
+    p.add_argument(
+        "--delta-E-mev",
+        type=float,
+        default=0.05,
+        help="Bin width for level placements (MeV).",
+    )
+    p.add_argument(
+        "--E-min-mev", type=float, default=0.1, help="Lower energy bound (MeV)."
+    )
+    p.add_argument(
+        "--E-max-mev", type=float, default=2.0, help="Upper energy bound (MeV)."
+    )
+    p.add_argument(
+        "--n-density-points",
+        type=int,
+        default=2001,
+        help="Grid points for density interpolation.",
+    )
+    p.add_argument(
+        "--n-sigma-points",
+        type=int,
+        default=4000,
+        help="Resolution for sigma(E) (used only for plotting/save).",
+    )
+    p.add_argument(
+        "--U-offset-mev",
+        type=float,
+        default=8.0,
+        help="Excitation offset added to E_lab in density lookup.",
+    )
     p.add_argument("--seed", type=int, default=None, help="RNG seed.")
+    p.add_argument(
+        "--sample-J",
+        dest="sample_J",
+        action="store_true",
+        default=True,
+        help="Sample J from HFB rho_J (uses total density for placements).",
+    )
+    p.add_argument(
+        "--no-sample-J",
+        dest="sample_J",
+        action="store_false",
+        help="Disable sampling J from HFB rho_J and use fixed J instead.",
+    )
+    p.add_argument(
+        "--auto-l1",
+        dest="auto_l1",
+        action="store_true",
+        default=True,
+        help="Compute L1 from J, s1, s2, and parity (assumes intrinsic parity product +1).",
+    )
+    p.add_argument(
+        "--no-auto-l1",
+        dest="auto_l1",
+        action="store_false",
+        help="Disable auto L1 and use the fixed --l1 value instead.",
+    )
 
     return p.parse_args()
 
@@ -363,4 +587,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
