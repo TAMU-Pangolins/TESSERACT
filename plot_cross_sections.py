@@ -56,31 +56,49 @@ l1 = df['L1'].values
 l2 = df['L2'].values
 L = l1 + l2
 
-xs_unint = []
-for j in range(len(E_cm)):
+def calc_cross_sections(file,E,Z1,Z2,A1,A2):
 
-	r_j = Resonance(E_cm[j]*10**6,      # resonance energy Er in eV
+    df = extract_data(file)
+    df = df.sort_values(by='Ecm',ascending=True)
+    E_cm = df['Ecm'].values*1e-3 # MeV
+    gamma_i = df['G1'].values
+    gamma_o = df['G2'].values
+    Jr = df['Jr'].values
+    l1 = df['L1'].values
+    l2 = df['L2'].values
+    L = l1 + l2
+    
+    E = np.asarray(E,dtype=float)
+
+    xs_tot = np.zeros_like(E)
+    for j in range(len(E_cm)):
+
+        r_j = Resonance(E_cm[j]*10**6,      # resonance energy Er in eV
             Jr[j],
             0, 0,
             3.65e-26,
             6.64e-27,
             gamma_i[j],        # Gamma_i at Er (from table)
             gamma_o[j],        # Gamma_o (from table)
-    )
+        )
 
-
-	xs_j = sigma_bw_energy_dep(
-            [E_cm[j]*10**6], #eV
+        xs_j = sigma_bw_energy_dep(
+            E*10**6, #eV
             r_j,
-            12, 2, 22, 4,
+            Z1, Z2, A1, A2 ,
             L[j],
             gamma2_mev=0.0   # not used since Gamma_i is known
-    )
+        )
+        xs_tot += xs_j
 
-	xs_unint.append(xs_j)
 
-xs_unint = np.array(xs_unint)
+    return xs_tot
 
+E_test= np.linspace(0.1,10,100)
+
+xs_unint = calc_cross_sections(file,E_test,12,2,22,4)
+
+print(len(xs_unint))
 
 xs_lst = []
 
@@ -99,79 +117,47 @@ dE_in    = input("Enter bin width(s) [MeV] separated by commas: ")
 dE_lst = [float(x.strip()) for x in dE_in.split(",")]
 
 fig = plt.figure(figsize=(8,6))
-i = 0
+m = 0
 for dE in dE_lst:
     print(f"Running for dE = {dE} MeV")
     xs_bin = []
 
-    N_bins = 50
+    N_bins = 10  # number of internal bins for integration
 
     E_bins = np.arange(E_min,E_max+dE,dE)
 
     E_cm = np.round(E_cm,2)
 
     for E0 in E_bins:
-        E1 = E0 + dE
-    # internal grid (MeV or eV consistently)
-        E_int = np.linspace(E0, E1, N_bins)
-
-        xs_total = np.zeros_like(E_int)
-
-    # sum over resonances
-
-        idx = np.where((E_cm >= E0) & (E_cm <= E1))[0]
-
-        if idx.size > 0:
-
-            #print(E0,E1)
-
-            for i in idx:
-
-                r_i = Resonance(
-                    E_cm[i]*10**6,      # resonance energy Er in eV
-                    Jr[i],
-                    0, 0,
-                    3.65e-26,
-                    6.64e-27,
-                    gamma_i[i],        # Gamma_i at Er (from table)
-                    gamma_o[i],        # Gamma_o (from table)
-                )
-
-                xs_r = sigma_bw_energy_dep(
-                    E_int*10**6, #eV
-                    r_i,
-                    12, 2, 22, 4,
-                    L[i],
-                    gamma2_mev=0.0   # not used since Gamma_i is known
-                )
-
-                xs_total += xs_r
-        else:
-    	    xs_total += 0
-
-    # integrate over the bin
-        xs_int = np.trapezoid(xs_total, E_int)
-        xs_bin.append(xs_int)
+         E1 = E0 + dE
+    # # internal grid (MeV or eV consistently)
+         E_int = np.linspace(E0, E1, N_bins)
+         
+         xs_total = calc_cross_sections(file,E_int,12,2,22,4)
+         
+         xs_int = np.trapezoid(xs_total, E_int) # MeV*barns
+        #print(f"Integrated cross-section over {E_min} to {E_max} MeV with dE={dE} MeV: {xs_int} MeV*barns")
+         xs_bin.append(xs_int)
     print("*************************************************************")
 
-    E_bins = np.array(E_bins)
+    
     xs_bin = np.array(xs_bin)
     
-    filename = f'22Mg_ap_25Al_xs_{i}MeV.txt'
+    filename = f'22Mg_ap_25Al_xs_{m}.txt'
 
     with open(filename,'w') as f:
         f.write(f'#E_cm (MeV),xs_bin (mb) | bin width = {dE} MeV\n')
         for k in range(len(E_bins)):
-            f.write(f'{E_bins[k]:.2f}, {xs_bin[k]*1e3:.2f}\n')
+            f.write(f'{E_bins[k]:.2f}, {xs_bin[k]*1e3/dE}\n')
     
-    i += 1
+    m += 1
 
-    plt.scatter(E_bins,xs_bin*1e3,s=20,label=rf"$\Delta$E = {dE} MeV")
-    plt.plot(E_bins,xs_bin*1e3)
+    plt.scatter(E_bins,xs_bin*1e3/dE,s=20,label=rf"$\Delta$E = {dE} MeV")
+    plt.plot(E_bins,xs_bin*1e3/dE)
 
 
-plt.scatter(E_cm,xs_unint*1e3,color='k',label = 'Before integration')
-plt.plot(E_cm,xs_unint,color='k',ls='--')
+plt.scatter(E_test,xs_unint*1e3,color='k',label = 'Before integration')
+plt.plot(E_test,xs_unint*1e3,color='k',ls='--')
 plt.yscale('log')
 plt.title('22Mg(a,p)25Al')
 plt.legend()
