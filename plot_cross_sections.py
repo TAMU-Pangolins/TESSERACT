@@ -99,6 +99,7 @@ dE_in    = input("Enter bin width(s) [MeV] separated by commas: ")
 dE_lst = [float(x.strip()) for x in dE_in.split(",")]
 
 fig = plt.figure(figsize=(8,6))
+i = 0
 for dE in dE_lst:
     print(f"Running for dE = {dE} MeV")
     xs_bin = []
@@ -156,12 +157,20 @@ for dE in dE_lst:
     E_bins = np.array(E_bins)
     xs_bin = np.array(xs_bin)
     
+    filename = f'22Mg_ap_25Al_xs_{i}MeV.txt'
 
+    with open(filename,'w') as f:
+        f.write(f'#E_cm (MeV),xs_bin (mb) | bin width = {dE} MeV\n')
+        for k in range(len(E_bins)):
+            f.write(f'{E_bins[k]:.2f}, {xs_bin[k]*1e3:.2f}\n')
+    
+    i += 1
 
     plt.scatter(E_bins,xs_bin*1e3,s=20,label=rf"$\Delta$E = {dE} MeV")
     plt.plot(E_bins,xs_bin*1e3)
 
-plt.scatter(E_cm,xs_unint,color='k',label = 'Before integration')
+
+plt.scatter(E_cm,xs_unint*1e3,color='k',label = 'Before integration')
 plt.plot(E_cm,xs_unint,color='k',ls='--')
 plt.yscale('log')
 plt.title('22Mg(a,p)25Al')
