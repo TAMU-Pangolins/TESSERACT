@@ -49,12 +49,12 @@ def extract_data(file):
 df = extract_data(file)
 df = df.sort_values(by='Ecm',ascending=True)
 E_cm = df['Ecm'].values*1e-3
-gamma_i = df['G1'].values
-gamma_o = df['G2'].values
-Jr = df['Jr'].values
-l1 = df['L1'].values
-l2 = df['L2'].values
-L = l1 + l2
+# gamma_i = df['G1'].values
+# gamma_o = df['G2'].values
+# Jr = df['Jr'].values
+# l1 = df['L1'].values
+# l2 = df['L2'].values
+# L = l1 + l2
 
 def calc_cross_sections(file,E,Z1,Z2,A1,A2):
 
@@ -78,7 +78,7 @@ def calc_cross_sections(file,E,Z1,Z2,A1,A2):
             0, 0,
             3.65e-26,
             6.64e-27,
-            gamma_i[j],        # Gamma_i at Er (from table)
+            0,        # Gamma_i at Er (from table)
             gamma_o[j],        # Gamma_o (from table)
         )
 
@@ -87,7 +87,7 @@ def calc_cross_sections(file,E,Z1,Z2,A1,A2):
             r_j,
             Z1, Z2, A1, A2 ,
             L[j],
-            gamma2_mev=0.0   # not used since Gamma_i is known
+            gamma2_mev=gamma_i[j]   # not used since Gamma_i is known
         )
         xs_tot += xs_j
 
