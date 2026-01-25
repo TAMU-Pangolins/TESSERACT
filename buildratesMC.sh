@@ -18,15 +18,15 @@ input_files=(
 # -------------------------
 # E_min and E_max arrays (may be shorter!). If length of E_min and E_max don't match with each other or with length of input_files then default E_min and E_max values will be used.
 # -------------------------
-E_min=(0.01)          # Example: only 1 value
-E_max=(3.8)  # Example: more values than needed
+E_min=(0.1)          # Example: only 1 value
+E_max=(10.0)  
 #bin_width=(0.1 0.2)
 samples=5000
 runs=1
 # -------------------------
 # Default values
 # -------------------------
-DEFAULT_EMIN=0.01
+DEFAULT_EMIN=0.1
 DEFAULT_EMAX=10.0
 
 # -------------------------
