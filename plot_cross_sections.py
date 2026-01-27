@@ -59,35 +59,37 @@ E_cm = df['Ecm'].values*1e-3
 def calc_cross_sections(file,E,Z1,Z2,A1,A2):
 
     df = extract_data(file)
-    df = df.sort_values(by='Ecm',ascending=True)
-    E_cm = df['Ecm'].values*1e-3 # MeV
-    gamma_i = df['G1'].values
-    gamma_o = df['G2'].values
-    Jr = df['Jr'].values
+    df = df.sort_values(by='Ecm',ascending=True) # sort by increasing energy; Er in keV
+    E_cm = df['Ecm'].values*1e-3 # convert Er to MeV
+    g1 = df['G1'].values # in eV
+    g2 = df['G2'].values # in eV
+    g3 = df['G3'].values # in eV
+    Jr = df['Jr'].values # spin (dimensionless)
     l1 = df['L1'].values
     l2 = df['L2'].values
     L = l1 + l2
+    G = g1 + g2 + g3
     
-    E = np.asarray(E,dtype=float)
+    E_arr = np.asarray(E,dtype=float)
 
     xs_tot = np.zeros_like(E)
     for j in range(len(E_cm)):
 
-        r_j = Resonance(E_cm[j]*10**6,      # resonance energy Er in eV
+        r_j = Resonance(E_cm[j]*10**6,      # resonance energy Er in eV; MeV -> eV
             Jr[j],
             0, 0,
-            3.65e-26,
-            6.64e-27,
+            3.65e-26, #kg
+            6.64e-27, #kg
             0,        # Gamma_i at Er (from table)
-            gamma_o[j],        # Gamma_o (from table)
+            g2[j],        # Gamma_o (from table)
         )
 
         xs_j = sigma_bw_energy_dep(
-            E*10**6, #eV
+            E_arr*10**6, #eV
             r_j,
             Z1, Z2, A1, A2 ,
             L[j],
-            gamma2_mev=gamma_i[j]   # not used since Gamma_i is known
+            gamma2_mev= G*1e-6   # G1 is given in eV, convert to MeV
         )
         xs_tot += xs_j
 
@@ -98,7 +100,6 @@ E_test= np.linspace(0.1,10,100)
 
 xs_unint = calc_cross_sections(file,E_test,12,2,22,4)
 
-print(len(xs_unint))
 
 xs_lst = []
 
