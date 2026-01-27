@@ -89,7 +89,7 @@ def calc_cross_sections(file,E,Z1,Z2,A1,A2):
             r_j,
             Z1, Z2, A1, A2 ,
             L[j],
-            gamma2_mev= G*1e-6   # G1 is given in eV, convert to MeV
+            gamma2_mev= G[j]*1e-6   # G1 is given in eV, convert to MeV
         )
         xs_tot += xs_j
 
