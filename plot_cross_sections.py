@@ -89,14 +89,14 @@ def calc_cross_sections(file,E,Z1,Z2,A1,A2):
             r_j,
             Z1, Z2, A1, A2 ,
             L[j],
-            gamma2_mev= G[j]*1e-6   # G1 is given in eV, convert to MeV
+            gamma2_mev=G[j]*1e-6  # G1 is given in eV, convert to MeV
         )
-        xs_tot += xs_j
+        xs_tot += xs_j # summing contributions from all resonances
 
 
     return xs_tot
 
-E_test= np.linspace(0.1,10,100)
+E_test= np.linspace(0.1,10,100) #MeV
 
 xs_unint = calc_cross_sections(file,E_test,12,2,22,4)
 
@@ -137,8 +137,9 @@ for dE in dE_lst:
          xs_total = calc_cross_sections(file,E_int,12,2,22,4)
          
          xs_int = np.trapezoid(xs_total, E_int) # MeV*barns
+         xs_avg = xs_int / dE  # average cross-section in the bin (barns)
         #print(f"Integrated cross-section over {E_min} to {E_max} MeV with dE={dE} MeV: {xs_int} MeV*barns")
-         xs_bin.append(xs_int)
+         xs_bin.append(xs_avg)
     print("*************************************************************")
 
     
@@ -149,12 +150,12 @@ for dE in dE_lst:
     with open(filename,'w') as f:
         f.write(f'#E_cm (MeV),xs_bin (mb) | bin width = {dE} MeV\n')
         for k in range(len(E_bins)):
-            f.write(f'{E_bins[k]:.2f}, {xs_bin[k]*1e3/dE}\n')
+            f.write(f'{E_bins[k]:.2f}, {xs_bin[k]*1e3}\n')
     
     m += 1
 
-    plt.scatter(E_bins,xs_bin*1e3/dE,s=20,label=rf"$\Delta$E = {dE} MeV")
-    plt.plot(E_bins,xs_bin*1e3/dE)
+    plt.scatter(E_bins,xs_bin*1e3,s=20,label=rf"$\Delta$E = {dE} MeV")
+    plt.plot(E_bins,xs_bin*1e3)
 
 
 plt.scatter(E_test,xs_unint*1e3,color='k',label = 'Before integration')
