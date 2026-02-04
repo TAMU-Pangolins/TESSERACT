@@ -97,11 +97,11 @@ def sigma_bw_constant(E_eV, r):
     return S * (PI / k**2) * BW * M_TO_BARNS
 
 
-def sigma_bw_energy_dep(E_eV, r, Z1, Z2, A1, A2, l, gamma2_mev, r0=1.25, P_interp=None):
+def sigma_bw_energy_dep(E_eV, r, Z1, Z2, A1, A2, l, gamma2, r0=1.25, P_interp=None):
     """
     Same Breit-Wigner, but Gamma_i(E) scales with penetrability:
       Gamma_i(E) = Gamma_i(E_r) * P_l(E)/P_l(E_r).
-    If r.Gamma_i <= 0, compute Gamma_i(E_r) = 2 * gamma2_mev * P_l(E_r) [MeV], then convert to eV.
+    If r.Gamma_i <= 0, compute Gamma_i(E_r) = 2 * gamma2 * P_l(E_r) [eV].
     Returns barns.
     """
     E_eV = np.asarray(E_eV, dtype=float)
@@ -123,10 +123,10 @@ def sigma_bw_energy_dep(E_eV, r, Z1, Z2, A1, A2, l, gamma2_mev, r0=1.25, P_inter
         P_E = P_interp(E_mev)
         P_Er = float(P_interp(Er_mev))
 
-    if (r.Gamma_i is not None) and (r.Gamma_i > 0.0):
-        Gamma_i_Er_eV = r.Gamma_i
-    else:
-        Gamma_i_Er_eV = 2.0 * gamma2_mev * P_Er * 1e6  # MeV -> eV
+    #if (r.Gamma_i is not None) and (r.Gamma_i > 0.0):
+    #    Gamma_i_Er_eV = r.Gamma_i
+    #else:
+    Gamma_i_Er_eV = 2.0 * gamma2 * P_Er # eV
 
     Gamma_i_E_eV = Gamma_i_Er_eV * (P_E / P_Er) if P_Er != 0.0 else np.zeros_like(P_E)
 
