@@ -60,9 +60,9 @@ l2 = df['L2'].values
 L = l1 + l2
 G = g1 + g2 + g3
 
-theta2 = 0.0045 # dimensionless; for proton induced reactions
+theta2 = 0.01 # dimensionless; for alpha induced reactions
 x = porter_thomas_factors(len(E_cm),df=1)
-t2_dist = theta2* x  # apply Porter-Thomas fluctuations to Gamma_o
+t2_dist = theta2* x  # apply Porter-Thomas fluctuations to Gamma_i
 A1 = 22
 A2 = 4
 mu = reduced_mass(A1*MASS_PROTON, A2*MASS_PROTON) #kg
