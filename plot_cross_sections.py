@@ -3,6 +3,8 @@ import numpy as np
 from io import StringIO
 import pandas as pd
 from nucres.resonance import Resonance, sigma_bw_energy_dep
+from nucres.sampling import porter_thomas_factors
+from nucres.physics import *
 
 output_dir = 'outputs/22Mg(a,p)25Al/'
 file = output_dir +'RUN_0/22Mg(a,p)25Al.in'
@@ -47,28 +49,29 @@ def extract_data(file):
 
 
 df = extract_data(file)
-df = df.sort_values(by='Ecm',ascending=True)
-E_cm = df['Ecm'].values*1e-3
-# gamma_i = df['G1'].values
-# gamma_o = df['G2'].values
-# Jr = df['Jr'].values
-# l1 = df['L1'].values
-# l2 = df['L2'].values
-# L = l1 + l2
+df = df.sort_values(by='Ecm',ascending=True) # sort by increasing energy; Er in keV
+E_cm = df['Ecm'].values*1e-3 # convert Er to MeV
+g1 = df['G1'].values # in eV
+g2 = df['G2'].values # in eV
+g3 = df['G3'].values # in eV
+Jr = df['Jr'].values # spin (dimensionless)
+l1 = df['L1'].values
+l2 = df['L2'].values
+L = l1 + l2
+G = g1 + g2 + g3
 
-def calc_cross_sections(file,E,Z1,Z2,A1,A2):
+theta2 = 0.0045 # dimensionless; for proton induced reactions
+x = porter_thomas_factors(len(E_cm),df=1)
+t2_dist = theta2* x  # apply Porter-Thomas fluctuations to Gamma_o
+A1 = 22
+A2 = 4
+mu = reduced_mass(A1*MASS_PROTON, A2*MASS_PROTON) #kg
+R_sq = 1.25e-15**2 * (A1**(1/3) + A2**(1/3))**2  # in m^2
+wigner_limit = 3*HBAR**2/(2*mu*R_sq)*6.242e18 # in eV
+gamma2_dist = t2_dist * wigner_limit  # in eV
+#print(gamma2_dist)
 
-    df = extract_data(file)
-    df = df.sort_values(by='Ecm',ascending=True) # sort by increasing energy; Er in keV
-    E_cm = df['Ecm'].values*1e-3 # convert Er to MeV
-    g1 = df['G1'].values # in eV
-    g2 = df['G2'].values # in eV
-    g3 = df['G3'].values # in eV
-    Jr = df['Jr'].values # spin (dimensionless)
-    l1 = df['L1'].values
-    l2 = df['L2'].values
-    L = l1 + l2
-    G = g1 + g2 + g3
+def calc_cross_sections(E,Z1,Z2,A1,A2):
     
     E_arr = np.asarray(E,dtype=float)
 
@@ -80,7 +83,7 @@ def calc_cross_sections(file,E,Z1,Z2,A1,A2):
             0, 0,
             3.65e-26, #kg
             6.64e-27, #kg
-            0,        # Gamma_i at Er (from table)
+            g1[j],        # Gamma_i at Er (from table)
             g2[j],        # Gamma_o (from table)
         )
 
@@ -89,16 +92,16 @@ def calc_cross_sections(file,E,Z1,Z2,A1,A2):
             r_j,
             Z1, Z2, A1, A2 ,
             L[j],
-            gamma2_mev=G[j]*1e-6  # G1 is given in eV, convert to MeV
+            gamma2=gamma2_dist[j] # in eV
         )
         xs_tot += xs_j # summing contributions from all resonances
 
 
     return xs_tot
 
-E_test= np.linspace(0.1,10,100) #MeV
+E_test= np.linspace(0.1,10,10000) #MeV
 
-xs_unint = calc_cross_sections(file,E_test,12,2,22,4)
+xs_unint = calc_cross_sections(E_test,12,2,22,4)
 
 
 xs_lst = []
@@ -123,7 +126,7 @@ for dE in dE_lst:
     print(f"Running for dE = {dE} MeV")
     xs_bin = []
 
-    N_bins = 10  # number of internal bins for integration
+    N_bins = 1000  # number of internal bins for integration
 
     E_bins = np.arange(E_min,E_max+dE,dE)
 
@@ -134,7 +137,7 @@ for dE in dE_lst:
     # # internal grid (MeV or eV consistently)
          E_int = np.linspace(E0, E1, N_bins)
          
-         xs_total = calc_cross_sections(file,E_int,12,2,22,4)
+         xs_total = calc_cross_sections(E_int,12,2,22,4)
          
          xs_int = np.trapezoid(xs_total, E_int) # MeV*barns
          xs_avg = xs_int / dE  # average cross-section in the bin (barns)
@@ -154,12 +157,13 @@ for dE in dE_lst:
     
     m += 1
 
-    plt.scatter(E_bins,xs_bin*1e3,s=20,label=rf"$\Delta$E = {dE} MeV")
-    plt.plot(E_bins,xs_bin*1e3)
+    #plt.scatter(E_bins,xs_bin*1e3,s=20,label=rf"$\Delta$E = {dE} MeV")
+    plt.plot(E_bins,xs_bin*1e3,label=rf"$\Delta$E = {dE} MeV")
+    
 
 
-plt.scatter(E_test,xs_unint*1e3,color='k',label = 'Before integration')
-plt.plot(E_test,xs_unint*1e3,color='k',ls='--')
+#plt.scatter(E_test,xs_unint*1e3,color='k',label = 'Before integration')
+plt.plot(E_test,xs_unint*1e3,color='k',label = 'Before integration')
 plt.yscale('log')
 plt.title('22Mg(a,p)25Al')
 plt.legend()
