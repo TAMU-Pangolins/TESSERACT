@@ -1,0 +1,61 @@
+site_name: THICC
+site_description: Nuclear reaction rate tooling and utilities.
+site_url: ""
+repo_url: ""
+theme:
+    name: material
+    language: en
+    features:
+        - navigation.instant
+        - navigation.sections
+        - navigation.top
+        - search.highlight
+        - search.suggest
+plugins:
+    - search
+    - mkdocstrings:
+          handlers:
+              python:
+                  options:
+                      show_source: true
+                      show_root_heading: true
+                      show_root_toc_entry: false
+                      docstring_style: numpy
+                      separate_signature: true
+                      show_signature_annotations: true
+                      group_by_category: true
+                      show_category_heading: true
+                      members_order: source
+markdown_extensions:
+    - admonition
+    - footnotes
+    - tables
+    - pymdownx.arithmatex:
+          generic: true
+    - toc:
+          permalink: true
+extra_javascript:
+    - https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js
+nav:
+    - Home: index.md
+    - Project Spec: project-specification.md
+    - Concepts: concepts.md
+    - Data & Inputs: data-inputs.md
+    - Workflows: workflows.md
+    - Examples: examples.md
+    - API Reference:
+          - Package: api/package.md
+          - Resonance: api/resonance.md
+          - Physics: api/physics.md
+          - Sampling: api/sampling.md
+          - Rates: api/rates.md
+          - Generator: api/generator.md
+          - Model: api/model.md
+          - HFB Adapter: api/hfb_adapter.md
+          - Config: api/config.md
+          - RatesMC Export: api/ratesmc_export.md
+          - Read Qvals: api/read_qvals.md
+          - Plotting: api/plotting.md
+          - Lab To CM: api/lab_to_cm.md
+    - Usage:
+          - Diagnostic Plots: usage/diagnostic-plots.md

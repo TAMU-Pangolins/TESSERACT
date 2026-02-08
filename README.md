@@ -1,37 +1,67 @@
-#  thick target measurement comparison (THICC)
+# Thick Target Measurement Comparison (THICC)
+Physics helpers and Monte Carlo tools for nuclear resonance cross sections and rate modeling.
 
+**Quickstart**
+```bash
+uv sync --python 3.11
+uv run -- python - <<'PY'
+from nucres import Resonance, energy_grid
+from nucres.resonance import sigma_bw_constant
+from nucres.physics import MASS_PROTON
 
+r = Resonance(E_r=1000.0, J=0.5, s1=0.5, s2=0.5, m1=MASS_PROTON, m2=MASS_PROTON, Gamma_i=1.0, Gamma_o=1.0)
+E = energy_grid(r.E_r, half_width_eV=25.0, n=5)
+sigma = sigma_bw_constant(E, r)
+print(E)
+print(sigma)
+PY
+```
 
-# Installation Instructions
-    
+**Documentation (local)**
+Run the docs site locally:
+```bash
+uv run mkdocs serve
+```
+Then open `http://127.0.0.1:8000`.
+
+**Core Features**
+- Breit–Wigner cross sections with constant or energy‑dependent widths
+- HFB‑driven resonance sampling and spectrum synthesis
+- Reaction rate computation from synthesized spectra
+- Helper utilities for kinematics, units, and sampling distributions
+
+**Installation**
 1. Download the code:
-        
-        git clone https://github.com/aldusv/THICC
+```bash
+git clone https://github.com/aldusv/THICC
+cd THICC
+```
 
+2. Download the RIPL‑3 data (inside the project root):
+```bash
+python download_ripl.py
+```
 
-2. Download the RIPL-3 data using the provided helper (inside the project root): 
+3. Install dependencies (using `uv`). The lockfile is built for Python 3.9–3.11; use 3.11 for a guaranteed resolver fit.
+```bash
+uv sync --python 3.11
+```
 
-    ```
-    python download_ripl.py
-    ```
+4. Verify the setup:
+```bash
+uv run -- python -c "import nucres; print('nucres ready, data root =', nucres.config.resolve_data_root())"
+```
 
-3. Install dependencies (using [uv](https://docs.astral.sh/uv/)). The lockfile is built for Python 3.9–3.11; use 3.11 for a guaranteed resolver fit.
-    ```
-    uv sync --python 3.11
-    ```
+**Data Requirements**
+- RIPL‑3 level density tables are required for HFB‑driven synthesis and rate workflows.
+- AME2020 mass data (`data/ame20.csv`) is used for Q‑value related utilities.
 
-4. Verify the setup. (inside the project root)
+**Tests**
+```bash
+uv run -- python -m unittest discover -s tests -p "test_*.py"
+```
 
-    ```
-    uv run -- python -c "import nucres, json; print('nucres ready, data root =', nucres.config.resolve_data_root())"
-    ```
-
-
-
-
-
-# Project Structure
-
+**Project Structure**
 - **nucres/**  
   - `api.py`, `__init__.py` - public API.  
   
@@ -67,4 +97,3 @@
 - Prefer stdlib first (`csv`, `pathlib.Path`, etc.) and keep dependencies to the existing set (`numpy`, `mpmath`, `matplotlib`)
 
 - Keep units consistent (MeV/eV barns as used in `nucres`), document inputs/outputs in docstrings, and return informative errors for missing datasets or bad inputs.
-

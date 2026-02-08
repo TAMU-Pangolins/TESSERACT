@@ -8,3 +8,5 @@ __pycache__/
 outputs/*
 .thicc/
 *_xs_*.txt
+site/
+*.png
