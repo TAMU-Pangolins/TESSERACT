@@ -1,0 +1,15 @@
+30S(a,p)33Cl
+*************************************************** *************************************************** **********
+2 ! Zproj
+16 ! Ztarget
+1 ! Zexitparticle (=0 when only 2 channels open)
+4.003 ! Aproj
+30 ! Atarget
+1.009 ! Aexitparticle (=0 when only 2 channels open)
+0.0 ! Jproj
+0.0 ! Jtarget
+0.5 ! Jexitparticle (=0 when only 2 channels open)
+6743.95487 ! projectile separation energy (keV)
+4663.924064 ! exit particle separation energy (=0 when only 2 channels open)
+1.25 ! Radius parameter R0 (fm)
+3 ! Gamma-ray channel number (=2 if ejectile is a g-ray; =3 otherwise)
