@@ -10,3 +10,5 @@ outputs/*
 *_xs_*.txt
 site/
 *.png
+*.log
+.DS_STORE
