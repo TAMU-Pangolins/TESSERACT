@@ -5,8 +5,6 @@ __pycache__/
 *.pyc
 *.venv
 *.in
-outputs/*
-.thicc/
 *_xs_*.txt
 site/
 *.log
