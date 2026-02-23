@@ -9,3 +9,9 @@ site/
 *.log
 .DS_STORE
 .thicc/
+.tess/
+condor_logs/
+*.err
+*.out
+*.job
+calc_xs_condor.sh
