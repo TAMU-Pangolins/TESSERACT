@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+
 # from multiprocessing import Pool, cpu_count
 # import matplotlib.pyplot as plt
 # import numpy as np
@@ -280,15 +282,17 @@ def _sigma_worker(args):
         )
 
         xs_tot += xs_j
-
-    return float(xs_tot)
+#    print(np.shape(xs_tot))
+    return np.squeeze(xs_tot).item()
 
 
 # ============================================================
 def calc_cross_sections(E_test, Z1, A1_proj, Z2, A1_target, res_data, nproc=None):
 
     if nproc is None:
-        nproc = cpu_count()
+        nproc = 1
+
+    nproc = min(nproc,cpu_count())
 
     tasks = [(E, Z1, A1_proj, Z2, A1_target, res_data) for E in E_test]
 
@@ -343,6 +347,7 @@ def main():
                         help="Comma-separated bin widths (e.g. 0.1,0.2,0.5)")
     parser.add_argument("--N_bins", type=int, default=1000)
 
+    parser.add_argument("--nproc", type=int, default=None)
     args = parser.parse_args()
 
     reaction = args.reaction
@@ -387,7 +392,7 @@ def main():
         E_test,
         Z1, A1_proj,
         Z2, A1_target,
-        res_data
+        res_data, nproc=args.nproc
     )
 
     np.savetxt(
@@ -419,7 +424,7 @@ def main():
                 E_int,
                 Z1, A1_proj,
                 Z2, A1_target,
-                res_data
+                res_data,nproc=args.nproc
             )
 
             xs_int = np.trapezoid(xs_total, E_int)
