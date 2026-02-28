@@ -15,3 +15,6 @@ condor_logs/
 *.out
 *.job
 calc_xs_condor.sh
+*condor*
+Figures/
+calc_xs_parallel.py
