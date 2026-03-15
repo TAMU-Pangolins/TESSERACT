@@ -17,4 +17,5 @@ condor_logs/
 calc_xs_condor.sh
 *condor*
 Figures/
+outputs/
 calc_xs_parallel.py
