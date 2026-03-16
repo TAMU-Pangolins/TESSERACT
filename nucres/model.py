@@ -6,13 +6,15 @@ from typing import Iterable, Optional, Sequence
 
 import numpy as np
 
+from .generator import GeneratedSpectrum, HFBSamplerConfig, synthesize_sigma_from_hfb
 from .physics import MASS_PROTON
-from .generator import HFBSamplerConfig, GeneratedSpectrum, synthesize_sigma_from_hfb
 from .rates import ReactionRateResult
 
 
 @dataclass(frozen=True)
 class HFBRateRequest:
+    """User-facing request object for HFB-based spectrum and rate generation."""
+
     Z: int
     A: int
     J: float
@@ -33,6 +35,7 @@ class HFBRateRequest:
     data_root: Optional[str | Path] = None
 
     def to_sampler_config(self) -> HFBSamplerConfig:
+        """Convert the request into an internal `HFBSamplerConfig`."""
         return HFBSamplerConfig(
             Z=self.Z,
             data_root=self.data_root,
@@ -55,10 +58,12 @@ class HFBRateRequest:
         )
 
     def with_overrides(self, **overrides) -> "HFBRateRequest":
+        """Return a copy of the request with selected fields replaced."""
         return replace(self, **overrides)
 
 
 def generate_spectrum(request: HFBRateRequest) -> GeneratedSpectrum:
+    """Generate a sampled spectrum for the provided request."""
     return synthesize_sigma_from_hfb(request.to_sampler_config())
 
 
@@ -71,6 +76,7 @@ def compute_rate_table(
     energy_unit: str = "eV",
     sigma_unit: str = "barn",
 ) -> ReactionRateResult:
+    """Generate a spectrum and return the derived reaction-rate table."""
     spectrum = generate_spectrum(request)
     return spectrum.compute_rate(
         temperatures,
@@ -84,6 +90,7 @@ def compute_rate_table(
 
 
 def rate_table_as_dict(result: ReactionRateResult) -> dict:
+    """Convert a `ReactionRateResult` to JSON-serializable Python objects."""
     return {
         "temperature": np.asarray(result.temperature, dtype=float).tolist(),
         "temperature_unit": result.temperature_unit,

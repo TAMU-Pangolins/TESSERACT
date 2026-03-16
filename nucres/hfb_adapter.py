@@ -19,10 +19,11 @@ def resolve_density_paths(
     Z: int,
     data_root: str | Path | None = None,
 ) -> tuple[Path, Path | None]:
-    """
-    Resolve canonical paths for level-density files of proton number Z.
-    Returns (tab_path, cor_path_or_None), where files are strictly:
-      zXXX.tab (required), zXXX.cor (optional)
+    r"""
+    Resolve canonical HFB level-density paths for proton number `Z`.
+
+    Returns `(tab_path, cor_path_or_None)` for the conventional filenames
+    `zXXX.tab` and `zXXX.cor`.
     """
     if data_root is None:
         root = resolve_data_root()
@@ -38,9 +39,10 @@ def resolve_density_paths(
 def load_rho_function(
     tab_path, cor_path=None, *, use_corrections=False, warn_if_ignored=True
 ):
-    """
-    Load rho(U,J,pi) from a zXXX.tab file.
-    !! Set use_corrections=True to re-enable applying .cor !!
+    r"""
+    Load the interpolator for \(\rho(U, J, \pi)\) from a `zXXX.tab` file.
+
+    Set `use_corrections=True` to apply the optional `.cor` adjustments.
     """
     rec = read_hfb_tab(tab_path)
     if use_corrections and cor_path:
@@ -57,8 +59,8 @@ def load_rho_function(
 def load_hfb_record(
     tab_path, cor_path=None, *, use_corrections=False, warn_if_ignored=True
 ):
-    """
-    Load the full HFB record (including spin-resolved rho_J) from a zXXX.tab file.
+    r"""
+    Load the full HFB record, including spin-resolved \(\rho_J\), from disk.
     """
     rec = read_hfb_tab(tab_path)
     if use_corrections and cor_path:
@@ -72,8 +74,8 @@ def load_hfb_record(
 
 
 def rho_levels_per_eV_from_E(rho_UJpi, A, J_phys, pi, U_of_E_mev):
-    """
-    Returns rho(E) in levels/eV for fixed (J_phys, pi). See densities_retrieval.J_index/spin_grid.
+    r"""
+    Return \(\rho(E)\) in levels/eV for fixed `(J_phys, pi)`.
     """
     Jcol = J_index(J_phys, A)
 
@@ -86,8 +88,8 @@ def rho_levels_per_eV_from_E(rho_UJpi, A, J_phys, pi, U_of_E_mev):
 
 
 def rho_total_levels_per_eV_from_E(record, pi, U_of_E_mev):
-    """
-    Returns total rho(E) in levels/eV for fixed parity (sum over spins).
+    r"""
+    Return total \(\rho(E)\) in levels/eV for a fixed parity.
     """
     block = record.positive if pi == +1 else record.negative
     U_grid = block.U
@@ -121,7 +123,7 @@ def build_density_grid(
     U_of_E_mev=None,
 ) -> tuple[np.ndarray, np.ndarray]:
     """
-    Returns (E_mev, rho_per_mev) on a uniform MeV grid.
+    Build a uniform MeV energy grid and evaluate the fixed-spin level density.
     """
     # lazy import of your already-defined helpers in this module
     from .hfb_adapter import (
@@ -145,7 +147,7 @@ def build_density_grid(
 
     # Default U≈E if not provided
     if U_of_E_mev is None:
-        U_of_E_mev = lambda E_eV: (np.asarray(E_eV, dtype=float) * 1e-6)
+        U_of_E_mev = lambda E_eV: np.asarray(E_eV, dtype=float) * 1e-6
 
     # Let load_rho_function decide how to handle corrections when cor_p is present
     rho_UJpi = load_rho_function(
@@ -177,7 +179,7 @@ def build_total_density_grid(
     U_of_E_mev=None,
 ) -> tuple[np.ndarray, np.ndarray]:
     """
-    Returns (E_mev, rho_per_mev) using total level density for fixed parity.
+    Build a uniform MeV grid using the total level density for fixed parity.
     """
     from .hfb_adapter import (
         load_hfb_record,
@@ -199,7 +201,7 @@ def build_total_density_grid(
         cor_p = candidate_cor if candidate_cor.exists() else None
 
     if U_of_E_mev is None:
-        U_of_E_mev = lambda E_eV: (np.asarray(E_eV, dtype=float) * 1e-6)
+        U_of_E_mev = lambda E_eV: np.asarray(E_eV, dtype=float) * 1e-6
 
     record = load_hfb_record(
         tab_path=str(tab_p),

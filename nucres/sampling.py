@@ -4,9 +4,12 @@ from .resonance import penetrability_P_l_mev
 
 
 def sample_er_sqrt_uniform(n, e_min, e_max, rng=None):
-    """
-    Draw n samples on [e_min, e_max] with pdf f(E) proportional sqrt(E - e_min).
-    Inverse-CDF sampler: if U~U(0,1), X = e_min + (e_max - e_min) * U^{2/3}.
+    r"""
+    Draw `n` samples on `[e_min, e_max]` with
+    \(f(E) \propto \sqrt{E - e_{\min}}\).
+
+    Uses the inverse-CDF relation
+    \(X = e_{\min} + (e_{\max} - e_{\min}) U^{2/3}\) for \(U \sim U(0,1)\).
     """
     rng = np.random.default_rng() if rng is None else rng
     u = rng.random(n)
@@ -14,11 +17,13 @@ def sample_er_sqrt_uniform(n, e_min, e_max, rng=None):
 
 
 def sample_er_increasing_pdf(n, e_min, e_max, slope=1.0, rng=None):
-    """
-    Draw n samples with a linear pdf on [e_min, e_max]:
-      f(E) proportional (1 + slope * t),  t = (E - e_min)/(e_max - e_min) in [0,1].
-    Uses inverse transform; slope >= 0 recommended.
-    For slope=0, reduces to uniform.
+    r"""
+    Draw `n` samples from a linear density on `[e_min, e_max]`.
+
+    The density is
+    \(f(E) \propto 1 + \text{slope} \cdot t\) with
+    \(t = (E - e_{\min}) / (e_{\max} - e_{\min})\).
+    `slope = 0` reduces to a uniform distribution.
     """
     rng = np.random.default_rng() if rng is None else rng
     L = e_max - e_min
@@ -36,21 +41,25 @@ def sample_er_increasing_pdf(n, e_min, e_max, slope=1.0, rng=None):
 
 
 def porter_thomas_factors(n, df=1, rng=None):
-    """
-    Porter–Thomas factors: x ~ (1/df) * chi2(df).
-    For df=1, mean(x)=1, variance=2.
-    Return an array of size n.
+    r"""
+    Sample Porter-Thomas factors with
+    \(x \sim \chi^2(\nu) / \nu\), where `df` is \(\nu\).
+
+    For `df=1`, the distribution has mean 1 and variance 2.
     """
     rng = np.random.default_rng() if rng is None else rng
     return rng.chisquare(df, size=n) / float(df)
 
 
 def nonhomogeneous_poisson_placements(rho_func, e_min, e_max, dE, rng=None):
-    """
-    Place levels on [e_min, e_max] using a non-homogeneous Poisson process
-    with local rate lambda(E) = rho_func(E) [same units as 1/E: e.g. levels/eV].
-    In each small bin [E_i, E_i+dE], draw N ~ Poisson(rho(E_i)*dE) and
-    put them uniformly inside the bin.
+    r"""
+    Place levels on `[e_min, e_max]` using a non-homogeneous Poisson process.
+
+    The local rate is
+    \(\lambda(E) = \rho(E)\), with units such as levels/eV. In each small bin
+    \([E_i, E_i + dE]\), the algorithm draws
+    \(N \sim \mathrm{Poisson}(\rho(E_i)\, dE)\) and distributes those samples
+    uniformly inside the bin.
 
     Returns:
       positions: np.ndarray of placed energies (possibly empty)
@@ -70,17 +79,27 @@ def nonhomogeneous_poisson_placements(rho_func, e_min, e_max, dE, rng=None):
 
 
 def mean_particle_width_from_strength(S_l_mev, D_mev):
-    """
-    Mean partial width (MeV) from a strength function S_l and mean spacing D:
-      <Gamma> = S_l * D
+    r"""
+    Return the mean partial width in MeV from a strength function.
+
+    \[
+    \langle \Gamma \rangle = S_\ell D
+    \]
     """
     return S_l_mev * D_mev
 
 
-def mean_particle_width_from_penetrability(Er_eV, Z1, Z2, A1, A2, l, gamma2_mev, r0=1.25):
-    """
-    Mean partial width (eV) from reduced width <gamma^2> (MeV) and P_l(E_r):
-      <Gamma> = 2 * P_l(E_r) * <gamma^2>   [MeV], then convert to eV.
+def mean_particle_width_from_penetrability(
+    Er_eV, Z1, Z2, A1, A2, l, gamma2_mev, r0=1.25
+):
+    r"""
+    Return the mean partial width in eV from a reduced width and penetrability.
+
+    \[
+    \langle \Gamma \rangle = 2 P_\ell(E_r)\langle \gamma^2 \rangle
+    \]
+
+    The intermediate width is computed in MeV and converted to eV.
     """
     Er_mev = max(Er_eV, 0.0) * 1e-6
     P_r = penetrability_P_l_mev(l, Z1, Z2, A1, A2, Er_mev, r0)
@@ -90,8 +109,7 @@ def mean_particle_width_from_penetrability(Er_eV, Z1, Z2, A1, A2, l, gamma2_mev,
 
 def fluctuate_widths(mean_vals, df=1, rng=None):
     """
-    Apply Porter–Thomas fluctuation factors to an array of means.
-    Returns fluctuated widths with same shape as mean_vals.
+    Apply Porter-Thomas fluctuation factors to an array of mean widths.
     """
     rng = np.random.default_rng() if rng is None else rng
     means = np.asarray(mean_vals, dtype=float)

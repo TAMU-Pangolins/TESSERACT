@@ -19,6 +19,8 @@ from .physics import (
 
 @dataclass(frozen=True)
 class Resonance:
+    """Single resonance parameterization used by the Breit-Wigner helpers."""
+
     E_r: float  # eV
     J: float
     s1: float
@@ -33,10 +35,12 @@ class Resonance:
 
 
 def channel_radius_fm(A1, A2, r0=1.25):
+    r"""Return the channel radius in fm using \(a = r_0 (A_1^{1/3} + A_2^{1/3})\)."""
     return r0 * (A1 ** (1 / 3) + A2 ** (1 / 3))
 
 
 def penetrability_P_l_mev(l, Z1, Z2, A1, A2, E_mev, r0=1.25):
+    r"""Evaluate the Coulomb penetrability \(P_\ell(E)\) at energy `E_mev`."""
     if E_mev <= 0.0:
         return 0.0
     a_fm = channel_radius_fm(A1, A2, r0)
@@ -62,8 +66,10 @@ def _P_grid_cached(l, Z1, Z2, A1, A2, r0, Emin_mev, Emax_mev, npts):
 def make_penetrability_interp(
     l, Z1, Z2, A1, A2, r0=1.25, Emin_mev=1e-6, Emax_mev=5.0, npts=600
 ):
-    """
-    Precompute P_l(E) on a grid [Emin,Emax] (MeV) and return a fast interpolator P(E).
+    r"""
+    Precompute \(P_\ell(E)\) on a grid \([E_{\min}, E_{\max}]\) in MeV and
+    return a fast interpolator \(P(E)\).
+
     First creation is the only slow step; subsequent uses are very fast.
     """
     Es, Ps = _P_grid_cached(
@@ -78,9 +84,18 @@ def make_penetrability_interp(
 
 
 def sigma_bw_constant(E_eV, r):
-    """
-    Classic single-level Breit-Wigner with constant partial widths.
-    Returns barns. E_eV can be scalar or array.
+    r"""
+    Evaluate a single-level Breit-Wigner cross section with constant widths.
+
+    The model is
+
+    \[
+    \sigma(E) = \omega \frac{\pi}{k^2}
+    \frac{\Gamma_i \Gamma_o}{(E - E_r)^2 + (\Gamma_t/2)^2}
+    \]
+
+    where \(\Gamma_t = \Gamma_i + \Gamma_o\). Returns barns. `E_eV` may be a
+    scalar or array.
     """
     E_eV = np.asarray(E_eV, dtype=float)
     mu = reduced_mass(r.m1, r.m2)
@@ -98,11 +113,22 @@ def sigma_bw_constant(E_eV, r):
 
 
 def sigma_bw_energy_dep(E_eV, r, Z1, Z2, A1, A2, l, gamma2, r0=1.25, P_interp=None):
-    """
-    Same Breit-Wigner, but Gamma_i(E) scales with penetrability:
-      Gamma_i(E) = Gamma_i(E_r) * P_l(E)/P_l(E_r).
-    If r.Gamma_i <= 0, compute Gamma_i(E_r) = 2 * gamma2 * P_l(E_r) [eV].
-    Returns barns.
+    r"""
+    Evaluate a Breit-Wigner cross section with energy-dependent entrance width.
+
+    The entrance width is scaled as
+
+    \[
+    \Gamma_i(E) = \Gamma_i(E_r)\frac{P_\ell(E)}{P_\ell(E_r)}
+    \]
+
+    If `r.Gamma_i <= 0`, the resonance-energy width is inferred from
+
+    \[
+    \Gamma_i(E_r) = 2 \gamma^2 P_\ell(E_r)
+    \]
+
+    and `gamma2` is interpreted in eV. Returns barns.
     """
     E_eV = np.asarray(E_eV, dtype=float)
     mu = reduced_mass(r.m1, r.m2)
@@ -123,10 +149,10 @@ def sigma_bw_energy_dep(E_eV, r, Z1, Z2, A1, A2, l, gamma2, r0=1.25, P_interp=No
         P_E = P_interp(E_mev)
         P_Er = float(P_interp(Er_mev))
 
-    #if (r.Gamma_i is not None) and (r.Gamma_i > 0.0):
+    # if (r.Gamma_i is not None) and (r.Gamma_i > 0.0):
     #    Gamma_i_Er_eV = r.Gamma_i
-    #else:
-    Gamma_i_Er_eV = 2.0 * gamma2 * P_Er # eV
+    # else:
+    Gamma_i_Er_eV = 2.0 * gamma2 * P_Er  # eV
 
     Gamma_i_E_eV = Gamma_i_Er_eV * (P_E / P_Er) if P_Er != 0.0 else np.zeros_like(P_E)
 

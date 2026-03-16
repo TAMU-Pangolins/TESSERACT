@@ -21,6 +21,8 @@ from .resonance import Resonance, sigma_bw_constant
 
 @dataclass(frozen=True)
 class HFBSamplerConfig:
+    """Configuration for synthesizing resonance spectra from HFB level densities."""
+
     Z: int
     data_root: Optional[str | Path] = None
     A: int = 24
@@ -45,6 +47,8 @@ class HFBSamplerConfig:
 
 @dataclass
 class GeneratedSpectrum:
+    """Sampled spectrum, resonance list, and auxiliary metadata."""
+
     energy_MeV: np.ndarray
     sigma_barns: np.ndarray
     resonances: List[Resonance]
@@ -54,6 +58,7 @@ class GeneratedSpectrum:
 
     @property
     def energy_eV(self) -> np.ndarray:
+        """Return the sampled energy grid in eV."""
         return self.energy_MeV * 1e6
 
     def compute_rate(
@@ -67,6 +72,7 @@ class GeneratedSpectrum:
         m1: Optional[float] = None,
         m2: Optional[float] = None,
     ) -> ReactionRateResult:
+        """Integrate the stored cross section over the requested temperatures."""
         m1_eff = m1 if m1 is not None else self.metadata.get("m1", MASS_PROTON)
         m2_eff = m2 if m2 is not None else self.metadata.get("m2", MASS_PROTON)
         return na_sigma_v_from_sigma(
@@ -136,6 +142,7 @@ def _pick_L1(J: float, s1: float, s2: float, pi_res: int) -> Optional[int]:
 
 
 def synthesize_sigma_from_hfb(config: HFBSamplerConfig) -> GeneratedSpectrum:
+    """Generate a synthetic cross section by sampling resonances from HFB densities."""
     rng = np.random.default_rng(config.seed)
 
     def _U_of_E_mev(E_eV: np.ndarray) -> np.ndarray:

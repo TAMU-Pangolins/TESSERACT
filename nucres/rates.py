@@ -49,12 +49,15 @@ _RATE_UNIT_SCALE = {
 
 @dataclass(frozen=True)
 class ReactionRateResult:
+    r"""Container for a tabulated \(N_A \langle \sigma v \rangle(T)\) result."""
+
     temperature: np.ndarray
     na_sigma_v: np.ndarray
     temperature_unit: str
     rate_unit: str
 
     def as_arrays(self) -> tuple[np.ndarray, np.ndarray]:
+        """Return copies of the temperature and rate arrays."""
         return self.temperature.copy(), self.na_sigma_v.copy()
 
 
@@ -99,9 +102,9 @@ def na_sigma_v_from_sigma(
     result_unit: str = "cm^3/mol/s",
     method: str = "trapz",
 ) -> ReactionRateResult:
-    """
-    Integrate a cross section σ(E) over a Maxwell–Boltzmann distribution to obtain
-    N_A⟨σv⟩(T).
+    r"""
+    Integrate a cross section \(\sigma(E)\) over a Maxwell-Boltzmann
+    distribution to obtain \(N_A\langle \sigma v \rangle(T)\).
 
     Parameters
     ----------

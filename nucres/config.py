@@ -12,10 +12,16 @@ from typing import Optional
 ENV_VAR = "NUCRES_DATA_ROOT"
 CONFIG_DIR = Path.home() / ".nucres"
 CONFIG_PATH = CONFIG_DIR / "config.json"
-DEFAULT_RELATIVE_DATA = Path(__file__).resolve().parent.parent / "data" / "densities" / "level-densities-hfb"
+DEFAULT_RELATIVE_DATA = (
+    Path(__file__).resolve().parent.parent
+    / "data"
+    / "densities"
+    / "level-densities-hfb"
+)
 
 
 def store_data_root(path: Path) -> None:
+    """Persist the configured auxiliary-data root in the user config file."""
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
     with CONFIG_PATH.open("w", encoding="utf-8") as fh:
         json.dump({"data_root": str(Path(path).resolve())}, fh, indent=2)
@@ -43,11 +49,14 @@ def _default_data_root() -> Path:
     try:
         DEFAULT_RELATIVE_DATA.mkdir(parents=True, exist_ok=True)
     except OSError as exc:  # pragma: no cover - only occurs on read-only installs
-        raise FileNotFoundError(f"Cannot create default data directory at {DEFAULT_RELATIVE_DATA}") from exc
+        raise FileNotFoundError(
+            f"Cannot create default data directory at {DEFAULT_RELATIVE_DATA}"
+        ) from exc
     return DEFAULT_RELATIVE_DATA
 
 
 def resolve_data_root() -> Path:
+    """Resolve the active auxiliary-data directory from env, config, or default."""
     env_value = os.environ.get(ENV_VAR)
     if env_value:
         env_path = Path(env_value).expanduser()
@@ -66,6 +75,7 @@ def resolve_data_root() -> Path:
 
 
 def ensure_data_root_env() -> Path:
+    """Resolve the data root and mirror it into `NUCRES_DATA_ROOT`."""
     root = resolve_data_root()
     os.environ[ENV_VAR] = str(root)
     return root

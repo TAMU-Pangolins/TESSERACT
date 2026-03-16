@@ -11,7 +11,7 @@ from .resonance import Resonance
 @dataclass
 class RatesMCExportOptions:
     """
-    Controls how Resonance objects are converted into RatesMC resonant rows.
+    Controls how `Resonance` objects are converted into RatesMC resonant rows.
     """
 
     # Toggle between emitting an analytical strength (omega-gamma) or explicit widths
@@ -42,6 +42,8 @@ class RatesMCExportOptions:
 
 @dataclass
 class RatesMCRow:
+    """Structured representation of one formatted RatesMC resonance row."""
+
     Ecm: float
     DEcm: float
     wg: float
@@ -91,8 +93,8 @@ def _column_specs(opts: Optional[RatesMCExportOptions]) -> List[Tuple[str, int, 
 def omega_gamma(
     res: Resonance, j_proj: Optional[float] = None, j_targ: Optional[float] = None
 ) -> float:
-    """
-    Compute strength omega-gamma (eV) from partial widths.
+    r"""
+    Compute the resonance strength \(\omega \gamma\) in eV from partial widths.
     """
     g = spin_stat_factor(
         res.J,
@@ -113,7 +115,7 @@ def _frac_unc(value: float, frac: Optional[float]) -> float:
 
 def resonance_to_row(res: Resonance, opts: RatesMCExportOptions) -> RatesMCRow:
     """
-    Map a Resonance object into a structured RatesMCRow (units converted to keV/eV).
+    Map a `Resonance` object into a `RatesMCRow`, converting units to keV/eV.
     """
     Ecm_keV = res.E_r * 1e-3
     DEcm = _frac_unc(Ecm_keV, opts.default_frac_unc)
@@ -203,7 +205,7 @@ def render_rows(
     resonances: Iterable[Resonance], opts: RatesMCExportOptions
 ) -> Tuple[List[str], List[int]]:
     """
-    Convert a list of Resonance objects to formatted RatesMC lines.
+    Convert resonances to aligned text rows ready for a RatesMC input block.
     """
     rows_raw: List[List[str]] = []
     for res in resonances:
@@ -224,6 +226,7 @@ def render_rows(
 def resonant_header_line(
     widths: Optional[List[int]] = None, opts: Optional[RatesMCExportOptions] = None
 ) -> str:
+    """Render the header line corresponding to the active RatesMC columns."""
     specs = _column_specs(opts)
     active_widths = widths or [len(label) for label, _, _ in specs]
     return " ".join(
@@ -235,7 +238,7 @@ def write_resonant_block(
     dest: Path, rows: List[str], header: Optional[str] = None
 ) -> None:
     """
-    Write a resonant contribution block (header + rows) to a file.
+    Write a resonant contribution block, including an optional header, to disk.
     """
     parts: List[str] = []
     if header:
