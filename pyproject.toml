@@ -30,3 +30,8 @@ include = [
   "download_ripl.py",
   "tests",
 ]
+
+[dependency-groups]
+dev = [
+    "ruff>=0.15.6",
+]
