@@ -69,6 +69,8 @@ request = HFBRateRequest(Z=12, A=24, J=1.0, pi=1)
 result = compute_rate_table(request, temperatures=[0.1, 0.2, 0.3])
 ```
 
+This high-level path requires HFB level-density tables to be available locally.
+
 ## Top-Level Namespace
 
 The rendered API block below shows the actual objects exported from `nucres`.

@@ -2,6 +2,13 @@
 
 Welcome. This documentation covers how to use the THICC tools locally.
 
+Use this page for a quick sanity check and orientation:
+
+- [Concepts](concepts.md) explains the core physics quantities
+- [Workflows](workflows.md) shows end-to-end project flows
+- [Examples](examples.md) collects short runnable snippets
+- [API Reference](api/package.md) documents the `nucres` Python package
+
 **Quick start**
 
 1. Install project dependencies.
@@ -25,3 +32,11 @@ print(E)
 print(sigma)
 PY
 ```
+
+This example is self-contained and does not require HFB density tables.
+
+## HFB Data Prerequisite
+
+Examples that use `HFBRateRequest`, `HFBSamplerConfig`, or `synthesize_sigma_from_hfb`
+require HFB level-density tables under `data/densities/level-densities-hfb` or
+through `NUCRES_DATA_ROOT`.

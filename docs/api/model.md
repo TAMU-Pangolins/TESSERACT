@@ -36,6 +36,8 @@ rate = compute_rate_table(request, [0.1, 0.2, 0.3], temperature_unit="GK")
 Use this layer when you want a stable, user-facing API without manually
 constructing `HFBSamplerConfig`.
 
+This example requires local HFB level-density tables.
+
 ## See Also
 
 - [Generator](generator.md) for the lower-level sampling API
