@@ -48,18 +48,21 @@ nav:
     - Workflows: workflows.md
     - Examples: examples.md
     - API Reference:
-          - Package: api/package.md
-          - Resonance: api/resonance.md
-          - Physics: api/physics.md
-          - Sampling: api/sampling.md
-          - Rates: api/rates.md
-          - Generator: api/generator.md
-          - Model: api/model.md
-          - HFB Adapter: api/hfb_adapter.md
-          - Config: api/config.md
-          - RatesMC Export: api/ratesmc_export.md
-          - Read Qvals: api/read_qvals.md
-          - Plotting: api/plotting.md
-          - Lab To CM: api/lab_to_cm.md
+          - Overview: api/package.md
+          - Physics Core:
+                - Resonance: api/resonance.md
+                - Rates: api/rates.md
+                - Physics: api/physics.md
+                - Sampling: api/sampling.md
+          - Generation:
+                - Generator: api/generator.md
+                - Model: api/model.md
+                - RatesMC Export: api/ratesmc_export.md
+          - Data & Utilities:
+                - HFB Adapter: api/hfb_adapter.md
+                - Config: api/config.md
+                - Read Qvals: api/read_qvals.md
+                - Lab To CM: api/lab_to_cm.md
+                - Plotting: api/plotting.md
     - Usage:
           - Diagnostic Plots: usage/diagnostic-plots.md
