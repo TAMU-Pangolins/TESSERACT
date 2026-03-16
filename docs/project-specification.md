@@ -61,7 +61,7 @@ Implemented in `nucres/generator.py` using `HFBSamplerConfig` and `synthesize_si
 
 Core method:
 
-- Interpolate HFB level density \(\rho(E)\) on the configured energy range.
+- Interpolate the HFB level density \(\rho(E)\) on the configured energy range.
 - Partition energy interval into bins of width `delta_E_mev`.
 - Sample resonance counts per bin from Poisson statistics:
 
@@ -105,7 +105,11 @@ Entrance-channel energy dependence follows penetrability scaling:
 \Gamma_i(E) = \Gamma_i(E_r)\,\frac{P_\ell(E)}{P_\ell(E_r)}
 \]
 
-with \(\Gamma_i(E_r)=2\gamma^2 P_\ell(E_r)\).
+with
+
+\[
+\Gamma_i(E_r) = 2\gamma^2 P_\ell(E_r)
+\]
 
 ## Analysis Positioning
 
