@@ -1,10 +1,10 @@
+"""Helpers for reading AME masses and computing reaction Q-values."""
+
 import csv
 import re
 from functools import lru_cache
 from pathlib import Path
 from typing import Dict, Optional, Tuple
-
-"""Helpers for reading AME masses and computing reaction Q-values."""
 
 AMU_TO_KG = 1.66053906660e-27
 KEV_PER_AMU = 931_494.10242
@@ -148,7 +148,19 @@ def _clean_numeric(value: str) -> float:
 
 @lru_cache(maxsize=1)
 def load_ame(path: str | Path = DEFAULT_AME_PATH) -> Dict[Tuple[int, int], float]:
-    """Load AME mass excess values keyed by `(Z, A)`."""
+    """
+    Load AME mass excess values keyed by `(Z, A)`.
+
+    Parameters
+    ----------
+    path : str or Path, default=DEFAULT_AME_PATH
+        CSV file containing AME-derived masses and mass excesses.
+
+    Returns
+    -------
+    dict[tuple[int, int], float]
+        Mass excess lookup table in keV.
+    """
     lut = {}
     with open(path, newline="") as f:
         for row in csv.DictReader(f):
@@ -157,7 +169,26 @@ def load_ame(path: str | Path = DEFAULT_AME_PATH) -> Dict[Tuple[int, int], float
 
 
 def calc_qval(Z_p, A_p, Z_t, A_t, Z_eject, A_eject, ame=None):
-    """Compute the reaction Q-value in MeV from AME mass excesses."""
+    """
+    Compute the reaction Q-value in MeV from AME mass excesses.
+
+    Parameters
+    ----------
+    Z_p, A_p : int
+        Projectile proton and mass numbers.
+    Z_t, A_t : int
+        Target proton and mass numbers.
+    Z_eject, A_eject : int
+        Ejectile proton and mass numbers.
+    ame : dict or None, optional
+        Preloaded AME lookup table.
+
+    Returns
+    -------
+    float or str
+        Q-value in MeV, or a human-readable error string when the requested
+        reaction cannot be resolved from the available masses.
+    """
     ame = ame or load_ame()
     Z_res = Z_p + Z_t - Z_eject
     A_res = A_p + A_t - A_eject
@@ -177,6 +208,11 @@ def calc_qval(Z_p, A_p, Z_t, A_t, Z_eject, A_eject, ame=None):
 def atomic_mass_u(Z: int, A: int, ame=None) -> float:
     """
     Return the atomic mass (u) for a nucleus using its mass excess.
+
+    Raises
+    ------
+    KeyError
+        If the AME table does not contain the requested nuclide.
     """
     ame = ame or load_ame()
     try:
@@ -189,12 +225,23 @@ def atomic_mass_u(Z: int, A: int, ame=None) -> float:
 def atomic_mass_kg(Z: int, A: int, ame=None) -> float:
     """
     Atomic mass converted to kilograms.
+
+    Parameters
+    ----------
+    Z, A : int
+        Proton and mass numbers.
+    ame : dict or None, optional
+        Preloaded AME lookup table.
     """
     return atomic_mass_u(Z, A, ame=ame) * AMU_TO_KG
 
 
 def split_nuclide_token(token: Optional[str]) -> Tuple[Optional[int], Optional[str]]:
-    """Split a token like `22Mg` into `(22, "Mg")`."""
+    """
+    Split a token like `22Mg` into `(22, "Mg")`.
+
+    Returns `(None, None)` when the token cannot be parsed.
+    """
     if token is None:
         return None, None
     match = re.match(r"^\s*(\d+)?([A-Za-z]+)", token.strip())
@@ -216,7 +263,11 @@ def element_symbol_to_Z(symbol: Optional[str]) -> Optional[int]:
 
 
 def interpret_z_token(token: Optional[str]) -> Optional[int]:
-    """Interpret a proton-number token given as either numeric text or nuclide text."""
+    """
+    Interpret a proton-number token given as either numeric text or nuclide text.
+
+    Returns `None` when the token cannot be resolved.
+    """
     if token is None:
         return None
     try:
@@ -231,7 +282,23 @@ def interpret_z_token(token: Optional[str]) -> Optional[int]:
 def mass_from_token(
     token: Optional[str], z_hint: Optional[int], ame=None
 ) -> Optional[float]:
-    """Resolve a token to a mass in kg using literal values or the AME table."""
+    """
+    Resolve a token to a mass in kg using literal values or the AME table.
+
+    Parameters
+    ----------
+    token : str or None
+        Literal mass, nuclide token, or special particle token.
+    z_hint : int or None
+        Optional proton-number hint used when `token` lacks an element symbol.
+    ame : dict or None, optional
+        Preloaded AME lookup table.
+
+    Returns
+    -------
+    float or None
+        Mass in kg when the token can be resolved, else `None`.
+    """
     if token is None:
         return None
     try:

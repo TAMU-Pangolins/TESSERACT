@@ -19,7 +19,28 @@ from .physics import (
 
 @dataclass(frozen=True)
 class Resonance:
-    """Single resonance parameterization used by the Breit-Wigner helpers."""
+    r"""
+    Single-resonance parameterization used by the Breit-Wigner helpers.
+
+    Attributes
+    ----------
+    E_r : float
+        Resonance energy in eV.
+    J : float
+        Resonance spin.
+    s1, s2 : float
+        Projectile and target spins used in the statistical factor.
+    m1, m2 : float
+        Projectile and target masses in kg.
+    Gamma_i : float
+        Entrance partial width in eV, referenced at `E_r`.
+        For `sigma_bw_energy_dep`, a nonpositive value means the entrance width
+        should be inferred from `gamma2` and penetrability.
+    Gamma_o : float
+        Exit partial width in eV.
+    L1, L2, L3 : int or None
+        Optional orbital angular momenta for downstream serialization or analysis.
+    """
 
     E_r: float  # eV
     J: float
@@ -35,12 +56,50 @@ class Resonance:
 
 
 def channel_radius_fm(A1, A2, r0=1.25):
-    r"""Return the channel radius in fm using \(a = r_0 (A_1^{1/3} + A_2^{1/3})\)."""
+    r"""
+    Return the channel radius in fm.
+
+    Parameters
+    ----------
+    A1, A2 : float
+        Projectile and target mass numbers.
+    r0 : float, default=1.25
+        Radius coefficient in fm.
+
+    Returns
+    -------
+    float
+        Channel radius
+
+        \[
+        a = r_0 \left(A_1^{1/3} + A_2^{1/3}\right).
+        \]
+    """
     return r0 * (A1 ** (1 / 3) + A2 ** (1 / 3))
 
 
 def penetrability_P_l_mev(l, Z1, Z2, A1, A2, E_mev, r0=1.25):
-    r"""Evaluate the Coulomb penetrability \(P_\ell(E)\) at energy `E_mev`."""
+    r"""
+    Evaluate the Coulomb penetrability \(P_\ell(E)\).
+
+    Parameters
+    ----------
+    l : int
+        Orbital angular momentum.
+    Z1, Z2 : int
+        Projectile and target proton numbers.
+    A1, A2 : float
+        Projectile and target mass numbers.
+    E_mev : float
+        Center-of-mass energy in MeV.
+    r0 : float, default=1.25
+        Radius coefficient in fm.
+
+    Returns
+    -------
+    float
+        Penetrability evaluated at `E_mev`. Nonpositive energies return `0.0`.
+    """
     if E_mev <= 0.0:
         return 0.0
     a_fm = channel_radius_fm(A1, A2, r0)
@@ -70,7 +129,30 @@ def make_penetrability_interp(
     Precompute \(P_\ell(E)\) on a grid \([E_{\min}, E_{\max}]\) in MeV and
     return a fast interpolator \(P(E)\).
 
-    First creation is the only slow step; subsequent uses are very fast.
+    Parameters
+    ----------
+    l : int
+        Orbital angular momentum.
+    Z1, Z2 : int
+        Projectile and target proton numbers.
+    A1, A2 : float
+        Projectile and target mass numbers.
+    r0 : float, default=1.25
+        Radius coefficient in fm.
+    Emin_mev, Emax_mev : float
+        Interpolation range in MeV.
+    npts : int, default=600
+        Number of cached samples.
+
+    Returns
+    -------
+    callable
+        Function `P(E_mev)` that interpolates the cached penetrability grid.
+
+    Notes
+    -----
+    The first construction is the expensive step. Repeated calls with identical
+    arguments reuse the cached grid.
     """
     Es, Ps = _P_grid_cached(
         l, Z1, Z2, A1, A2, float(r0), float(Emin_mev), float(Emax_mev), int(npts)
@@ -94,8 +176,24 @@ def sigma_bw_constant(E_eV, r):
     \frac{\Gamma_i \Gamma_o}{(E - E_r)^2 + (\Gamma_t/2)^2}
     \]
 
-    where \(\Gamma_t = \Gamma_i + \Gamma_o\). Returns barns. `E_eV` may be a
-    scalar or array.
+    where \(\Gamma_t = \Gamma_i + \Gamma_o\).
+
+    Parameters
+    ----------
+    E_eV : float or array-like
+        Center-of-mass energy grid in eV.
+    r : Resonance
+        Resonance parameters. Widths are interpreted in eV.
+
+    Returns
+    -------
+    numpy.ndarray
+        Cross section in barns, broadcast over `E_eV`.
+
+    Notes
+    -----
+    This routine assumes constant entrance and exit widths and does not guard
+    against nonphysical resonance parameters such as zero reduced mass.
     """
     E_eV = np.asarray(E_eV, dtype=float)
     mu = reduced_mass(r.m1, r.m2)
@@ -128,7 +226,37 @@ def sigma_bw_energy_dep(E_eV, r, Z1, Z2, A1, A2, l, gamma2, r0=1.25, P_interp=No
     \Gamma_i(E_r) = 2 \gamma^2 P_\ell(E_r)
     \]
 
-    and `gamma2` is interpreted in eV. Returns barns.
+    and `gamma2` is interpreted in eV.
+
+    Parameters
+    ----------
+    E_eV : float or array-like
+        Center-of-mass energy grid in eV.
+    r : Resonance
+        Resonance parameters. `Gamma_o` is always read from `r`.
+    Z1, Z2 : int
+        Projectile and target proton numbers.
+    A1, A2 : float
+        Projectile and target mass numbers.
+    l : int
+        Entrance-channel orbital angular momentum.
+    gamma2 : float
+        Reduced width parameter used when building the entrance width.
+    r0 : float, default=1.25
+        Radius coefficient in fm.
+    P_interp : callable, optional
+        Precomputed interpolator from `make_penetrability_interp`.
+
+    Returns
+    -------
+    numpy.ndarray
+        Cross section in barns, broadcast over `E_eV`.
+
+    Notes
+    -----
+    If `P_\ell(E_r) = 0`, the entrance width is forced to zero across the grid.
+    This function assumes center-of-mass energies and does not validate the
+    resonance masses beyond what the algebra requires.
     """
     E_eV = np.asarray(E_eV, dtype=float)
     mu = reduced_mass(r.m1, r.m2)

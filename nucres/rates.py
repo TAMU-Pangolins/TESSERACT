@@ -49,7 +49,20 @@ _RATE_UNIT_SCALE = {
 
 @dataclass(frozen=True)
 class ReactionRateResult:
-    r"""Container for a tabulated \(N_A \langle \sigma v \rangle(T)\) result."""
+    r"""
+    Container for a tabulated \(N_A \langle \sigma v \rangle(T)\) result.
+
+    Attributes
+    ----------
+    temperature : numpy.ndarray
+        Temperature samples in the units recorded by `temperature_unit`.
+    na_sigma_v : numpy.ndarray
+        Reaction-rate values in the units recorded by `rate_unit`.
+    temperature_unit : str
+        Label describing the stored temperature units.
+    rate_unit : str
+        Label describing the stored rate units.
+    """
 
     temperature: np.ndarray
     na_sigma_v: np.ndarray
@@ -125,7 +138,19 @@ def na_sigma_v_from_sigma(
     result_unit : str
         Output unit ("m^3/mol/s" or "cm^3/mol/s").
     method : str
-        Integration scheme ("trapz").
+        Integration scheme. Only `"trapz"` is currently supported.
+
+    Returns
+    -------
+    ReactionRateResult
+        Temperatures and corresponding \(N_A \langle \sigma v \rangle\) values.
+
+    Raises
+    ------
+    ValueError
+        If the energy and cross-section arrays have mismatched shapes, are not
+        strictly increasing after unit conversion, contain too few points, use
+        unsupported unit labels, or if any temperature or reduced mass is nonpositive.
     """
     E = np.asarray(E, dtype=float)
     sigma = np.asarray(sigma, dtype=float)

@@ -21,7 +21,45 @@ from .resonance import Resonance, sigma_bw_constant
 
 @dataclass(frozen=True)
 class HFBSamplerConfig:
-    """Configuration for synthesizing resonance spectra from HFB level densities."""
+    r"""
+    Configuration for synthesizing resonance spectra from HFB level densities.
+
+    Attributes
+    ----------
+    Z : int
+        Proton number used to resolve the HFB density tables.
+    data_root : str or Path or None
+        Optional override for the directory containing `zXXX.tab/.cor` files.
+    A : int
+        Mass number used when mapping HFB spin-grid columns.
+    J : float
+        Fixed resonance spin used when `sample_J` is disabled or as a fallback.
+    pi : int
+        Target parity channel, conventionally `+1` or `-1`.
+    s1, s2 : float
+        Projectile and target spins.
+    m1, m2 : float
+        Projectile and target masses in kg.
+    Gamma_i_mean_eV, Gamma_o_mean_eV : float
+        Mean partial widths in eV used as Porter-Thomas scale parameters.
+    delta_E_mev : float
+        Bin width in MeV for Poisson sampling of level counts.
+    E_min_mev, E_max_mev : float
+        Energy window in MeV over which the synthetic spectrum is generated.
+    n_density_points : int
+        Number of points in the cached level-density grid.
+    n_sigma_points : int
+        Number of points in the output cross-section grid.
+    U_offset_mev : float
+        Offset applied in the default mapping from resonance energy to
+        excitation energy \(U(E)\).
+    seed : int or None
+        Random seed passed to NumPy's default generator.
+    sample_J : bool
+        If true, sample resonance spins from the HFB record.
+    auto_l1 : bool
+        If true, infer the smallest allowed `L1` from spin/parity coupling.
+    """
 
     Z: int
     data_root: Optional[str | Path] = None
@@ -47,7 +85,25 @@ class HFBSamplerConfig:
 
 @dataclass
 class GeneratedSpectrum:
-    """Sampled spectrum, resonance list, and auxiliary metadata."""
+    """
+    Sampled spectrum, resonance list, and auxiliary metadata.
+
+    Attributes
+    ----------
+    energy_MeV : numpy.ndarray
+        Output energy grid in MeV.
+    sigma_barns : numpy.ndarray
+        Total cross section on `energy_MeV`, in barns.
+    resonances : list of Resonance
+        Sampled resonance population used to build the spectrum.
+    rho_energy_MeV : numpy.ndarray
+        Energy grid used for the HFB density evaluation, in MeV.
+    rho_levels_per_MeV : numpy.ndarray
+        Level density evaluated on `rho_energy_MeV`, in levels/MeV.
+    metadata : dict
+        Auxiliary scalar information such as expected level count, sample size,
+        widths, and masses used by downstream consumers.
+    """
 
     energy_MeV: np.ndarray
     sigma_barns: np.ndarray
@@ -72,7 +128,31 @@ class GeneratedSpectrum:
         m1: Optional[float] = None,
         m2: Optional[float] = None,
     ) -> ReactionRateResult:
-        """Integrate the stored cross section over the requested temperatures."""
+        r"""
+        Integrate the stored cross section over the requested temperatures.
+
+        Parameters
+        ----------
+        temperatures : float or array-like
+            Temperature samples to evaluate.
+        temperature_unit : str, default="GK"
+            Unit label understood by `na_sigma_v_from_sigma`.
+        result_unit : str, default="cm^3/mol/s"
+            Output rate unit.
+        energy_unit : str, default="eV"
+            Unit label passed to `na_sigma_v_from_sigma`. The stored grid is
+            converted from MeV to eV before integration.
+        sigma_unit : str, default="barn"
+            Unit label for `sigma_barns`.
+        m1, m2 : float or None
+            Optional mass overrides in kg. When omitted, values are pulled from
+            `metadata` and fall back to proton mass.
+
+        Returns
+        -------
+        ReactionRateResult
+            Tabulated reaction-rate result.
+        """
         m1_eff = m1 if m1 is not None else self.metadata.get("m1", MASS_PROTON)
         m2_eff = m2 if m2 is not None else self.metadata.get("m2", MASS_PROTON)
         return na_sigma_v_from_sigma(
@@ -142,7 +222,34 @@ def _pick_L1(J: float, s1: float, s2: float, pi_res: int) -> Optional[int]:
 
 
 def synthesize_sigma_from_hfb(config: HFBSamplerConfig) -> GeneratedSpectrum:
-    """Generate a synthetic cross section by sampling resonances from HFB densities."""
+    r"""
+    Generate a synthetic cross section by sampling resonances from HFB densities.
+
+    The workflow is:
+
+    1. Build an HFB level-density grid over the configured energy range.
+    2. Partition the interval into bins of width `delta_E_mev`.
+    3. Draw the number of resonances in each bin from Poisson statistics.
+    4. Sample resonance energies from the local density profile in each occupied bin.
+    5. Sample widths from Porter-Thomas fluctuations and sum the resulting
+       Breit-Wigner contributions.
+
+    Parameters
+    ----------
+    config : HFBSamplerConfig
+        Sampling configuration, units, and HFB lookup settings.
+
+    Returns
+    -------
+    GeneratedSpectrum
+        Synthetic spectrum, sampled resonances, level-density grid, and metadata.
+
+    Notes
+    -----
+    The returned `sigma_barns` is evaluated on a uniform MeV grid, while each
+    resonance energy stored in `resonances` is recorded in eV.
+    Missing HFB files propagate as `FileNotFoundError` from the adapter layer.
+    """
     rng = np.random.default_rng(config.seed)
 
     def _U_of_E_mev(E_eV: np.ndarray) -> np.ndarray:

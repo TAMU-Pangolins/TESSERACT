@@ -2,7 +2,24 @@ import pandas as pd
 
 
 def lab_to_cm(E_lab, A_tar, sym_tar, A_pro, sym_pro):
-    """Convert a projectile lab-frame energy to center-of-mass energy in MeV."""
+    """
+    Convert a projectile lab-frame energy to center-of-mass energy in MeV.
+
+    Parameters
+    ----------
+    E_lab : float
+        Projectile energy in the laboratory frame, in MeV.
+    A_tar, A_pro : int
+        Target and projectile mass numbers.
+    sym_tar, sym_pro : str
+        Target and projectile element symbols.
+
+    Returns
+    -------
+    float or str
+        Center-of-mass energy in MeV, or an error string when the masses cannot
+        be resolved from the AME table.
+    """
 
     df_ame = pd.read_csv("../common/ame20.csv", header=0)  # load the ame file
 

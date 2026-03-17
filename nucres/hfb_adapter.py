@@ -24,6 +24,11 @@ def resolve_density_paths(
 
     Returns `(tab_path, cor_path_or_None)` for the conventional filenames
     `zXXX.tab` and `zXXX.cor`.
+
+    Raises
+    ------
+    FileNotFoundError
+        If the required `.tab` file is missing.
     """
     if data_root is None:
         root = resolve_data_root()
@@ -42,7 +47,21 @@ def load_rho_function(
     r"""
     Load the interpolator for \(\rho(U, J, \pi)\) from a `zXXX.tab` file.
 
-    Set `use_corrections=True` to apply the optional `.cor` adjustments.
+    Parameters
+    ----------
+    tab_path : str or Path
+        Path to the required HFB `.tab` file.
+    cor_path : str or Path or None, optional
+        Optional path to the corresponding `.cor` file.
+    use_corrections : bool, default=False
+        Apply `.cor` adjustments when both this flag and `cor_path` are present.
+    warn_if_ignored : bool, default=True
+        Emit an informational message when a corrections file is available but not used.
+
+    Returns
+    -------
+    callable
+        Interpolator `rho(U, Jcol, pi)` in levels/MeV.
     """
     rec = read_hfb_tab(tab_path)
     if use_corrections and cor_path:
@@ -61,6 +80,22 @@ def load_hfb_record(
 ):
     r"""
     Load the full HFB record, including spin-resolved \(\rho_J\), from disk.
+
+    Parameters
+    ----------
+    tab_path : str or Path
+        Path to the required HFB `.tab` file.
+    cor_path : str or Path or None, optional
+        Optional path to the corresponding `.cor` file.
+    use_corrections : bool, default=False
+        Apply `.cor` adjustments when both this flag and `cor_path` are present.
+    warn_if_ignored : bool, default=True
+        Emit an informational message when a corrections file is available but not used.
+
+    Returns
+    -------
+    object
+        Parsed HFB record as returned by `read_hfb_tab` / `apply_hfb_corrections`.
     """
     rec = read_hfb_tab(tab_path)
     if use_corrections and cor_path:
@@ -76,6 +111,24 @@ def load_hfb_record(
 def rho_levels_per_eV_from_E(rho_UJpi, A, J_phys, pi, U_of_E_mev):
     r"""
     Return \(\rho(E)\) in levels/eV for fixed `(J_phys, pi)`.
+
+    Parameters
+    ----------
+    rho_UJpi : callable
+        HFB interpolator in excitation energy \(U\), spin-grid column, and parity.
+    A : int
+        Mass number used to map physical spin to the tabulated spin grid.
+    J_phys : float
+        Physical spin to extract.
+    pi : int
+        Parity selector, typically `+1` or `-1`.
+    U_of_E_mev : callable
+        Mapping from lab/CM energy in eV to excitation energy in MeV.
+
+    Returns
+    -------
+    callable
+        Function `rho_E(E_eV)` returning levels/eV.
     """
     Jcol = J_index(J_phys, A)
 
@@ -90,6 +143,20 @@ def rho_levels_per_eV_from_E(rho_UJpi, A, J_phys, pi, U_of_E_mev):
 def rho_total_levels_per_eV_from_E(record, pi, U_of_E_mev):
     r"""
     Return total \(\rho(E)\) in levels/eV for a fixed parity.
+
+    Parameters
+    ----------
+    record : object
+        Parsed HFB record containing total level-density arrays.
+    pi : int
+        Parity selector, typically `+1` or `-1`.
+    U_of_E_mev : callable
+        Mapping from energy in eV to excitation energy in MeV.
+
+    Returns
+    -------
+    callable
+        Function `rho_E(E_eV)` returning levels/eV after summing over spins.
     """
     block = record.positive if pi == +1 else record.negative
     U_grid = block.U
@@ -122,8 +189,41 @@ def build_density_grid(
     # mapping from lab energy (eV) to excitation U (MeV)
     U_of_E_mev=None,
 ) -> tuple[np.ndarray, np.ndarray]:
-    """
+    r"""
     Build a uniform MeV energy grid and evaluate the fixed-spin level density.
+
+    Parameters
+    ----------
+    Z : int or None, optional
+        Proton number used to resolve canonical HFB filenames.
+    data_root : str or Path or None, optional
+        Optional directory holding the HFB density files.
+    tab_path : str or Path or None, optional
+        Explicit override for the `.tab` path. If provided, `Z` is ignored.
+    A : int, default=24
+        Mass number used for spin-grid indexing.
+    J_phys : float, default=1.0
+        Physical spin to extract from the spin-resolved density.
+    pi : int, default=1
+        Parity selector.
+    E_min_mev, E_max_mev : float
+        Returned energy-grid bounds in MeV.
+    n_points : int, default=2001
+        Number of samples in the returned grid.
+    U_of_E_mev : callable, optional
+        Mapping from energy in eV to excitation energy in MeV. Defaults to \(U = E\).
+
+    Returns
+    -------
+    tuple[numpy.ndarray, numpy.ndarray]
+        `(E_mev, rho_per_mev)` on a uniform grid.
+
+    Raises
+    ------
+    ValueError
+        If neither `Z` nor `tab_path` is provided.
+    FileNotFoundError
+        If the chosen `.tab` file does not exist.
     """
     # lazy import of your already-defined helpers in this module
     from .hfb_adapter import (
@@ -178,8 +278,37 @@ def build_total_density_grid(
     n_points: int = 2001,
     U_of_E_mev=None,
 ) -> tuple[np.ndarray, np.ndarray]:
-    """
+    r"""
     Build a uniform MeV grid using the total level density for fixed parity.
+
+    Parameters
+    ----------
+    Z : int or None, optional
+        Proton number used to resolve canonical HFB filenames.
+    data_root : str or Path or None, optional
+        Optional directory holding the HFB density files.
+    tab_path : str or Path or None, optional
+        Explicit override for the `.tab` path. If provided, `Z` is ignored.
+    pi : int, default=1
+        Parity selector.
+    E_min_mev, E_max_mev : float
+        Returned energy-grid bounds in MeV.
+    n_points : int, default=2001
+        Number of samples in the returned grid.
+    U_of_E_mev : callable, optional
+        Mapping from energy in eV to excitation energy in MeV. Defaults to \(U = E\).
+
+    Returns
+    -------
+    tuple[numpy.ndarray, numpy.ndarray]
+        `(E_mev, rho_per_mev)` on a uniform grid after summing over spins.
+
+    Raises
+    ------
+    ValueError
+        If neither `Z` nor `tab_path` is provided.
+    FileNotFoundError
+        If the chosen `.tab` file does not exist.
     """
     from .hfb_adapter import (
         load_hfb_record,

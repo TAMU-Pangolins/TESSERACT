@@ -12,6 +12,31 @@ from .resonance import Resonance
 class RatesMCExportOptions:
     """
     Controls how `Resonance` objects are converted into RatesMC resonant rows.
+
+    Attributes
+    ----------
+    use_strength : bool
+        Emit analytical strength `wg` instead of relying solely on width columns.
+    default_frac_unc : float or None
+        Fractional uncertainty applied uniformly to energies, widths, or strengths.
+    l1, l2, l3 : int
+        Orbital angular momenta or multipolarities for channels 1-3.
+    exf_keV : float
+        Excitation energy of the populated final state in keV.
+    int_flag : int
+        RatesMC integration flag, typically `0` for analytical or `1` for numerical.
+    include_g3 : bool
+        Whether the optional third-width columns should be retained.
+    include_corr_frac : bool
+        Whether to emit the `Corr/Frac` column.
+    corr_frac_value : int
+        Integer value written to the `Corr/Frac` column when enabled.
+    j_proj, j_targ : float or None
+        Optional spin overrides used in the statistical factor.
+    precision : int
+        Decimal precision for non-`Ecm` floating columns.
+    ecm_decimals : int
+        Decimal precision for the `Ecm` column.
     """
 
     # Toggle between emitting an analytical strength (omega-gamma) or explicit widths
@@ -42,7 +67,28 @@ class RatesMCExportOptions:
 
 @dataclass
 class RatesMCRow:
-    """Structured representation of one formatted RatesMC resonance row."""
+    """
+    Structured representation of one formatted RatesMC resonance row.
+
+    Attributes
+    ----------
+    Ecm, DEcm : float
+        Resonance energy and uncertainty in keV.
+    wg, Dwg : float
+        Resonance strength and uncertainty in eV.
+    Jr : float
+        Resonance spin.
+    G1, DG1, G2, DG2, G3, DG3 : float
+        Partial widths and uncertainties in eV.
+    L1, L2, L3 : int
+        Orbital angular momenta or multipolarities for channels 1-3.
+    Exf : float
+        Final-state excitation energy in keV.
+    Int : int
+        RatesMC integration flag.
+    corr_frac : int
+        Correlation/fraction flag when that column is enabled.
+    """
 
     Ecm: float
     DEcm: float
@@ -95,6 +141,18 @@ def omega_gamma(
 ) -> float:
     r"""
     Compute the resonance strength \(\omega \gamma\) in eV from partial widths.
+
+    Parameters
+    ----------
+    res : Resonance
+        Resonance containing the widths and spin to use.
+    j_proj, j_targ : float or None, optional
+        Optional projectile and target spin overrides.
+
+    Returns
+    -------
+    float
+        Resonance strength in eV. Returns `0.0` if the total width is nonpositive.
     """
     g = spin_stat_factor(
         res.J,
@@ -116,6 +174,18 @@ def _frac_unc(value: float, frac: Optional[float]) -> float:
 def resonance_to_row(res: Resonance, opts: RatesMCExportOptions) -> RatesMCRow:
     """
     Map a `Resonance` object into a `RatesMCRow`, converting units to keV/eV.
+
+    Parameters
+    ----------
+    res : Resonance
+        Resonance to serialize.
+    opts : RatesMCExportOptions
+        Formatting and conversion controls.
+
+    Returns
+    -------
+    RatesMCRow
+        Structured row ready for text formatting.
     """
     Ecm_keV = res.E_r * 1e-3
     DEcm = _frac_unc(Ecm_keV, opts.default_frac_unc)
@@ -206,6 +276,18 @@ def render_rows(
 ) -> Tuple[List[str], List[int]]:
     """
     Convert resonances to aligned text rows ready for a RatesMC input block.
+
+    Parameters
+    ----------
+    resonances : iterable of Resonance
+        Resonances to serialize.
+    opts : RatesMCExportOptions
+        Formatting and conversion controls.
+
+    Returns
+    -------
+    tuple[list[str], list[int]]
+        Formatted lines and the computed column widths used to align them.
     """
     rows_raw: List[List[str]] = []
     for res in resonances:
@@ -226,7 +308,21 @@ def render_rows(
 def resonant_header_line(
     widths: Optional[List[int]] = None, opts: Optional[RatesMCExportOptions] = None
 ) -> str:
-    """Render the header line corresponding to the active RatesMC columns."""
+    """
+    Render the header line corresponding to the active RatesMC columns.
+
+    Parameters
+    ----------
+    widths : list of int or None, optional
+        Column widths to use for alignment. Defaults to label lengths.
+    opts : RatesMCExportOptions or None, optional
+        Options controlling whether optional columns are present.
+
+    Returns
+    -------
+    str
+        Space-aligned header line.
+    """
     specs = _column_specs(opts)
     active_widths = widths or [len(label) for label, _, _ in specs]
     return " ".join(
@@ -239,6 +335,15 @@ def write_resonant_block(
 ) -> None:
     """
     Write a resonant contribution block, including an optional header, to disk.
+
+    Parameters
+    ----------
+    dest : Path
+        Output file path.
+    rows : list of str
+        Preformatted resonance rows.
+    header : str or None, optional
+        Optional header line written before the rows.
     """
     parts: List[str] = []
     if header:
