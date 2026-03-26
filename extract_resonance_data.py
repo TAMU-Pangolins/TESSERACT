@@ -1,6 +1,56 @@
+import re
+
 import pandas as pd
 from io import StringIO
 import os
+
+
+def load_nuclear_params(infile):
+    """
+    Read Z_proj, A_proj (projectile) and Z_tar, A_tar (target) from the
+    header of a RatesMC input file.
+
+    Looks for lines of the form:
+        2  ! Zproj
+       12  ! Ztarget
+        4.003 ! Aproj
+       22  ! Atarget
+
+    Returns a dict with integer keys: Z_proj, A_proj, Z_tar, A_tar.
+    A values are rounded to the nearest integer (mass number).
+    """
+    params = {}
+    key_map = {
+        'Zproj':   ('Z_proj', int),
+        'Ztarget': ('Z_tar',  int),
+        'Aproj':   ('A_proj', lambda x: int(round(float(x)))),
+        'Atarget': ('A_tar',  lambda x: int(round(float(x)))),
+    }
+
+    with open(infile, 'r') as f:
+        for line in f:
+            comment_idx = line.find('!')
+            if comment_idx == -1:
+                continue
+            comment = line[comment_idx + 1:].strip()
+            # Match keyword at start of comment (e.g. "Ztarget", "Aproj")
+            for keyword, (dest, cast) in key_map.items():
+                if re.match(rf'\b{keyword}\b', comment, re.IGNORECASE):
+                    val_str = line[:comment_idx].strip().split()[0]
+                    try:
+                        params[dest] = cast(val_str)
+                    except (ValueError, IndexError):
+                        pass
+                    break
+            if len(params) == 4:
+                break
+
+    missing = [k for k in ('Z_proj', 'A_proj', 'Z_tar', 'A_tar') if k not in params]
+    if missing:
+        raise ValueError(
+            f"Could not parse nuclear parameters from {infile}: missing {missing}"
+        )
+    return params
 
 
 def extract_data(file):

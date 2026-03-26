@@ -40,7 +40,7 @@ def sample_er_increasing_pdf(n, e_min, e_max, slope=1.0, rng=None):
     return e_min + L * t
 
 
-def porter_thomas_factors(n, df=1, rng=None):
+def porter_thomas_factors(n, mu, df=1, rng=None):
     r"""
     Sample Porter-Thomas factors with
     \(x \sim \chi^2(\nu) / \nu\), where `df` is \(\nu\).
@@ -48,7 +48,7 @@ def porter_thomas_factors(n, df=1, rng=None):
     For `df=1`, the distribution has mean 1 and variance 2.
     """
     rng = np.random.default_rng() if rng is None else rng
-    return rng.chisquare(df, size=n) / float(df)
+    return rng.chisquare(df, size=n) * mu/ float(df)
 
 
 def nonhomogeneous_poisson_placements(rho_func, e_min, e_max, dE, rng=None):

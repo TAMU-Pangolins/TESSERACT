@@ -1,0 +1,23 @@
+# tesseract.in — THICC pipeline input file
+# Run with:  python tesseract.py [--input tesseract.in]
+# ─────────────────────────────────────────────────────────────────────────────
+
+# ── Shared ────────────────────────────────────────────────────────────────────
+reaction   = 22Mg(a,p)25Al   # must match a file in input_dir: <reaction>.txt
+E_min_mev  = 0.1              # MeV  (passed to both build_ratesmc_input and generate_cross_sections)
+E_max_mev  = 10.0             # MeV
+mean_i = 0.010 # mean theta value for incoming channel; dimensionless
+mean_o = 0.0045 # mean theta value for outgoing channel; dimensionless
+
+# ── build_ratesmc_input (Step 1) ──────────────────────────────────────────────
+input_dir  = input/           # directory containing <reaction>.txt template files
+output_dir = outputs/         # root directory for all RatesMC output
+n_samples  = 5000             # --n-density-points (HFB level density grid points)
+runs       = 1                # number of RUN_N realisations to generate
+seed       = 42               # RNG seed for reproducibility
+
+# ── generate_cross_sections_parallel (Step 2) ─────────────────────────────────
+dE         = 0.3     # MeV, comma-separated list of integration bin widths
+n_grid_points = 10000         # total grid points for unintegrated σ(E); also sets integration resolution
+nproc      = 8                # parallel worker processes
+tag        =  _test                # optional suffix for output filenames, e.g. _test (leave blank for default)
