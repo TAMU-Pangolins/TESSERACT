@@ -48,7 +48,11 @@ def porter_thomas_factors(n, mu, df=1, rng=None):
     For `df=1`, the distribution has mean 1 and variance 2.
     """
     rng = np.random.default_rng() if rng is None else rng
-    return rng.chisquare(df, size=n) * mu/ float(df)
+    try:
+        return rng.chisquare(df, size=n) * mu/ float(df)
+    except ValueError:
+        print(f"Invalid parameters: n={n}, mu={mu}, df={df}")
+        return 0.0
 
 
 def nonhomogeneous_poisson_placements(rho_func, e_min, e_max, dE, rng=None):
