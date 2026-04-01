@@ -375,10 +375,10 @@ def main():
                              "(sets integration resolution; default 10000).")
 
     parser.add_argument("--nproc", type=int, default=None)
-    parser.add_argument("--mean-i", dest="mean_i", type=float, default=0.010,
-                        help="Wigner-limit fraction for entrance (alpha) channel")
-    parser.add_argument("--mean-o", dest="mean_o", type=float, default=0.0045,
-                        help="Wigner-limit fraction for exit (proton) channel")
+    # parser.add_argument("--mean-i", dest="mean_i", type=float, default=0.010,
+    #                     help="Theta for entrance channel")
+    # parser.add_argument("--mean-o", dest="mean_o", type=float, default=0.0045,
+    #                     help="Theta for exit channel")
     parser.add_argument("--skip-unintegrated", dest="skip_unintegrated",
                         action="store_true", default=False,
                         help="Skip computing unintegrated cross sections and load from "
@@ -426,9 +426,9 @@ def main():
     # ------------------------------------------------
     # Sample per-resonance widths from Porter-Thomas
     # ------------------------------------------------
-    n = len(E_cm)
-    g1, g2 = sample_widths(A1_target, n, args.mean_i, args.mean_o)
-    print(f"Sampled {n} resonance widths  (mean_i={args.mean_i}, mean_o={args.mean_o})")
+    #n = len(E_cm)
+    #g1, g2 = sample_widths(A1_target, n, args.mean_i, args.mean_o)
+    #print(f"Sampled {n} resonance widths  (mean_i={args.mean_i}, mean_o={args.mean_o})")
 
     res_data = {
         "E_cm": E_cm,
