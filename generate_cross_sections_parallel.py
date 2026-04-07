@@ -299,7 +299,7 @@ def _sigma_worker(args):
             Z1, Z2,
             A1_proj, A1_target,
             res["L"][j],
-            gamma2=res["g2"][j]
+            gamma2=res["g1"][j]
         )
 
         xs_tot += xs_j
