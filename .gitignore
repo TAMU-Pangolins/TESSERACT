@@ -19,3 +19,4 @@ calc_xs_condor.sh
 Figures/
 outputs/
 calc_xs_parallel.py
+talys_mc_parallel.py
