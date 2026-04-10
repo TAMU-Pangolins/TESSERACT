@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import argparse
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import List, Optional, Tuple
 
@@ -13,7 +13,8 @@ from nucres.ratesmc_export import (
     render_rows,
     resonant_header_line,
 )
-from nucres.read_qvals import interpret_z_token, mass_from_token
+from nucres.read_qvals import interpret_z_token, mass_from_token, split_nuclide_token
+from nucres.resonance import penetrability_P_l_mev
 
 
 def _find_resonant_block(lines: List[str]) -> Tuple[int, int, int]:
@@ -160,6 +161,39 @@ def _parse_reaction_quantities(reaction: str) -> Tuple[Optional[int], Optional[s
     if not match:
         return None, None
     return int(match.group(1)), match.group(2)
+
+
+def _mass_number_from_token(token: Optional[str]) -> Optional[int]:
+    if token is None:
+        return None
+    try:
+        return int(float(token))
+    except ValueError:
+        return split_nuclide_token(token)[0]
+
+
+def _convert_reduced_to_partial_widths(
+    resonances,
+    metadata: TemplateMetadata,
+    l1_default: int,
+    r0: float = 1.25,
+):
+    projectile = (metadata.proj_Z, _mass_number_from_token(metadata.proj_A_token))
+    target = (metadata.Z, _mass_number_from_token(metadata.targ_A_token))
+    converted = []
+    for res in resonances:
+        er_mev = max(res.E_r, 0.0) * 1e-6
+        g1 = res.Gamma_i
+        l1 = res.L1 if res.L1 is not None else l1_default
+
+        z1, a1 = projectile
+        zt, at = target
+        if None not in (z1, a1, zt, at):
+            p1 = penetrability_P_l_mev(l1, z1, zt, a1, at, er_mev, r0)
+            g1 = 2.0 * g1 * p1
+
+        converted.append(replace(res, Gamma_i=g1))
+    return converted
 
 
 def _parse_template_metadata(lines: List[str]) -> TemplateMetadata:
@@ -345,7 +379,12 @@ def build_ratesmc_input(args) -> None:
         precision=args.precision,
     )
 
-    rows, widths = render_rows(generated.resonances, opts)
+    export_resonances = _convert_reduced_to_partial_widths(
+        generated.resonances,
+        metadata,
+        l1_default=args.l1,
+    )
+    rows, widths = render_rows(export_resonances, opts)
     header_line = resonant_header_line(widths, opts)
     inject_rows(
         template_path,
