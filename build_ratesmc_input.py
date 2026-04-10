@@ -113,6 +113,20 @@ class TemplateMetadata:
     targ_A_token: Optional[str]
 
 
+_LIGHT_PARTICLES = {
+    "n": (0, 1),
+    "p": (1, 1),
+    "d": (1, 2),
+    "t": (1, 3),
+    "a": (2, 4),
+    "alpha": (2, 4),
+    "g": None,
+    "gamma": None,
+}
+
+_PARTICLE_EXIT_CHANNELS = {"n", "p", "d", "t", "a", "alpha"}
+
+
 def _resolve_paths(
     template_arg: Optional[Path], output_arg: Optional[Path], output_dir: Optional[Path]
 ) -> Tuple[Path, Optional[Path], Optional[Path]]:
@@ -172,19 +186,60 @@ def _mass_number_from_token(token: Optional[str]) -> Optional[int]:
         return split_nuclide_token(token)[0]
 
 
+def _channel_numbers_from_token(token: Optional[str]) -> Tuple[Optional[int], Optional[int]]:
+    if token is None:
+        return None, None
+    mass_number, symbol = split_nuclide_token(token)
+    if symbol is None:
+        return None, None
+    special = _LIGHT_PARTICLES.get(symbol.lower())
+    if special is not None:
+        return special
+    return interpret_z_token(token), mass_number
+
+
+def _parse_reaction_channels(
+    reaction: str,
+) -> Tuple[
+    Tuple[Optional[int], Optional[int]],
+    Tuple[Optional[int], Optional[int]],
+    Tuple[Optional[int], Optional[int]],
+]:
+    match = re.match(r"\s*([^(]+)\(([^,]+),([^)]+)\)\s*([^\s]+)?", reaction)
+    if not match:
+        return (None, None), (None, None), (None, None)
+    projectile = _channel_numbers_from_token(match.group(2).strip())
+    ejectile = _channel_numbers_from_token(match.group(3).strip())
+    residual = _channel_numbers_from_token(match.group(4).strip() if match.group(4) else None)
+    return projectile, ejectile, residual
+
+
+def _reaction_exit_symbol(reaction: str) -> Optional[str]:
+    match = re.match(r"\s*([^(]+)\(([^,]+),([^)]+)\)\s*([^\s]+)?", reaction)
+    if not match:
+        return None
+    _, symbol = split_nuclide_token(match.group(3).strip())
+    return symbol.lower() if symbol is not None else None
+
+
 def _convert_reduced_to_partial_widths(
     resonances,
     metadata: TemplateMetadata,
     l1_default: int,
+    l2_default: int,
     r0: float = 1.25,
 ):
     projectile = (metadata.proj_Z, _mass_number_from_token(metadata.proj_A_token))
     target = (metadata.Z, _mass_number_from_token(metadata.targ_A_token))
+    _, ejectile, residual = _parse_reaction_channels(metadata.reaction)
+    convert_exit = _reaction_exit_symbol(metadata.reaction) in _PARTICLE_EXIT_CHANNELS
     converted = []
     for res in resonances:
         er_mev = max(res.E_r, 0.0) * 1e-6
         g1 = res.Gamma_i
+        g2 = res.Gamma_o
         l1 = res.L1 if res.L1 is not None else l1_default
+        l2 = res.L2 if res.L2 is not None else l2_default
 
         z1, a1 = projectile
         zt, at = target
@@ -192,7 +247,13 @@ def _convert_reduced_to_partial_widths(
             p1 = penetrability_P_l_mev(l1, z1, zt, a1, at, er_mev, r0)
             g1 = 2.0 * g1 * p1
 
-        converted.append(replace(res, Gamma_i=g1))
+        z2, a2 = ejectile
+        zr, ar = residual
+        if convert_exit and None not in (z2, a2, zr, ar):
+            p2 = penetrability_P_l_mev(l2, z2, zr, a2, ar, er_mev, r0)
+            g2 = 2.0 * g2 * p2
+
+        converted.append(replace(res, Gamma_i=g1, Gamma_o=g2))
     return converted
 
 
@@ -383,6 +444,7 @@ def build_ratesmc_input(args) -> None:
         generated.resonances,
         metadata,
         l1_default=args.l1,
+        l2_default=args.l2,
     )
     rows, widths = render_rows(export_resonances, opts)
     header_line = resonant_header_line(widths, opts)
