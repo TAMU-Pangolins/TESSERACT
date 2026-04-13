@@ -90,6 +90,19 @@ def _bool(val, default: bool) -> bool:
     return str(val).lower() in ('true', '1', 'yes')
 
 
+def _banner(label: str, kind: str = "start") -> None:
+    """Print a section-boundary banner to stdout (flush=True for nohup logs)."""
+    width = 60
+    if kind == "start":
+        print(f"\n{'─' * width}", flush=True)
+        print(f"  >> Starting [{label}]", flush=True)
+        print(f"{'─' * width}", flush=True)
+    else:
+        print(f"{'─' * width}", flush=True)
+        print(f"  << [{label}] finished", flush=True)
+        print(f"{'─' * width}\n", flush=True)
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Output-path helpers
 # ─────────────────────────────────────────────────────────────────────────────
@@ -426,7 +439,9 @@ def main():
 
     # ── Step 1: [resonance] ───────────────────────────────────────────────────
     if has_resonance:
+        _banner("resonance", "start")
         step1_build_ratesmc(basics, resonance)
+        _banner("resonance", "end")
     elif has_integration or has_talys:
         _check_resonance_outputs(reaction, output_dir, runs, next_step='integration')
 
@@ -434,7 +449,9 @@ def main():
     if has_integration:
         if 'dE' not in integration:
             sys.exit("Missing 'dE' in [integration] section.")
+        _banner("integration", "start")
         step2_generate_xs(basics, integration, runs)
+        _banner("integration", "end")
     elif has_talys:
         _check_integration_outputs(talys.get('exp_file', ''))
 
@@ -456,9 +473,11 @@ def main():
         else:
             exp_files = [Path(talys['exp_file'])]
 
+        _banner("talys", "start")
         step3_talys_opt(talys, exp_files, args.input)
+        _banner("talys", "end")
 
-    print("\nPipeline complete.")
+    print("Pipeline complete.")
 
 
 if __name__ == "__main__":

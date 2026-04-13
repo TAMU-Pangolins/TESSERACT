@@ -36,8 +36,7 @@ residual_A   = 25
 # buildratesMC.sh reads samples, runs, mean_i, mean_o from this section.
 [resonance]
 samples           = 5000         # --n-density-points: HFB level-density grid resolution
-runs              = 1            # number of Monte Carlo RUN_N realisations to generate
-seed              = 42           # RNG seed for reproducibility
+runs              = 1000            # number of Monte Carlo RUN_N realisations to generate
 mean_i            = 0.010        # Wigner-limit fraction for entrance (alpha) channel
 mean_o            = 0.0045       # Wigner-limit fraction for exit (proton) channel
 input_dir         = input/       # directory containing <reaction>.txt template files
@@ -47,13 +46,7 @@ output_dir        = outputs/     # root directory for all RatesMC output
 l1                = 0            # entrance channel orbital angular momentum L1
 l2                = 1            # exit channel orbital angular momentum L2
 l3                = 0            # spectator channel orbital angular momentum L3
-pi                = 1            # parity (+1 or -1)
-delta_E_mev       = 0.05         # bin width for level placements (MeV)
 n_sigma_points    = 4000         # resolution for sigma(E) diagnostic curve
-U_offset_mev      = 8.0          # excitation energy offset added to E_lab in density lookup (MeV)
-default_frac_unc  = 0.001        # fractional uncertainty for Ecm and widths (0.1%)
-int_flag          = 1            # RatesMC integration flag: 0=analytical, 1=numerical
-precision         = 3            # decimal digits for non-Ecm output columns
 n_random_samples  = 1            # random samples written into RatesMC .in (>5000 recommended)
 use_strength      = false        # true: emit omega-gamma; false: emit explicit partial widths
 sample_J          = true         # true: sample J from HFB rho_J; false: use fixed --J
@@ -64,7 +57,7 @@ auto_l1           = true         # true: compute L1 from J, s1, s2, parity; fals
 # Inputs for generate_cross_sections_parallel.py (Step 2).
 # reaction / E_min_mev / E_max_mev are inherited from [basics].
 [integration]
-dE                = 0.3          # MeV; comma-separated list of integration bin widths, e.g. 0.1,0.2,0.3
+dE                = 0.2          # MeV; comma-separated list of integration bin widths, e.g. 0.1,0.2,0.3
 n_grid_points     = 10000        # unintegrated σ(E) grid points (also sets integration resolution)
 nproc             = 8            # parallel worker processes
 tag               = _test        # optional suffix appended to output filenames (leave blank for none)
