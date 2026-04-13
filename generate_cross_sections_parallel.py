@@ -389,11 +389,13 @@ def main():
     parser.add_argument("--tag", type=str, default="",
                         help="Optional suffix appended to output filenames before .txt "
                              "(e.g. --tag _test produces 22Mg(a,p)25Al_xs_unintegrated_parallel_test.txt)")
+    parser.add_argument("--run-idx", dest="run_idx", type=int, default=0,
+                        help="RUN_N index to read the RatesMC .in file from (default 0).")
     args = parser.parse_args()
 
     reaction = args.reaction
 
-    output_dir = f"outputs/{reaction}/RUN_0/"
+    output_dir = f"outputs/{reaction}/RUN_{args.run_idx}/"
     infile = f"{output_dir}{reaction}.in"
 
     if not os.path.exists(infile):

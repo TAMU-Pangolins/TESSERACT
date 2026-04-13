@@ -1,23 +1,128 @@
-# tesseract.in — THICC pipeline input file
+# tesseract.in — THICC pipeline meta-input file
 # Run with:  python tesseract.py [--input tesseract.in]
+# buildratesMC.sh also reads this file; set TESSERACT_IN=<path> to override.
+# ─────────────────────────────────────────────────────────────────────────────
+# Format
+#   [section]          INI-style section header (lowercase, no spaces)
+#   key = value        key/value pairs; inline # comments are stripped
+#   \opt ... \opt      TALYS optimization block (raw TALYS-format lines)
+#
+# Lookup order for any key: own section → [basics] → built-in default.
+# Shared keys (reaction, E_min_mev, E_max_mev) live in [basics] only.
 # ─────────────────────────────────────────────────────────────────────────────
 
-# ── Shared ────────────────────────────────────────────────────────────────────
-reaction   = 22Mg(a,p)25Al   # must match a file in input_dir: <reaction>.txt
-E_min_mev  = 0.1              # MeV  (passed to both build_ratesmc_input and generate_cross_sections)
-E_max_mev  = 10.0             # MeV
-mean_i = 0.010 # mean theta value for incoming channel; dimensionless
-mean_o = 0.0045 # mean theta value for outgoing channel; dimensionless
 
-# ── build_ratesmc_input (Step 1) ──────────────────────────────────────────────
-input_dir  = input/           # directory containing <reaction>.txt template files
-output_dir = outputs/         # root directory for all RatesMC output
-n_samples  = 5000             # --n-density-points (HFB level density grid points)
-runs       = 1                # number of RUN_N realisations to generate
-seed       = 42               # RNG seed for reproducibility
+# ── [basics] ─────────────────────────────────────────────────────────────────
+# Nuclear identities and the energy window shared by all pipeline steps.
+# Other sections inherit reaction / E_min_mev / E_max_mev from here.
+[basics]
+reaction     = 22Mg(a,p)25Al    # notation: <target>(<proj>,<eject>)<residual>
+E_min_mev    = 0.1               # MeV — lower energy bound (resonance sampling + integration)
+E_max_mev    = 10.0              # MeV — upper energy bound
 
-# ── generate_cross_sections_parallel (Step 2) ─────────────────────────────────
-dE         = 0.3     # MeV, comma-separated list of integration bin widths
-n_grid_points = 10000         # total grid points for unintegrated σ(E); also sets integration resolution
-nproc      = 8                # parallel worker processes
-tag        =  _test                # optional suffix for output filenames, e.g. _test (leave blank for default)
+projectile_Z = 2                 # alpha
+projectile_A = 4
+target_Z     = 12                # Mg-22
+target_A     = 22
+ejectile_Z   = 1                 # proton
+ejectile_A   = 1
+residual_Z   = 13                # Al-25
+residual_A   = 25
+
+
+# ── [resonance] ──────────────────────────────────────────────────────────────
+# Inputs for build_ratesmc_input.py (Step 1).
+# reaction / E_min_mev / E_max_mev are inherited from [basics].
+# buildratesMC.sh reads samples, runs, mean_i, mean_o from this section.
+[resonance]
+samples           = 5000         # --n-density-points: HFB level-density grid resolution
+runs              = 1            # number of Monte Carlo RUN_N realisations to generate
+seed              = 42           # RNG seed for reproducibility
+mean_i            = 0.010        # Wigner-limit fraction for entrance (alpha) channel
+mean_o            = 0.0045       # Wigner-limit fraction for exit (proton) channel
+input_dir         = input/       # directory containing <reaction>.txt template files
+output_dir        = outputs/     # root directory for all RatesMC output
+
+# Additional build_ratesmc_input.py options
+l1                = 0            # entrance channel orbital angular momentum L1
+l2                = 1            # exit channel orbital angular momentum L2
+l3                = 0            # spectator channel orbital angular momentum L3
+pi                = 1            # parity (+1 or -1)
+delta_E_mev       = 0.05         # bin width for level placements (MeV)
+n_sigma_points    = 4000         # resolution for sigma(E) diagnostic curve
+U_offset_mev      = 8.0          # excitation energy offset added to E_lab in density lookup (MeV)
+default_frac_unc  = 0.001        # fractional uncertainty for Ecm and widths (0.1%)
+int_flag          = 1            # RatesMC integration flag: 0=analytical, 1=numerical
+precision         = 3            # decimal digits for non-Ecm output columns
+n_random_samples  = 1            # random samples written into RatesMC .in (>5000 recommended)
+use_strength      = false        # true: emit omega-gamma; false: emit explicit partial widths
+sample_J          = true         # true: sample J from HFB rho_J; false: use fixed --J
+auto_l1           = true         # true: compute L1 from J, s1, s2, parity; false: use fixed l1
+
+
+# ── [integration] ────────────────────────────────────────────────────────────
+# Inputs for generate_cross_sections_parallel.py (Step 2).
+# reaction / E_min_mev / E_max_mev are inherited from [basics].
+[integration]
+dE                = 0.3          # MeV; comma-separated list of integration bin widths, e.g. 0.1,0.2,0.3
+n_grid_points     = 10000        # unintegrated σ(E) grid points (also sets integration resolution)
+nproc             = 8            # parallel worker processes
+tag               = _test        # optional suffix appended to output filenames (leave blank for none)
+skip_unintegrated = false        # true: skip recomputing σ(E) and reuse existing file
+skip_integrated   = false        # true: skip integrated cross-section computation entirely
+
+
+# ── [talys] ──────────────────────────────────────────────────────────────────
+# TALYS model parameters and optimizer settings for talys_xs_with_unc.py.
+# projectile / element / mass are derived from [basics] at runtime.
+#
+# Keys here split into two groups (distinguished by talys_xs_with_unc.py):
+#   TALYS keywords  — written verbatim to talys.inp as "keyword value"
+#   Script settings — consumed by the optimizer; NOT written to talys.inp
+#
+# \opt block format:  keyword [qualifiers...]  x0  lo  hi
+#   keyword [qualifiers] — TALYS prefix written to talys.inp as-is
+#   x0                   — initial value for the optimizer
+#   lo / hi              — lower / upper bounds (penalty applied outside)
+#   Comment out a line to exclude that parameter from the active fit.
+[talys]
+
+# ── TALYS fixed model parameters (written to talys.inp) ──────────────────────
+ldmodel  = 1              # level-density model: 1=BSFG, 2=CTM, 3=HFBM, 4-6=alt
+alphaomp = 6              # alpha optical model potential choice
+xsesp    = 1.e-20         # cross-section cutoff
+transesp = 1.e-20         # transmission cutoff
+
+# ── Script / optimizer settings (NOT written to talys.inp) ───────────────────
+exp_file        = cross_sections/22Mg_ap_25Al_integrated_xs_dE_0.3.txt
+output_file     = talys_optimization.out
+rates_mc_file   = RatesMC.out
+method          = Powell          # scipy optimizer: Powell or Nelder-Mead
+maxiter         = 250
+xtol            = 1e-3            # Powell parameter tolerance
+ftol            = 1e-3            # Powell function tolerance
+exp_rel_err     = 0.10            # fractional experimental uncertainty (fallback when no σ col)
+e_fit_min       = 2.0             # minimum energy included in chi-square fit (MeV)
+prior_rel_std   = 0.15            # Gaussian prior relative width; set 0 to disable
+prior_abs_floor = 0.01            # floor for prior sigma denominator
+debug_every     = 10              # print debug line every N objective evaluations
+rate_xmin       = 0.0             # T9 range for rate plot lower bound (GK)
+rate_xmax       = 2.0             # T9 range for rate plot upper bound (GK)
+plot_log_y_xs   = true
+plot_log_y_rate = true
+
+\opt
+# Format:  keyword [qualifiers...]  x0  lo  hi
+# The last three tokens are always: initial value, lower bound, upper bound.
+# Written to talys.inp as:  keyword [qualifiers...] {current_value}
+# Comment a line to exclude it from the active optimisation set.
+
+# --- Optical model potential adjustments ---
+rvadjust   a     1.00    0.5    2.0   # real volume radius for alpha
+avadjust   a     1.00    0.5    2.0   # real volume diffuseness for alpha
+
+# --- CTM level-density parameters (keyword  Z  A  x0  lo  hi) ---
+# Residual: 25Al (Z=13, A=25)
+T      13   25    1.4    0.5    4.0   # CTM nuclear temperature
+E0     13   25   -0.5   -3.0   3.0   # CTM energy shift
+\opt

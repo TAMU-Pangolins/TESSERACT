@@ -210,7 +210,7 @@ def sigma_bw_constant(E_eV, r):
     return S * (PI / k**2) * BW * M_TO_BARNS
 
 
-def sigma_bw_energy_dep(E_eV, r, Z1, Z2, A1, A2, l, gamma2, r0=1.25, P_interp=None):
+def sigma_bw_energy_dep(E_eV, r, Z1, Z2, A1, A2, l, Gamma_i_Er_eV, r0=1.25, P_interp=None):
     r"""
     Evaluate a Breit-Wigner cross section with energy-dependent entrance width.
 
@@ -223,10 +223,10 @@ def sigma_bw_energy_dep(E_eV, r, Z1, Z2, A1, A2, l, gamma2, r0=1.25, P_interp=No
     If `r.Gamma_i <= 0`, the resonance-energy width is inferred from
 
     \[
-    \Gamma_i(E_r) = 2 \gamma^2 P_\ell(E_r)
+    \Gamma_i(E_r) = 2 \gamma^2 P_\ell(E_r) (precomputed from build_ratesmc_input.py)
     \]
 
-    and `gamma2` is interpreted in eV.
+    and `gamma' is sampled from the Porter-Thomas distribution.
 
     Parameters
     ----------
@@ -240,8 +240,8 @@ def sigma_bw_energy_dep(E_eV, r, Z1, Z2, A1, A2, l, gamma2, r0=1.25, P_interp=No
         Projectile and target mass numbers.
     l : int
         Entrance-channel orbital angular momentum.
-    gamma2 : float
-        Reduced width parameter used when building the entrance width.
+    Gamma_i_Er_eV : float
+        Partial width parameter for the entrance channel.
     r0 : float, default=1.25
         Radius coefficient in fm.
     P_interp : callable, optional
@@ -280,7 +280,7 @@ def sigma_bw_energy_dep(E_eV, r, Z1, Z2, A1, A2, l, gamma2, r0=1.25, P_interp=No
     # if (r.Gamma_i is not None) and (r.Gamma_i > 0.0):
     #    Gamma_i_Er_eV = r.Gamma_i
     # else:
-    Gamma_i_Er_eV = 2.0 * gamma2 * P_Er  # eV
+    #Gamma_i_Er_eV = 2.0 * gamma2 * P_Er  # eV
 
     Gamma_i_E_eV = Gamma_i_Er_eV * (P_E / P_Er) if P_Er != 0.0 else np.zeros_like(P_E)
 

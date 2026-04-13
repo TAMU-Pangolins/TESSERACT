@@ -245,13 +245,13 @@ def _convert_reduced_to_partial_widths(
         zt, at = target
         if None not in (z1, a1, zt, at):
             p1 = penetrability_P_l_mev(l1, z1, zt, a1, at, er_mev, r0)
-            g1 = 2.0 * g1 * p1
+            g1 = 2.0 * g1**2 * p1
 
         z2, a2 = ejectile
         zr, ar = residual
         if convert_exit and None not in (z2, a2, zr, ar):
             p2 = penetrability_P_l_mev(l2, z2, zr, a2, ar, er_mev, r0)
-            g2 = 2.0 * g2 * p2
+            g2 = 2.0 * g2**2 * p2
 
         converted.append(replace(res, Gamma_i=g1, Gamma_o=g2))
     return converted
