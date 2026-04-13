@@ -140,11 +140,12 @@ def _talys_npz_path(exp_file: Path) -> Path:
 # Pre-flight checks (called when a section is absent)
 # ─────────────────────────────────────────────────────────────────────────────
 def _check_resonance_outputs(reaction: str, output_dir: str, runs: int,
-                              next_step: str) -> None:
-    missing = [
-        p for p in _resonance_output_paths(reaction, output_dir, runs)
-        if not p.exists()
-    ]
+                              next_step: str,
+                              run_idx: int = None) -> None:
+    all_paths = (_resonance_output_paths(reaction, output_dir, runs)
+                 if run_idx is None
+                 else [Path(output_dir) / reaction / f"RUN_{run_idx}" / f"{reaction}.in"])
+    missing = [p for p in all_paths if not p.exists()]
     if missing:
         sys.exit(
             f"\n[{next_step}] requires [resonance] outputs that are missing "
@@ -194,10 +195,12 @@ def compute_gamma(A_tar: int, mean_i: float, mean_o: float):
 # ─────────────────────────────────────────────────────────────────────────────
 # Step 1 — [resonance]
 # ─────────────────────────────────────────────────────────────────────────────
-def step1_build_ratesmc(basics: dict, resonance: dict) -> None:
+def step1_build_ratesmc(basics: dict, resonance: dict,
+                        run_idx: int = None) -> None:
     """
     Run build_ratesmc_input.py for each RUN_j.
     Skips a run silently if its .in file already exists.
+    If run_idx is given, only process that single run.
     """
     reaction   = basics['reaction']
     E_min      = basics.get('E_min_mev',  '0.1')
@@ -223,10 +226,11 @@ def step1_build_ratesmc(basics: dict, resonance: dict) -> None:
         A_tar, float(mean_i), float(mean_o)
     )
     print(f"[resonance] gamma_i = {gamma_i:.4e} eV  |  gamma_o = {gamma_o:.4e} eV")
-    print(f"[resonance] runs = {runs}")
+    run_range = [run_idx] if run_idx is not None else range(runs)
+    print(f"[resonance] processing run(s): {list(run_range)}")
 
     n_skipped = 0
-    for j in range(runs):
+    for j in run_range:
         run_dir   = Path(output_dir) / reaction / f"RUN_{j}"
         output_in = run_dir / f"{reaction}.in"
 
@@ -283,9 +287,11 @@ def step1_build_ratesmc(basics: dict, resonance: dict) -> None:
 # ─────────────────────────────────────────────────────────────────────────────
 # Step 2 — [integration]
 # ─────────────────────────────────────────────────────────────────────────────
-def step2_generate_xs(basics: dict, integration: dict, runs: int) -> None:
+def step2_generate_xs(basics: dict, integration: dict, runs: int,
+                      run_idx: int = None) -> None:
     """
     Run generate_cross_sections_parallel.py once per run index j = 0..runs-1.
+    If run_idx is given, only process that single run.
 
     Output filenames encode the run index via --tag:
       unintegrated : {reaction}_xs_unintegrated_parallel_{base_tag}_run{j}.txt
@@ -304,8 +310,9 @@ def step2_generate_xs(basics: dict, integration: dict, runs: int) -> None:
     target   = rxn.group(1) if rxn else reaction
     residual = rxn.group(2) if rxn else ""
 
+    run_range = [run_idx] if run_idx is not None else range(runs)
     n_skipped = 0
-    for j in range(runs):
+    for j in run_range:
         tag_j       = f"{base_tag}_run{j}"           # e.g. "_test_run0"
         tag_clean_j = tag_j.lstrip('_')              # e.g.  "test_run0"
         tag_suffix  = f"_{tag_clean_j}" if tag_clean_j else ""
@@ -351,13 +358,19 @@ def step2_generate_xs(basics: dict, integration: dict, runs: int) -> None:
 # ─────────────────────────────────────────────────────────────────────────────
 # Step 3 — [talys]
 # ─────────────────────────────────────────────────────────────────────────────
-def step3_talys_opt(talys: dict, exp_files: list, input_path: str) -> None:
+def step3_talys_opt(talys: dict, exp_files: list, input_path: str,
+                    run_idx: int = None) -> None:
     """
     Invoke talys_opt_with_unc.py once for every file in *exp_files*.
     Skips a file silently if its results .npz already exists.
+    If run_idx is given, only process files whose name contains _run{run_idx}.
 
     exp_files : list of Path — the integrated XS files to fit
     """
+    if run_idx is not None:
+        exp_files = [f for f in exp_files if f"_run{run_idx}" in f.stem]
+        if not exp_files:
+            sys.exit(f"[talys] No exp_files found matching run index {run_idx}.")
     default_script = Path(__file__).resolve().parent / "talys_opt_with_unc.py"
     script_path    = Path(talys.get('talys_script', str(default_script)))
 
@@ -396,6 +409,10 @@ def main():
     parser = argparse.ArgumentParser(description="TESSERACT pipeline driver")
     parser.add_argument("--input", default="tesseract.in",
                         help="Path to the input file (default: tesseract.in)")
+    parser.add_argument("--run-idx", dest="run_idx", type=int, default=None,
+                        help="Process only this run index (0-based). "
+                             "If omitted, all runs are processed (nohup mode). "
+                             "Use $(Process) in condor submit files.")
     args = parser.parse_args()
 
     raw = parse_input_file(args.input)
@@ -425,9 +442,15 @@ def main():
     active  = [s for s in STEPS if s in raw]
     skipped = [s for s in STEPS if s not in raw]
 
+    run_idx = args.run_idx
+
     print(f"TESSERACT  —  reaction: {reaction}")
     print(f"  E_min = {basics.get('E_min_mev','0.1')} MeV  |  "
           f"E_max = {basics.get('E_max_mev','10.0')} MeV  |  runs = {runs}")
+    if run_idx is not None:
+        print(f"  Run index : {run_idx}  (condor mode — single run)")
+    else:
+        print(f"  Run index : all 0..{runs-1}  (nohup mode)")
     print(f"  Active  sections : {active or '(none)'}")
     if skipped:
         print(f"  Skipped sections : {skipped}  (outputs assumed to exist)")
@@ -440,17 +463,18 @@ def main():
     # ── Step 1: [resonance] ───────────────────────────────────────────────────
     if has_resonance:
         _banner("resonance", "start")
-        step1_build_ratesmc(basics, resonance)
+        step1_build_ratesmc(basics, resonance, run_idx=run_idx)
         _banner("resonance", "end")
     elif has_integration or has_talys:
-        _check_resonance_outputs(reaction, output_dir, runs, next_step='integration')
+        _check_resonance_outputs(reaction, output_dir, runs,
+                                 next_step='integration', run_idx=run_idx)
 
     # ── Step 2: [integration] ─────────────────────────────────────────────────
     if has_integration:
         if 'dE' not in integration:
             sys.exit("Missing 'dE' in [integration] section.")
         _banner("integration", "start")
-        step2_generate_xs(basics, integration, runs)
+        step2_generate_xs(basics, integration, runs, run_idx=run_idx)
         _banner("integration", "end")
     elif has_talys:
         _check_integration_outputs(talys.get('exp_file', ''))
@@ -463,8 +487,12 @@ def main():
             dE_lst   = [x.strip() for x in integration['dE'].split(',')]
             base_tag = integration.get('tag', '')
             exp_files = _integrated_output_paths(reaction, dE_lst, base_tag, runs)
-            # Sanity-check: all files must exist before feeding them to TALYS
-            missing = [p for p in exp_files if not p.exists()]
+            # Sanity-check: files for this run must exist before feeding to TALYS
+            check_files = (
+                [f for f in exp_files if f"_run{run_idx}" in f.stem]
+                if run_idx is not None else exp_files
+            )
+            missing = [p for p in check_files if not p.exists()]
             if missing:
                 sys.exit(
                     "[talys] Some integrated XS files are unexpectedly missing:\n"
@@ -474,7 +502,7 @@ def main():
             exp_files = [Path(talys['exp_file'])]
 
         _banner("talys", "start")
-        step3_talys_opt(talys, exp_files, args.input)
+        step3_talys_opt(talys, exp_files, args.input, run_idx=run_idx)
         _banner("talys", "end")
 
     print("Pipeline complete.")
