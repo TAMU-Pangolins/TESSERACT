@@ -513,7 +513,8 @@ def main():
             xs_slice = xs_unint[start:end]
             xs_int   = np.trapz(xs_slice, E_slice)
             xs_bin.append(xs_int * 1e3 / dE)   # convert to mb and normalise by bin width
-            E_bins.append(E_slice[0])
+            E_bins.append(0.5 * (E_slice[0] + E_slice[-1]))
+
 
         xs_bin = np.array(xs_bin)
         E_bins = np.array(E_bins)

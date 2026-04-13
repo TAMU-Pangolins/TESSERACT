@@ -209,7 +209,7 @@ def step1_build_ratesmc(basics: dict, resonance: dict,
     output_dir = resonance.get('output_dir', 'outputs/')
     n_samples  = resonance.get('samples',    '5000')
     runs       = int(resonance.get('runs',   '1'))
-    seed       = resonance.get('seed',       '42')
+    seed       = resonance.get('seed',       None)
     mean_i     = resonance.get('mean_i',     '0.010')
     mean_o     = resonance.get('mean_o',     '0.0045')
 
@@ -251,7 +251,6 @@ def step1_build_ratesmc(basics: dict, resonance: dict,
             "--n-density-points", n_samples,
             "--Gamma-i-mean-eV",  str(gamma_i),
             "--Gamma-o-mean-eV",  str(gamma_o),
-            "--seed",             seed,
             "--l1",               resonance.get('l1',               '0'),
             "--l2",               resonance.get('l2',               '1'),
             "--l3",               resonance.get('l3',               '0'),
@@ -264,6 +263,8 @@ def step1_build_ratesmc(basics: dict, resonance: dict,
             "--precision",        resonance.get('precision',        '3'),
             "--n-random-samples", resonance.get('n_random_samples', '1'),
         ]
+        if seed is not None:
+            cmd.extend(["--seed", seed])
         if _bool(resonance.get('use_strength'), False):
             cmd.append("--use-strength")
         if not _bool(resonance.get('sample_J'), True):
