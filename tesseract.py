@@ -118,7 +118,8 @@ def _resonance_output_paths(reaction: str, output_dir: str, runs: int):
     ]
 
 
-def _integrated_output_paths(reaction: str, dE_list: list, tag: str, runs: int):
+def _integrated_output_paths(reaction: str, dE_list: list, tag: str, runs: int,
+                              output_dir: str = "."):
     """
     Return all integrated XS file paths that [integration] will produce.
     One file per (run index, bin width).
@@ -132,7 +133,7 @@ def _integrated_output_paths(reaction: str, dE_list: list, tag: str, runs: int):
         tag_suffix = f"_{tag_j.lstrip('_')}" if tag_j.lstrip('_') else ""
         for dE in dE_list:
             paths.append(
-                Path(f"{target}_ap_{residual}_integrated_xs_dE_{dE}{tag_suffix}.csv")
+                Path(output_dir) / f"{target}_ap_{residual}_integrated_xs_dE_{dE}{tag_suffix}.csv"
             )
     return paths
 
@@ -305,12 +306,15 @@ def step2_generate_xs(basics: dict, integration: dict, runs: int,
 
     Skips a (run, file) silently if the outputs already exist.
     """
-    reaction = basics['reaction']
-    E_min    = basics.get('E_min_mev', '0.1')
-    E_max    = basics.get('E_max_mev', '10.0')
-    dE       = integration['dE']
-    base_tag = integration.get('tag', '')          # e.g. "_test"
-    dE_lst   = [x.strip() for x in dE.split(',')]
+    reaction      = basics['reaction']
+    E_min         = basics.get('E_min_mev', '0.1')
+    E_max         = basics.get('E_max_mev', '10.0')
+    dE            = integration['dE']
+    base_tag      = integration.get('tag', '')
+    res_output_dir = integration.get('resonance_output_dir',
+                                     basics.get('output_dir', 'outputs'))
+    int_output_dir = integration.get('output_dir', '.')
+    dE_lst        = [x.strip() for x in dE.split(',')]
 
     rxn = re.match(r'([^(]+)\(a,p\)(.+)', reaction)
     target   = rxn.group(1) if rxn else reaction
@@ -319,14 +323,14 @@ def step2_generate_xs(basics: dict, integration: dict, runs: int,
     run_range = [run_idx] if run_idx is not None else range(runs)
     n_skipped = 0
     for j in run_range:
-        tag_j       = f"{base_tag}_run{j}"           # e.g. "_test_run0"
-        tag_clean_j = tag_j.lstrip('_')              # e.g.  "test_run0"
+        tag_j       = f"{base_tag}_run{j}"
+        tag_clean_j = tag_j.lstrip('_')
         tag_suffix  = f"_{tag_clean_j}" if tag_clean_j else ""
 
         # All expected outputs for this run
-        unint = Path(f"{reaction}_xs_unintegrated_parallel{tag_suffix}.txt")
+        unint = Path(int_output_dir) / f"{reaction}_xs_unintegrated_parallel{tag_suffix}.txt"
         int_files = [
-            Path(f"{target}_ap_{residual}_integrated_xs_dE_{dE}{tag_suffix}.csv")
+            Path(int_output_dir) / f"{target}_ap_{residual}_integrated_xs_dE_{dE}{tag_suffix}.csv"
             for dE in dE_lst
         ]
         all_exist = unint.exists() and all(f.exists() for f in int_files)
@@ -336,14 +340,16 @@ def step2_generate_xs(basics: dict, integration: dict, runs: int,
 
         cmd = [
             _PYTHON, str(_SCRIPT_DIR / "generate_cross_sections_parallel.py"),
-            "--reaction",      reaction,
-            "--E-min-mev",     E_min,
-            "--E-max-mev",     E_max,
-            "--dE",            dE,
-            "--n-grid-points", integration.get('n_grid_points', '10000'),
-            "--nproc",         integration.get('nproc',         '1'),
-            "--tag",           tag_j,
-            "--run-idx",       str(j),
+            "--reaction",               reaction,
+            "--E-min-mev",              E_min,
+            "--E-max-mev",              E_max,
+            "--dE",                     dE,
+            "--n-grid-points",          integration.get('n_grid_points', '10000'),
+            "--nproc",                  integration.get('nproc',         '1'),
+            "--tag",                    tag_j,
+            "--run-idx",                str(j),
+            "--resonance-output-dir",   res_output_dir,
+            "--output-dir",             int_output_dir,
         ]
         # Skip sub-steps whose files already exist
         if unint.exists():
@@ -502,9 +508,11 @@ def main():
     # When [integration] was absent, use the single exp_file from [talys].
     if has_talys:
         if has_integration:
-            dE_lst   = [x.strip() for x in integration['dE'].split(',')]
-            base_tag = integration.get('tag', '')
-            exp_files = _integrated_output_paths(reaction, dE_lst, base_tag, runs)
+            dE_lst        = [x.strip() for x in integration['dE'].split(',')]
+            base_tag      = integration.get('tag', '')
+            int_output_dir = integration.get('output_dir', '.')
+            exp_files = _integrated_output_paths(reaction, dE_lst, base_tag, runs,
+                                                  output_dir=int_output_dir)
             # Sanity-check: files for this run must exist before feeding to TALYS
             check_files = (
                 [f for f in exp_files if f"_run{run_idx}" in f.stem]

@@ -58,12 +58,13 @@ auto_l1           = true         # true: compute L1 from J, s1, s2, parity; fals
 # Inputs for generate_cross_sections_parallel.py (Step 2).
 # reaction / E_min_mev / E_max_mev are inherited from [basics].
 [integration]
-dE                = 0.2          # MeV; comma-separated list of integration bin widths, e.g. 0.1,0.2,0.3
-n_grid_points     = 10000        # unintegrated σ(E) grid points (also sets integration resolution)
-nproc             = 1            # parallel worker processes
-tag               = test
-skip_unintegrated = false        # true: skip recomputing σ(E) and reuse existing file
-skip_integrated   = false        # true: skip integrated cross-section computation entirely
+dE                    = 0.2      # MeV; comma-separated list of integration bin widths, e.g. 0.1,0.2,0.3
+n_grid_points         = 10000    # unintegrated σ(E) grid points (also sets integration resolution)
+nproc                 = 1        # parallel worker processes
+tag                   = test
+output_dir            = /data/pagroup/pa02/THICC/cross_sections   # absolute path for integrated CSV files
+skip_unintegrated     = false    # true: skip recomputing σ(E) and reuse existing file
+skip_integrated       = false    # true: skip integrated cross-section computation entirely
 
 
 # ── [talys] ──────────────────────────────────────────────────────────────────

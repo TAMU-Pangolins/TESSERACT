@@ -386,12 +386,19 @@ def main():
                              "(e.g. --tag _test produces 22Mg(a,p)25Al_xs_unintegrated_parallel_test.txt)")
     parser.add_argument("--run-idx", dest="run_idx", type=int, default=0,
                         help="RUN_N index to read the RatesMC .in file from (default 0).")
+    parser.add_argument("--resonance-output-dir", dest="resonance_output_dir",
+                        default="outputs",
+                        help="Root directory containing RUN_N resonance outputs (default: outputs).")
+    parser.add_argument("--output-dir", dest="output_dir", default=".",
+                        help="Directory where integrated CSV files are written (default: current dir).")
     args = parser.parse_args()
 
     reaction = args.reaction
 
-    output_dir = f"outputs/{reaction}/RUN_{args.run_idx}/"
-    infile = f"{output_dir}{reaction}.in"
+    resonance_dir = os.path.join(args.resonance_output_dir, reaction, f"RUN_{args.run_idx}")
+    infile = os.path.join(resonance_dir, f"{reaction}.in")
+
+    os.makedirs(args.output_dir, exist_ok=True)
 
     if not os.path.exists(infile):
         raise FileNotFoundError(f"{infile} not found.")
@@ -438,7 +445,7 @@ def main():
     # ============================================================
     # Unintegrated cross section
     # ============================================================
-    unint_file = f"{reaction}_xs_unintegrated_parallel{tag_suffix}.txt"
+    unint_file = os.path.join(args.output_dir, f"{reaction}_xs_unintegrated_parallel{tag_suffix}.txt")
 
     if args.skip_unintegrated:
         print(f"Loading existing unintegrated cross sections from {unint_file} ...")
@@ -515,7 +522,7 @@ def main():
         E_bins = np.array(E_bins)
 
         np.savetxt(
-            f"{target}_ap_{residual}_integrated_xs_dE_{dE}{tag_suffix}.csv",
+            os.path.join(args.output_dir, f"{target}_ap_{residual}_integrated_xs_dE_{dE}{tag_suffix}.csv"),
             np.column_stack((E_bins, xs_bin)),
             delimiter=",",
             header=f"E (MeV),sigma (mb)| dE={dE}",
