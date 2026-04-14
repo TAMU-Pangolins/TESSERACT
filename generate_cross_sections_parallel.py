@@ -223,14 +223,13 @@
 
 
 
-from multiprocessing import Pool, cpu_count
 import matplotlib.pyplot as plt
 import numpy as np
 import argparse
 import os
 import re
 
-from nucres.resonance import Resonance, sigma_bw_energy_dep
+from nucres.resonance import Resonance, sigma_bw_energy_dep, make_penetrability_interp
 from nucres.physics import HBAR, MASS_PROTON, reduced_mass
 from nucres.sampling import porter_thomas_factors
 from extract_resonance_data import load_resonance_data, load_nuclear_params
@@ -271,63 +270,59 @@ def sample_widths(A_tar, n, mean_i, mean_o):
     return g1, g2
 
 
-def _sigma_worker(args):
-    E, Z1, A1_proj, Z2, A1_target, res = args
+# ============================================================
+def calc_cross_sections(E_test, Z1, A1_proj, Z2, A1_target, res_data, nproc=None):
+    """
+    Compute σ(E) for every energy in E_test by summing single-level
+    Breit-Wigner contributions from each resonance.
 
-    E_arr = np.array([E])
-    xs_tot = 0.0
-
-    # Correct masses
-    m_alpha = A1_proj * MASS_PROTON
+    Vectorized over energy: one call to sigma_bw_energy_dep per resonance
+    passes the full E_test array, eliminating the multiprocessing overhead
+    and the per-point mpmath penetrability calls.  Penetrability interpolators
+    are pre-built once per unique angular momentum l and reused.
+    """
+    m_alpha  = A1_proj   * MASS_PROTON
     m_target = A1_target * MASS_PROTON
 
-    for j in range(len(res["E_cm"])):
+    E_eV = E_test * 1e6          # MeV → eV for sigma_bw_energy_dep
+    E_mev = E_test               # already MeV for make_penetrability_interp
 
+    # Build one penetrability interpolator per unique l value
+    Emin_mev = max(float(E_mev.min()), 1e-6)
+    Emax_mev = float(E_mev.max())
+    unique_l = set(int(x) for x in res_data["L"])
+    P_interps = {
+        l_val: make_penetrability_interp(
+            l_val, Z1, Z2, A1_proj, A1_target,
+            Emin_mev=Emin_mev, Emax_mev=Emax_mev, npts=600
+        )
+        for l_val in unique_l
+    }
+
+    n = len(res_data["E_cm"])
+    xs_total = np.zeros(len(E_test))
+
+    for j in tqdm(range(n), desc="Summing resonances", leave=False):
+        l_j = int(res_data["L"][j])
         r_j = Resonance(
-            res["E_cm"][j] * 1e6,
-            res["Jr"][j],
+            res_data["E_cm"][j] * 1e6,   # MeV → eV
+            res_data["Jr"][j],
             0, 0,
             m_target,
             m_alpha,
-            res["g1"][j],
-            res["g2"][j],
+            res_data["g1"][j],
+            res_data["g2"][j],
         )
-
         xs_j = sigma_bw_energy_dep(
-            E_arr * 1e6,
-            r_j,
-            Z1, Z2,
-            A1_proj, A1_target,
-            res["L"][j],
-            Gamma_i_Er_eV=res["g1"][j]
+            E_eV, r_j,
+            Z1, Z2, A1_proj, A1_target,
+            l_j,
+            Gamma_i_Er_eV=res_data["g1"][j],
+            P_interp=P_interps[l_j],
         )
+        xs_total += np.asarray(xs_j).ravel()
 
-        xs_tot += xs_j
-#    print(np.shape(xs_tot))
-    return np.squeeze(xs_tot).item()
-
-
-# ============================================================
-def calc_cross_sections(E_test, Z1, A1_proj, Z2, A1_target, res_data, nproc=None):
-
-    if nproc is None:
-        nproc = 1
-
-    nproc = min(nproc,cpu_count())
-
-    tasks = [(E, Z1, A1_proj, Z2, A1_target, res_data) for E in E_test]
-
-    with Pool(processes=nproc) as pool:
-        xs = list(
-            tqdm(
-                pool.imap(_sigma_worker, tasks, chunksize=50),
-                total=len(E_test),
-                desc="Calculating σ(E)",
-                leave=False
-            )
-        )
-
-    return np.array(xs)
+    return xs_total
 
 
 # ============================================================
@@ -443,7 +438,7 @@ def main():
     # ============================================================
     # Unintegrated cross section
     # ============================================================
-    unint_file = f"{reaction}_xs_unintegrated_parallel{args.tag}.txt"
+    unint_file = f"{reaction}_xs_unintegrated_parallel{tag_suffix}.txt"
 
     if args.skip_unintegrated:
         print(f"Loading existing unintegrated cross sections from {unint_file} ...")

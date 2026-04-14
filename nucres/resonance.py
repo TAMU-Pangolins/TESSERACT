@@ -266,16 +266,25 @@ def sigma_bw_energy_dep(E_eV, r, Z1, Z2, A1, A2, l, Gamma_i_Er_eV, r0=1.25, P_in
     E_mev = np.maximum(E_eV, 0.0) * 1e-6
     Er_mev = max(r.E_r, 0.0) * 1e-6
 
-    # fast path with interpolator
-    if P_interp is None:
-        P_E = np.array(
+    # For array inputs auto-build a cached interpolator to avoid per-point mpmath
+    # calls; scalar inputs fall back to exact mpmath; caller may supply P_interp.
+    if P_interp is not None:
+        P_E  = P_interp(E_mev)
+        P_Er = float(P_interp(Er_mev))
+    elif E_eV.size > 1:
+        _Emin = max(float(E_mev.min()), 1e-6)
+        _Emax = max(float(E_mev.max()), Er_mev * 1.05, _Emin + 1e-4)
+        _auto = make_penetrability_interp(
+            l, Z1, Z2, A1, A2, r0=r0, Emin_mev=_Emin, Emax_mev=_Emax, npts=600
+        )
+        P_E  = _auto(E_mev)
+        P_Er = float(_auto(Er_mev))
+    else:
+        P_E  = np.array(
             [penetrability_P_l_mev(l, Z1, Z2, A1, A2, ee, r0) for ee in E_mev],
             dtype=float,
         )
         P_Er = penetrability_P_l_mev(l, Z1, Z2, A1, A2, Er_mev, r0)
-    else:
-        P_E = P_interp(E_mev)
-        P_Er = float(P_interp(Er_mev))
 
     # if (r.Gamma_i is not None) and (r.Gamma_i > 0.0):
     #    Gamma_i_Er_eV = r.Gamma_i

@@ -319,7 +319,7 @@ def step2_generate_xs(basics: dict, integration: dict, runs: int,
         tag_suffix  = f"_{tag_clean_j}" if tag_clean_j else ""
 
         # All expected outputs for this run
-        unint = Path(f"{reaction}_xs_unintegrated_parallel{tag_j}.txt")
+        unint = Path(f"{reaction}_xs_unintegrated_parallel{tag_suffix}.txt")
         int_files = [
             Path(f"{target}_ap_{residual}_integrated_xs_dE_{dE}{tag_suffix}.csv")
             for dE in dE_lst
