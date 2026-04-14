@@ -37,7 +37,7 @@ from pathlib import Path
 # Absolute directory containing this script — used to locate sibling scripts
 # so subprocess calls work regardless of the working directory (e.g. condor).
 _SCRIPT_DIR = Path(__file__).resolve().parent
-_PYTHON     = sys.executable
+_PYTHON     = None   # set in main() after reading python_exec from [basics]
 
 from nucres.physics import HBAR, MASS_PROTON, reduced_mass
 
@@ -430,6 +430,18 @@ def main():
     reaction = basics.get('reaction')
     if not reaction:
         sys.exit(f"Missing 'reaction' in [basics] section of {args.input}")
+
+    # ── Python executable for subprocess calls ────────────────────────────────
+    # sys.executable can be empty in some condor execution environments.
+    # Set python_exec in [basics] to provide an explicit path.
+    import shutil as _shutil
+    global _PYTHON
+    _PYTHON = (basics.get('python_exec') or
+               (sys.executable if sys.executable else None) or
+               _shutil.which('python3') or
+               _shutil.which('python'))
+    if not _PYTHON:
+        sys.exit("Cannot determine Python executable. Set python_exec in [basics].")
 
     # ── Detect which sections are present ─────────────────────────────────────
     has_resonance   = 'resonance'   in raw

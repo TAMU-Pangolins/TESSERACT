@@ -17,6 +17,7 @@
 # Other sections inherit reaction / E_min_mev / E_max_mev from here.
 [basics]
 reaction     = 22Mg(a,p)25Al    # notation: <target>(<proj>,<eject>)<residual>
+python_exec  = /home/pagroup/chiragrathi/.conda/envs/tess/bin/python   # full path to Python; required on condor
 E_min_mev    = 0.1               # MeV — lower energy bound (resonance sampling + integration)
 E_max_mev    = 10.0              # MeV — upper energy bound
 
