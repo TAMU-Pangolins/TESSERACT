@@ -5,6 +5,7 @@ __pycache__/
 *.pyc
 *.venv
 *_xs_*.txt
+*_xs_*.csv
 site/
 *.log
 .DS_STORE
@@ -22,3 +23,4 @@ calc_xs_parallel.py
 talys_mc_parallel.py
 convert_reduced_to_partial_widths.py
 *.job
+
