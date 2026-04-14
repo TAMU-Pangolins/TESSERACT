@@ -34,6 +34,11 @@ import sys
 import subprocess
 from pathlib import Path
 
+# Absolute directory containing this script — used to locate sibling scripts
+# so subprocess calls work regardless of the working directory (e.g. condor).
+_SCRIPT_DIR = Path(__file__).resolve().parent
+_PYTHON     = sys.executable
+
 from nucres.physics import HBAR, MASS_PROTON, reduced_mass
 
 
@@ -241,7 +246,7 @@ def step1_build_ratesmc(basics: dict, resonance: dict,
         run_dir.mkdir(parents=True, exist_ok=True)
 
         cmd = [
-            sys.executable, "build_ratesmc_input.py",
+            _PYTHON, str(_SCRIPT_DIR / "build_ratesmc_input.py"),
             "--template",         str(template),
             "--output-dir",       str(output_dir),
             "--E-min-mev",        E_min,
@@ -330,7 +335,7 @@ def step2_generate_xs(basics: dict, integration: dict, runs: int,
             continue
 
         cmd = [
-            sys.executable, "generate_cross_sections_parallel.py",
+            _PYTHON, str(_SCRIPT_DIR / "generate_cross_sections_parallel.py"),
             "--reaction",      reaction,
             "--E-min-mev",     E_min,
             "--E-max-mev",     E_max,
@@ -372,7 +377,7 @@ def step3_talys_opt(talys: dict, exp_files: list, input_path: str,
         exp_files = [f for f in exp_files if f"_run{run_idx}" in f.stem]
         if not exp_files:
             sys.exit(f"[talys] No exp_files found matching run index {run_idx}.")
-    default_script = Path(__file__).resolve().parent / "talys_opt_with_unc.py"
+    default_script = _SCRIPT_DIR / "talys_opt_with_unc.py"
     script_path    = Path(talys.get('talys_script', str(default_script)))
 
     if not script_path.exists():
@@ -390,7 +395,7 @@ def step3_talys_opt(talys: dict, exp_files: list, input_path: str,
 
         print(f"[talys] Fitting {exp_file.name} ...", flush=True)
         cmd = [
-            sys.executable, str(script_path),
+            _PYTHON, str(script_path),
             "--input",    input_path,
             "--exp-file", str(exp_file),
         ]
