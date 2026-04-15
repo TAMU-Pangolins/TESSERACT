@@ -37,11 +37,11 @@ residual_A   = 25
 # buildratesMC.sh reads samples, runs, mean_i, mean_o from this section.
 [resonance]
 samples           = 5000         # --n-density-points: HFB level-density grid resolution
-runs              = 10            # number of Monte Carlo RUN_N realisations to generate
+runs              = 1000            # number of Monte Carlo RUN_N realisations to generate
 mean_i            = 0.010        # Wigner-limit fraction for entrance (alpha) channel
 mean_o            = 0.0045       # Wigner-limit fraction for exit (proton) channel
-input_dir         = input/       # directory containing <reaction>.txt template files
-output_dir        = outputs/     # root directory for all RatesMC output
+input_dir         = /data/pagroup/pa02/THICC/input/       # directory containing <reaction>.txt template files
+output_dir        = /data/pagroup/pa02/THICC/outputs_condor/     # root directory for all RatesMC output
 
 # Additional build_ratesmc_input.py options
 l1                = 0            # entrance channel orbital angular momentum L1
