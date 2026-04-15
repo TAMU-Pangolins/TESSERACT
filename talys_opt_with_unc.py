@@ -36,6 +36,7 @@ _SCRIPT_KEYS = frozenset({
     'exp_rel_err', 'e_fit_min', 'prior_rel_std', 'prior_abs_floor',
     'debug_every', 'exp_file', 'output_file', 'rates_mc_file',
     'rate_xmin', 'rate_xmax', 'plot_log_y_xs', 'plot_log_y_rate',
+    'talys_output_dir',
 })
 
 FLOOR = 1e-12
@@ -418,7 +419,7 @@ def make_objective(cfg: dict, x_exp: np.ndarray, y_exp: np.ndarray,
 # ─────────────────────────────────────────────────────────────────────────────
 # Plotting
 # ─────────────────────────────────────────────────────────────────────────────
-def plot_best_fit_xs(cfg, x_exp, y_exp, x_t, y_t, params_best, y_err=None):
+def plot_best_fit_xs(cfg, x_exp, y_exp, x_t, y_t, params_best, y_err=None, out_dir="."):
     script      = cfg['script']
     EXP_REL_ERR = float(script.get('exp_rel_err', '0.10'))
     log_y       = script.get('plot_log_y_xs', 'true').lower() == 'true'
@@ -441,12 +442,12 @@ def plot_best_fit_xs(cfg, x_exp, y_exp, x_t, y_t, params_best, y_err=None):
     plt.grid(True, which="both", linestyle="--", linewidth=0.5, alpha=0.6)
     plt.legend(fontsize=8)
     plt.tight_layout()
-    fname = f"talys_opt_{cfg['tar']}_{cfg['proj']}{cfg['ejec']}_{cfg['residual']}_xs.png"
+    fname = os.path.join(out_dir, f"talys_opt_{cfg['tar']}_{cfg['proj']}{cfg['ejec']}_{cfg['residual']}_xs.png")
     plt.savefig(fname, dpi=300)
-    plt.show()
+    plt.close()
 
 
-def plot_reaction_rate(cfg, x_rate, y_rate, ratesmc_xy=None):
+def plot_reaction_rate(cfg, x_rate, y_rate, ratesmc_xy=None, out_dir="."):
     script = cfg['script']
     xmin   = float(script.get('rate_xmin',       '0.0'))
     xmax   = float(script.get('rate_xmax',        '2.0'))
@@ -469,18 +470,18 @@ def plot_reaction_rate(cfg, x_rate, y_rate, ratesmc_xy=None):
     plt.legend()
     plt.tight_layout()
     plt.ylim(bottom=1e-3)
-    fname = f"reaction_rates_{cfg['tar']}_{cfg['proj']}{cfg['ejec']}_{cfg['residual']}.png"
+    fname = os.path.join(out_dir, f"reaction_rates_{cfg['tar']}_{cfg['proj']}{cfg['ejec']}_{cfg['residual']}.png")
     plt.savefig(fname, dpi=300)
-    plt.show()
+    plt.close()
 
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Save / output helpers
 # ─────────────────────────────────────────────────────────────────────────────
-def save_results(cfg, x_exp, y_exp, y_err, x_xs, y_xs, x_rate, y_rate, params_best):
+def save_results(cfg, x_exp, y_exp, y_err, x_xs, y_xs, x_rate, y_rate, params_best, out_dir="."):
     exp_file = cfg['script'].get('exp_file', 'exp')
     stem     = os.path.splitext(os.path.basename(exp_file))[0]
-    path     = f"talys_results_{stem}.npz"
+    path     = os.path.join(out_dir, f"talys_results_{stem}.npz")
     np.savez(
         path,
         x_exp       = x_exp,
@@ -523,6 +524,7 @@ def write_optimization_output(
     y_xs:   np.ndarray,
     x_rate: Optional[np.ndarray] = None,
     y_rate: Optional[np.ndarray] = None,
+    out_file: str = "talys_optimization.out",
 ) -> None:
     """
     Append a best-fit summary block to the shared output file.
@@ -536,7 +538,6 @@ def write_optimization_output(
         --- reaction rates  T9[GK]  rate[cm3/s/mol]  (if available) ---
         ========================================
     """
-    out_file  = cfg['script'].get('output_file', 'talys_optimization.out')
     exp_file  = cfg['script'].get('exp_file', '')
     reaction, dE = _parse_exp_filename(exp_file)
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -588,7 +589,7 @@ def write_optimization_output(
 # Replot from saved .npz  (no re-running TALYS)
 # ─────────────────────────────────────────────────────────────────────────────
 def replot(npz_path: str, tesseract_path: str = "tesseract.in",
-           ratesmc_path: str = None):
+           ratesmc_path: str = None, out_dir: str = "."):
     """
     Reload saved results from a .npz and regenerate both plots without
     re-running TALYS.
@@ -613,10 +614,12 @@ def replot(npz_path: str, tesseract_path: str = "tesseract.in",
     print(f"Loaded results from {npz_path}")
     print(f"  params: {dict(zip(d['param_names'], params_best))}")
 
-    plot_best_fit_xs(cfg, x_exp_, y_exp_, x_xs, y_xs, params_best, y_err=y_err_)
+    plot_best_fit_xs(cfg, x_exp_, y_exp_, x_xs, y_xs, params_best, y_err=y_err_,
+                     out_dir=out_dir)
 
     rmc = ratesmc_path or cfg['script'].get('rates_mc_file', 'RatesMC.out')
-    plot_reaction_rate(cfg, x_rate, y_rate, ratesmc_xy=read_ratesmc_file(rmc))
+    plot_reaction_rate(cfg, x_rate, y_rate, ratesmc_xy=read_ratesmc_file(rmc),
+                       out_dir=out_dir)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -634,6 +637,10 @@ def main():
         "--exp-file", default=None,
         help="Override exp_file from [talys] section of tesseract.in",
     )
+    ap.add_argument(
+        "--output-dir", default=None,
+        help="Root directory for talys_opt/ output (overrides talys_output_dir in tesseract.in)",
+    )
     args = ap.parse_args()
 
     # ── Load config ───────────────────────────────────────────────────────────
@@ -641,14 +648,26 @@ def main():
     if args.exp_file:
         cfg['script']['exp_file'] = args.exp_file
 
+    # ── Output directory setup ────────────────────────────────────────────────
+    script       = cfg['script']
+    out_root     = args.output_dir or script.get('talys_output_dir', 'talys_opt')
+    exp_file_cfg = script.get('exp_file', '')
+    stem_cfg     = os.path.splitext(os.path.basename(exp_file_cfg))[0]
+    run_m        = re.search(r'_run(\d+)', stem_cfg)
+    run_idx      = run_m.group(1) if run_m else "0"
+    run_dir      = os.path.join(out_root, f"RUN_{run_idx}")
+    os.makedirs(run_dir, exist_ok=True)
+    shared_out   = os.path.join(out_root, "talys_optimization.out")
+    print(f"[talys_opt] output root : {out_root}")
+    print(f"[talys_opt] run dir     : {run_dir}")
+    print(f"[talys_opt] shared log  : {shared_out}")
+
     opt_params = cfg['opt_params']
     if not opt_params:
         raise SystemExit(
             "No optimisation parameters found in \\opt block of tesseract.in.\n"
             "Add lines of the form  'keyword [qualifiers] x0 lo hi'  inside \\opt."
         )
-
-    script = cfg['script']
 
     # ── Load experimental data ────────────────────────────────────────────────
     exp_file = script.get('exp_file')
@@ -722,7 +741,8 @@ def main():
         print("\nWARNING: TALYS failed at best-fit parameters.")
         return
     x_t, y_t = out_xs
-    plot_best_fit_xs(cfg, x_exp, y_exp, x_t, y_t, params_best, y_err=y_err)
+    plot_best_fit_xs(cfg, x_exp, y_exp, x_t, y_t, params_best, y_err=y_err,
+                     out_dir=run_dir)
 
     # ── Reaction rate at best fit ─────────────────────────────────────────────
     x_rate: np.ndarray = np.array([])
@@ -737,15 +757,18 @@ def main():
             ratesmc_xy = read_ratesmc_file(rmc_path)
             if ratesmc_xy is None:
                 print(f"\nNOTE: {rmc_path} not found — it will not be plotted.")
-            plot_reaction_rate(cfg, x_rate, y_rate, ratesmc_xy=ratesmc_xy)
+            plot_reaction_rate(cfg, x_rate, y_rate, ratesmc_xy=ratesmc_xy,
+                               out_dir=run_dir)
     except Exception as exc:
         print(f"\nWARNING: Could not compute/plot reaction rate: {exc!r}")
 
     # ── Write shared output file (flock-protected) and save .npz ─────────────
     write_optimization_output(cfg, res, params_best, x_t, y_t,
                                x_rate if len(x_rate) else None,
-                               y_rate if len(y_rate) else None)
-    save_results(cfg, x_exp, y_exp, y_err, x_t, y_t, x_rate, y_rate, params_best)
+                               y_rate if len(y_rate) else None,
+                               out_file=shared_out)
+    save_results(cfg, x_exp, y_exp, y_err, x_t, y_t, x_rate, y_rate, params_best,
+                 out_dir=run_dir)
 
 
 if __name__ == "__main__":

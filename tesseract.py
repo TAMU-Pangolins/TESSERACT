@@ -138,8 +138,11 @@ def _integrated_output_paths(reaction: str, dE_list: list, tag: str, runs: int,
     return paths
 
 
-def _talys_npz_path(exp_file: Path) -> Path:
-    return Path(f"talys_results_{exp_file.stem}.npz")
+def _talys_npz_path(exp_file: Path, out_root: str = "talys_opt") -> Path:
+    import re as _re
+    run_m   = _re.search(r'_run(\d+)', exp_file.stem)
+    run_idx = run_m.group(1) if run_m else "0"
+    return Path(out_root) / f"RUN_{run_idx}" / f"talys_results_{exp_file.stem}.npz"
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -378,7 +381,8 @@ def step3_talys_opt(talys: dict, exp_files: list, input_path: str,
         exp_files = [f for f in exp_files if f"_run{run_idx}" in f.stem]
         if not exp_files:
             sys.exit(f"[talys] No exp_files found matching run index {run_idx}.")
-    script_path = _SCRIPT_DIR / "talys_opt_with_unc.py"
+    script_path   = _SCRIPT_DIR / "talys_opt_with_unc.py"
+    talys_out_dir = talys.get('talys_output_dir', 'talys_opt')
 
     if not script_path.exists():
         sys.exit(
@@ -388,7 +392,7 @@ def step3_talys_opt(talys: dict, exp_files: list, input_path: str,
 
     n_skipped = 0
     for exp_file in exp_files:
-        npz = _talys_npz_path(exp_file)
+        npz = _talys_npz_path(exp_file, out_root=talys_out_dir)
         if npz.exists():
             n_skipped += 1
             continue
@@ -396,8 +400,9 @@ def step3_talys_opt(talys: dict, exp_files: list, input_path: str,
         print(f"[talys] Fitting {exp_file.name} ...", flush=True)
         cmd = [
             _PYTHON, str(script_path),
-            "--input",    input_path,
-            "--exp-file", str(exp_file),
+            "--input",      input_path,
+            "--exp-file",   str(exp_file),
+            "--output-dir", talys_out_dir,
         ]
         result = subprocess.run(cmd)
         if result.returncode != 0:
@@ -519,7 +524,20 @@ def main():
                     + "\n".join(f"  {p}" for p in missing)
                 )
         else:
-            exp_files = [Path(talys['exp_file'])]
+            exp_tmpl = talys.get('exp_file', '')
+            if '{run}' in exp_tmpl:
+                if run_idx is not None:
+                    # condor job: resolve this run's file directly
+                    exp_files = [Path(exp_tmpl.replace('{run}', str(run_idx)))]
+                else:
+                    # nohup / local: glob for all matching files
+                    import glob as _glob
+                    matched = sorted(_glob.glob(exp_tmpl.replace('{run}', '*')))
+                    if not matched:
+                        sys.exit(f"[talys] No files matched exp_file pattern: {exp_tmpl}")
+                    exp_files = [Path(p) for p in matched]
+            else:
+                exp_files = [Path(exp_tmpl)]
 
         _banner("talys", "start")
         step3_talys_opt(talys, exp_files, args.input, run_idx=run_idx)
