@@ -171,6 +171,9 @@ def _check_integration_outputs(exp_file_str: str) -> None:
             "\n[talys] requires an exp_file but none is set in [talys].\n"
             "Either add an [integration] section or set  exp_file = <path>  in [talys]."
         )
+    # Template paths (containing {run}) are resolved later — skip existence check here.
+    if '{run}' in exp_file_str:
+        return
     if not Path(exp_file_str).exists():
         sys.exit(
             f"\n[talys] requires [integration] output that is missing "
