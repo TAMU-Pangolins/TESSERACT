@@ -90,9 +90,9 @@ skip_integrated       = false    # true: skip integrated cross-section computati
 #transesp = 1.e-20         # transmission cutoff
 
 # ── Script / optimizer settings (NOT written to talys.inp) ───────────────────
-#exp_file        = cross_sections/22Mg_ap_25Al_integrated_xs_dE_0.3.txt
-#output_file     = talys_optimization.out
-#rates_mc_file   = RatesMC.out
+#exp_file           = cross_sections/22Mg_ap_25Al_integrated_xs_dE_0.3.txt
+#talys_output_dir   = /data/pagroup/pa02/THICC/talys_opt   # root for RUN_{j}/ and talys_optimization.out
+#rates_mc_file      = RatesMC.out
 #method          = Powell          # scipy optimizer: Powell or Nelder-Mead
 #maxiter         = 250
 #xtol            = 1e-3            # Powell parameter tolerance
