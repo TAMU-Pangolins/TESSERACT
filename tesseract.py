@@ -249,7 +249,7 @@ def step1_build_ratesmc(basics: dict, resonance: dict,
         cmd = [
             _PYTHON, str(_SCRIPT_DIR / "build_ratesmc_input.py"),
             "--template",         str(template),
-            "--output-dir",       str(output_dir),
+            "--output",           str(output_in),
             "--E-min-mev",        E_min,
             "--E-max-mev",        E_max,
             "--m1",               str(m_target),
@@ -282,10 +282,6 @@ def step1_build_ratesmc(basics: dict, resonance: dict,
         result = subprocess.run(cmd)
         if result.returncode != 0:
             sys.exit(f"[resonance] build_ratesmc_input.py failed for RUN_{j}.")
-
-        generated = Path(output_dir) / reaction / f"{reaction}.in"
-        if generated.exists() and generated != output_in:
-            generated.rename(output_in)
 
     if n_skipped:
         print(f"[resonance] {n_skipped}/{runs} run(s) already existed — skipped.")
