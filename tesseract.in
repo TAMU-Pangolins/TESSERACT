@@ -63,8 +63,8 @@ n_grid_points         = 10000    # unintegrated σ(E) grid points (also sets int
 nproc                 = 1        # parallel worker processes
 tag                   = test
 output_dir            = /data/pagroup/pa02/THICC/cross_sections   # absolute path for integrated CSV files
-skip_unintegrated     = false    # true: skip recomputing σ(E) and reuse existing file
-skip_integrated       = false    # true: skip integrated cross-section computation entirely
+skip_unintegrated     = true    # true: skip recomputing σ(E) and reuse existing file
+skip_integrated       = true    # true: skip integrated cross-section computation entirely
 
 
 # ── [talys] ──────────────────────────────────────────────────────────────────
@@ -81,45 +81,47 @@ skip_integrated       = false    # true: skip integrated cross-section computati
 #   lo / hi              — lower / upper bounds (penalty applied outside)
 #   Comment out a line to exclude that parameter from the active fit.
 
-#[talys]
+[talys]
 
 # ── TALYS fixed model parameters (written to talys.inp) ──────────────────────
-#ldmodel  = 1              # level-density model: 1=BSFG, 2=CTM, 3=HFBM, 4-6=alt
-#alphaomp = 6              # alpha optical model potential choice
-#xsesp    = 1.e-20         # cross-section cutoff
-#transesp = 1.e-20         # transmission cutoff
-
+ldmodel  = 1              # level-density model: 1=BSFG, 2=CTM, 3=HFBM, 4-6=alt
+alphaomp = 6              # alpha optical model potential choice
+xseps    = 1.e-20         # cross-section cutoff
+transeps = 1.e-20         # transmission cutoff
+outbasic = y
+channels = y
+filechannels = y
 # ── Script / optimizer settings (NOT written to talys.inp) ───────────────────
-#exp_file           = /data/pagroup/pa02/THICC/cross_sections/22Mg_ap_25Al_integrated_xs_dE_0.2_test_run{run}.csv
+exp_file           = /data/pagroup/pa02/THICC/cross_sections/22Mg_ap_25Al_integrated_xs_dE_0.2_test_run{run}.csv
 #                     # use {run} placeholder — each condor job substitutes its --run-idx
-#talys_output_dir   = /data/pagroup/pa02/THICC/talys_opt   # root for RUN_{j}/ and talys_optimization.out
-#rates_mc_file      = RatesMC.out
-#method          = Powell          # scipy optimizer: Powell or Nelder-Mead
-#maxiter         = 250
-#xtol            = 1e-3            # Powell parameter tolerance
-#ftol            = 1e-3            # Powell function tolerance
-#exp_rel_err     = 0.10            # fractional experimental uncertainty (fallback when no σ col)
-#e_fit_min       = 2.0             # minimum energy included in chi-square fit (MeV)
-#prior_rel_std   = 0.15            # Gaussian prior relative width; set 0 to disable
-#prior_abs_floor = 0.01            # floor for prior sigma denominator
-#debug_every     = 10              # print debug line every N objective evaluations
-#rate_xmin       = 0.0             # T9 range for rate plot lower bound (GK)
-#rate_xmax       = 2.0             # T9 range for rate plot upper bound (GK)
-#plot_log_y_xs   = true
-#plot_log_y_rate = true
+talys_output_dir   = /data/pagroup/pa02/THICC/talys_opt
+rates_mc_file      = RatesMC.out
+method          = Powell          # scipy optimizer: Powell or Nelder-Mead
+maxiter         = 250
+xtol            = 1e-3            # Powell parameter tolerance
+ftol            = 1e-3            # Powell function tolerance
+exp_rel_err     = 0.10            # fractional experimental uncertainty (fallback when no σ col)
+e_fit_min       = 0.0             # minimum energy included in chi-square fit (MeV)
+prior_rel_std   = 2.00            # Gaussian prior relative width; set 0 to disable
+prior_abs_floor = 0.01            # floor for prior sigma denominator
+debug_every     = 10              # print debug line every N objective evaluations
+rate_xmin       = 0.0             # T9 range for rate plot lower bound (GK)
+rate_xmax       = 2.0             # T9 range for rate plot upper bound (GK)
+plot_log_y_xs   = true
+plot_log_y_rate = true
 
-#\opt
+\opt
 # Format:  keyword [qualifiers...]  x0  lo  hi
 # The last three tokens are always: initial value, lower bound, upper bound.
 # Written to talys.inp as:  keyword [qualifiers...] {current_value}
 # Comment a line to exclude it from the active optimisation set.
 
 # --- Optical model potential adjustments ---
-#rvadjust   a     1.00    0.5    2.0   # real volume radius for alpha
-#avadjust   a     1.00    0.5    2.0   # real volume diffuseness for alpha
+rvadjust   a     2.00    0.5    4.0   
+avadjust   a     2.00    0.5    4.0   
 
 # --- CTM level-density parameters (keyword  Z  A  x0  lo  hi) ---
 # Residual: 25Al (Z=13, A=25)
-#T      13   25    1.4    0.5    4.0   # CTM nuclear temperature
-#E0     13   25   -0.5   -3.0   3.0   # CTM energy shift
-#\opt
+T      13   25    1.4    0.1    5.0   
+E0     13   25   -0.5   -3.0   3.0
+\opt
