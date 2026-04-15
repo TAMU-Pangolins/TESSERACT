@@ -256,7 +256,7 @@ def write_talys_files(
     return inp_path
 
 
-def run_talys(workdir: str, inp_path: str) -> bool:
+def run_talys(workdir: str, inp_path: str, verbose: bool = False) -> bool:
     """Run TALYS in workdir, reading from inp_path. Returns True on success."""
     try:
         with open(inp_path, "rb") as fin:
@@ -274,6 +274,12 @@ def run_talys(workdir: str, inp_path: str) -> bool:
             if p.stderr.strip():
                 print(f"[TALYS] stderr:\n{p.stderr.strip()}", flush=True)
             return False
+        if verbose:
+            print(f"[TALYS] returncode=0", flush=True)
+            if p.stdout.strip():
+                print(f"[TALYS] stdout:\n{p.stdout.strip()}", flush=True)
+            files = os.listdir(workdir)
+            print(f"[TALYS] files in workdir: {sorted(files)}", flush=True)
         return True
     except FileNotFoundError:
         print("[TALYS] ERROR: 'talys' executable not found on PATH.", flush=True)
@@ -644,6 +650,10 @@ def main():
         "--output-dir", default=None,
         help="Root directory for talys_opt/ output (overrides talys_output_dir in tesseract.in)",
     )
+    ap.add_argument(
+        "--debug-talys", action="store_true",
+        help="Run one TALYS call at x0 with verbose output, print workdir files, then exit",
+    )
     args = ap.parse_args()
 
     # ── Load config ───────────────────────────────────────────────────────────
@@ -696,6 +706,21 @@ def main():
 
     # Attach energy grid to cfg so write_talys_files can use it
     cfg['_x_exp'] = x_exp
+
+    # ── Debug mode: one verbose TALYS call at x0, then exit ──────────────────
+    if args.debug_talys:
+        X0_dbg = np.array([op.x0 for op in cfg['opt_params']], dtype=float)
+        with tempfile.TemporaryDirectory(prefix="talys_debug_") as wd:
+            inp = write_talys_files(wd, X0_dbg, cfg, astro="n", astrogs="n")
+            run_talys(wd, inp, verbose=True)
+            ap_path = os.path.join(wd, "ap.tot")
+            if os.path.exists(ap_path):
+                print(f"\n[debug] ap.tot contents:\n")
+                with open(ap_path) as fh:
+                    print(fh.read())
+            else:
+                print("\n[debug] ap.tot was NOT created.")
+        raise SystemExit(0)
 
     # ── Optimisation setup ────────────────────────────────────────────────────
     X0      = np.array([op.x0 for op in opt_params], dtype=float)
