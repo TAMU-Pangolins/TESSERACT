@@ -290,7 +290,7 @@ def step1_build_ratesmc(basics: dict, resonance: dict,
 # ─────────────────────────────────────────────────────────────────────────────
 # Step 2 — [integration]
 # ─────────────────────────────────────────────────────────────────────────────
-def step2_generate_xs(basics: dict, integration: dict, runs: int,
+def step2_generate_xs(basics: dict, resonance: dict, integration: dict, runs: int,
                       run_idx: int = None) -> None:
     """
     Run generate_cross_sections_parallel.py once per run index j = 0..runs-1.
@@ -306,9 +306,8 @@ def step2_generate_xs(basics: dict, integration: dict, runs: int,
     E_min         = basics.get('E_min_mev', '0.1')
     E_max         = basics.get('E_max_mev', '10.0')
     dE            = integration['dE']
-    base_tag      = integration.get('tag', '')
-    res_output_dir = integration.get('resonance_output_dir',
-                                     basics.get('output_dir', 'outputs'))
+    base_tag       = integration.get('tag', '')
+    res_output_dir = resonance.get('output_dir', 'outputs')
     int_output_dir = integration.get('output_dir', '.')
     dE_lst        = [x.strip() for x in dE.split(',')]
 
@@ -494,7 +493,7 @@ def main():
         if 'dE' not in integration:
             sys.exit("Missing 'dE' in [integration] section.")
         _banner("integration", "start")
-        step2_generate_xs(basics, integration, runs, run_idx=run_idx)
+        step2_generate_xs(basics, resonance, integration, runs, run_idx=run_idx)
         _banner("integration", "end")
     elif has_talys:
         _check_integration_outputs(talys.get('exp_file', ''))
