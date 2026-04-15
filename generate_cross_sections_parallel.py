@@ -513,7 +513,7 @@ def main():
             end      = start + points_per_bin + 1
             E_slice  = E_test[start:end]
             xs_slice = xs_unint[start:end]
-            xs_int   = np.trapz(xs_slice, E_slice)
+            xs_int   = np.trapezoid(xs_slice, E_slice)
             xs_bin.append(xs_int * 1e3 / dE)   # convert to mb and normalise by bin width
             E_bins.append(0.5 * (E_slice[0] + E_slice[-1]))
 
