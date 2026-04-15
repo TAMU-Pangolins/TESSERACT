@@ -524,7 +524,20 @@ def main():
                     + "\n".join(f"  {p}" for p in missing)
                 )
         else:
-            exp_files = [Path(talys['exp_file'])]
+            exp_tmpl = talys.get('exp_file', '')
+            if '{run}' in exp_tmpl:
+                if run_idx is not None:
+                    # condor job: resolve this run's file directly
+                    exp_files = [Path(exp_tmpl.replace('{run}', str(run_idx)))]
+                else:
+                    # nohup / local: glob for all matching files
+                    import glob as _glob
+                    matched = sorted(_glob.glob(exp_tmpl.replace('{run}', '*')))
+                    if not matched:
+                        sys.exit(f"[talys] No files matched exp_file pattern: {exp_tmpl}")
+                    exp_files = [Path(p) for p in matched]
+            else:
+                exp_files = [Path(exp_tmpl)]
 
         _banner("talys", "start")
         step3_talys_opt(talys, exp_files, args.input, run_idx=run_idx)
