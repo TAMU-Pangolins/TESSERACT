@@ -250,6 +250,9 @@ def write_talys_files(
     with open(inp_path, "w") as fh:
         fh.writelines(lines)
 
+    print(f"\n[talys.inp @ {inp_path}]")
+    print("".join(lines))
+
     return inp_path
 
 
