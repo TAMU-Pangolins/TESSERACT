@@ -23,4 +23,5 @@ calc_xs_parallel.py
 talys_mc_parallel.py
 convert_reduced_to_partial_widths.py
 *.job
-
+plot_xs.py
+integrated_xs_all.png
