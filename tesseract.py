@@ -378,13 +378,12 @@ def step3_talys_opt(talys: dict, exp_files: list, input_path: str,
         exp_files = [f for f in exp_files if f"_run{run_idx}" in f.stem]
         if not exp_files:
             sys.exit(f"[talys] No exp_files found matching run index {run_idx}.")
-    default_script = _SCRIPT_DIR / "talys_opt_with_unc.py"
-    script_path    = Path(talys.get('talys_script', str(default_script)))
+    script_path = _SCRIPT_DIR / "talys_opt_with_unc.py"
 
     if not script_path.exists():
         sys.exit(
             f"\n[talys] Optimisation script not found: {script_path}\n"
-            "Set  talys_script = <path>  in the [talys] section of tesseract.in."
+            "Ensure talys_opt_with_unc.py is in the same directory as tesseract.py."
         )
 
     n_skipped = 0
