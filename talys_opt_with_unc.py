@@ -351,7 +351,8 @@ def run_talys_get_rate(
 # Objective (closure — no global mutable state)
 # ─────────────────────────────────────────────────────────────────────────────
 def make_objective(cfg: dict, x_exp: np.ndarray, y_exp: np.ndarray,
-                   y_err: np.ndarray, mask: np.ndarray):
+                   y_err: np.ndarray, mask: np.ndarray,
+                   checkpoint_path: str = None):
     """
     Build and return an objective function (closure) over cfg and exp data.
 
@@ -361,7 +362,12 @@ def make_objective(cfg: dict, x_exp: np.ndarray, y_exp: np.ndarray,
     Internal state is accessible via:
         obj.state['count']  — number of evaluations so far
         obj.state['best']   — (best_total, best_params) seen so far
+
+    If checkpoint_path is given, a JSON checkpoint is written every time a
+    new best is found so the run can resume after eviction.
     """
+    import json as _json
+
     opt_params  = cfg['opt_params']
     script      = cfg['script']
     X0          = np.array([op.x0 for op in opt_params], dtype=float)
@@ -403,6 +409,17 @@ def make_objective(cfg: dict, x_exp: np.ndarray, y_exp: np.ndarray,
 
         if total < state['best'][0]:
             state['best'] = (total, params.copy())
+            if checkpoint_path:
+                ckpt = {
+                    'params': params.tolist(),
+                    'loss':   total,
+                    'nfev':   state['count'],
+                    'timestamp': datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                }
+                tmp = checkpoint_path + ".tmp"
+                with open(tmp, 'w') as fh:
+                    _json.dump(ckpt, fh, indent=2)
+                os.replace(tmp, checkpoint_path)  # atomic on POSIX
 
         if DEBUG_EVERY and (state['count'] % DEBUG_EVERY == 0):
             best_val, _ = state['best']
@@ -719,8 +736,25 @@ def main():
                 print("\n[debug] ap.tot was NOT created.")
         raise SystemExit(0)
 
+    # ── Checkpoint: resume x0 from previous evicted run if available ─────────
+    import json as _json
+    checkpoint_path = os.path.join(run_dir, "checkpoint.json")
+    X0 = np.array([op.x0 for op in opt_params], dtype=float)
+    if os.path.exists(checkpoint_path):
+        try:
+            with open(checkpoint_path) as fh:
+                ckpt = _json.load(fh)
+            X0 = np.array(ckpt['params'], dtype=float)
+            print(
+                f"[checkpoint] Resuming from {checkpoint_path}\n"
+                f"  loss={ckpt['loss']:.6g}  nfev={ckpt['nfev']}  "
+                f"saved={ckpt['timestamp']}",
+                flush=True,
+            )
+        except Exception as exc:
+            print(f"[checkpoint] WARNING: could not load checkpoint ({exc}), starting from x0.", flush=True)
+
     # ── Optimisation setup ────────────────────────────────────────────────────
-    X0      = np.array([op.x0 for op in opt_params], dtype=float)
     method  = script.get('method',  'Powell')
     maxiter = int(script.get('maxiter', '250'))
     xtol    = float(script.get('xtol',  '1e-3'))
@@ -735,7 +769,8 @@ def main():
             "fatol": float(script.get('fatol', str(ftol))),
         })
 
-    obj = make_objective(cfg, x_exp, y_exp, y_err, mask)
+    obj = make_objective(cfg, x_exp, y_exp, y_err, mask,
+                         checkpoint_path=checkpoint_path)
 
     print(f"\nOptimising {len(opt_params)} parameter(s):")
     for op in opt_params:
@@ -794,6 +829,10 @@ def main():
                                out_file=shared_out)
     save_results(cfg, x_exp, y_exp, y_err, x_t, y_t, x_rate, y_rate, params_best,
                  out_dir=run_dir)
+
+    # Remove checkpoint now that results are safely saved
+    if os.path.exists(checkpoint_path):
+        os.remove(checkpoint_path)
 
 
 if __name__ == "__main__":
