@@ -223,13 +223,14 @@
 
 
 
+from multiprocessing import Pool, cpu_count
 import matplotlib.pyplot as plt
 import numpy as np
 import argparse
 import os
 import re
 
-from nucres.resonance import Resonance, sigma_bw_energy_dep, make_penetrability_interp
+from nucres.resonance import Resonance, sigma_bw_energy_dep
 from nucres.physics import HBAR, MASS_PROTON, reduced_mass
 from nucres.sampling import porter_thomas_factors
 from extract_resonance_data import load_resonance_data, load_nuclear_params
@@ -270,59 +271,63 @@ def sample_widths(A_tar, n, mean_i, mean_o):
     return g1, g2
 
 
-# ============================================================
-def calc_cross_sections(E_test, Z1, A1_proj, Z2, A1_target, res_data, nproc=None):
-    """
-    Compute σ(E) for every energy in E_test by summing single-level
-    Breit-Wigner contributions from each resonance.
+def _sigma_worker(args):
+    E, Z1, A1_proj, Z2, A1_target, res = args
 
-    Vectorized over energy: one call to sigma_bw_energy_dep per resonance
-    passes the full E_test array, eliminating the multiprocessing overhead
-    and the per-point mpmath penetrability calls.  Penetrability interpolators
-    are pre-built once per unique angular momentum l and reused.
-    """
-    m_alpha  = A1_proj   * MASS_PROTON
+    E_arr = np.array([E])
+    xs_tot = 0.0
+
+    # Correct masses
+    m_alpha = A1_proj * MASS_PROTON
     m_target = A1_target * MASS_PROTON
 
-    E_eV = E_test * 1e6          # MeV → eV for sigma_bw_energy_dep
-    E_mev = E_test               # already MeV for make_penetrability_interp
+    for j in range(len(res["E_cm"])):
 
-    # Build one penetrability interpolator per unique l value
-    Emin_mev = max(float(E_mev.min()), 1e-6)
-    Emax_mev = float(E_mev.max())
-    unique_l = set(int(x) for x in res_data["L"])
-    P_interps = {
-        l_val: make_penetrability_interp(
-            l_val, Z1, Z2, A1_proj, A1_target,
-            Emin_mev=Emin_mev, Emax_mev=Emax_mev, npts=600
-        )
-        for l_val in unique_l
-    }
-
-    n = len(res_data["E_cm"])
-    xs_total = np.zeros(len(E_test))
-
-    for j in tqdm(range(n), desc="Summing resonances", leave=False):
-        l_j = int(res_data["L"][j])
         r_j = Resonance(
-            res_data["E_cm"][j] * 1e6,   # MeV → eV
-            res_data["Jr"][j],
+            res["E_cm"][j] * 1e6,
+            res["Jr"][j],
             0, 0,
             m_target,
             m_alpha,
-            res_data["g1"][j],
-            res_data["g2"][j],
+            res["g1"][j],
+            res["g2"][j],
         )
-        xs_j = sigma_bw_energy_dep(
-            E_eV, r_j,
-            Z1, Z2, A1_proj, A1_target,
-            l_j,
-            Gamma_i_Er_eV=res_data["g1"][j],
-            P_interp=P_interps[l_j],
-        )
-        xs_total += np.asarray(xs_j).ravel()
 
-    return xs_total
+        xs_j = sigma_bw_energy_dep(
+            E_arr * 1e6,
+            r_j,
+            Z1, Z2,
+            A1_proj, A1_target,
+            res["L"][j],
+            Gamma_i_Er_eV=res["g1"][j]
+        )
+
+        xs_tot += xs_j
+#    print(np.shape(xs_tot))
+    return np.squeeze(xs_tot).item()
+
+
+# ============================================================
+def calc_cross_sections(E_test, Z1, A1_proj, Z2, A1_target, res_data, nproc=None):
+
+    if nproc is None:
+        nproc = 1
+
+    nproc = min(nproc,cpu_count())
+
+    tasks = [(E, Z1, A1_proj, Z2, A1_target, res_data) for E in E_test]
+
+    with Pool(processes=nproc) as pool:
+        xs = list(
+            tqdm(
+                pool.imap(_sigma_worker, tasks, chunksize=50),
+                total=len(E_test),
+                desc="Calculating σ(E)",
+                leave=False
+            )
+        )
+
+    return np.array(xs)
 
 
 # ============================================================
@@ -386,19 +391,12 @@ def main():
                              "(e.g. --tag _test produces 22Mg(a,p)25Al_xs_unintegrated_parallel_test.txt)")
     parser.add_argument("--run-idx", dest="run_idx", type=int, default=0,
                         help="RUN_N index to read the RatesMC .in file from (default 0).")
-    parser.add_argument("--resonance-output-dir", dest="resonance_output_dir",
-                        default="outputs",
-                        help="Root directory containing RUN_N resonance outputs (default: outputs).")
-    parser.add_argument("--output-dir", dest="output_dir", default=".",
-                        help="Directory where integrated CSV files are written (default: current dir).")
     args = parser.parse_args()
 
     reaction = args.reaction
 
-    resonance_dir = os.path.join(args.resonance_output_dir, reaction, f"RUN_{args.run_idx}")
-    infile = os.path.join(resonance_dir, f"{reaction}.in")
-
-    os.makedirs(args.output_dir, exist_ok=True)
+    output_dir = f"outputs/{reaction}/RUN_{args.run_idx}/"
+    infile = f"{output_dir}{reaction}.in"
 
     if not os.path.exists(infile):
         raise FileNotFoundError(f"{infile} not found.")
@@ -445,7 +443,7 @@ def main():
     # ============================================================
     # Unintegrated cross section
     # ============================================================
-    unint_file = os.path.join(args.output_dir, f"{reaction}_xs_unintegrated_parallel{tag_suffix}.txt")
+    unint_file = f"{reaction}_xs_unintegrated_parallel{args.tag}.txt"
 
     if args.skip_unintegrated:
         print(f"Loading existing unintegrated cross sections from {unint_file} ...")
@@ -513,7 +511,7 @@ def main():
             end      = start + points_per_bin + 1
             E_slice  = E_test[start:end]
             xs_slice = xs_unint[start:end]
-            xs_int   = np.trapezoid(xs_slice, E_slice)
+            xs_int   = np.trapz(xs_slice, E_slice)
             xs_bin.append(xs_int * 1e3 / dE)   # convert to mb and normalise by bin width
             E_bins.append(0.5 * (E_slice[0] + E_slice[-1]))
 
@@ -522,7 +520,7 @@ def main():
         E_bins = np.array(E_bins)
 
         np.savetxt(
-            os.path.join(args.output_dir, f"{target}_ap_{residual}_integrated_xs_dE_{dE}{tag_suffix}.csv"),
+            f"{target}_ap_{residual}_integrated_xs_dE_{dE}{tag_suffix}.csv",
             np.column_stack((E_bins, xs_bin)),
             delimiter=",",
             header=f"E (MeV),sigma (mb)| dE={dE}",
