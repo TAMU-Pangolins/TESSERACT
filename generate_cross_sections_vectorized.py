@@ -93,13 +93,22 @@ def main():
                         help="Optional suffix appended to output filenames.")
     parser.add_argument("--run-idx", dest="run_idx", type=int, default=0,
                         help="RUN_N index to read the RatesMC .in file from (default 0).")
+    parser.add_argument("--resonance-output-dir", dest="resonance_output_dir",
+                        type=str, default="outputs",
+                        help="Root directory containing RUN_N/.in files (default: outputs).")
+    parser.add_argument("--output-dir", dest="output_dir",
+                        type=str, default=".",
+                        help="Directory to write output files (default: .).")
     args = parser.parse_args()
 
     reaction  = args.reaction
-    infile    = f"outputs/{reaction}/RUN_{args.run_idx}/{reaction}.in"
+    res_dir   = os.path.join(args.resonance_output_dir, reaction, f"RUN_{args.run_idx}")
+    infile    = os.path.join(res_dir, f"{reaction}.in")
 
     if not os.path.exists(infile):
         raise FileNotFoundError(f"{infile} not found.")
+
+    os.makedirs(args.output_dir, exist_ok=True)
 
     rxn_match = re.match(r'([^(]+)\(a,p\)(.+)', reaction)
     if not rxn_match:
@@ -136,7 +145,7 @@ def main():
     # ============================================================
     # Unintegrated cross section
     # ============================================================
-    unint_file = f"{reaction}_xs_unintegrated_vectorized{tag_suffix}.txt"
+    unint_file = os.path.join(args.output_dir, f"{reaction}_xs_unintegrated_parallel{tag_suffix}.txt")
 
     if args.skip_unintegrated:
         print(f"Loading existing unintegrated cross sections from {unint_file} ...")
@@ -204,7 +213,7 @@ def main():
         xs_bin = np.array(xs_bin)
         E_bins = np.array(E_bins)
 
-        outfile = f"{target}_ap_{residual}_integrated_xs_dE_{dE}{tag_suffix}.csv"
+        outfile = os.path.join(args.output_dir, f"{target}_ap_{residual}_integrated_xs_dE_{dE}{tag_suffix}.csv")
         np.savetxt(
             outfile,
             np.column_stack((E_bins, xs_bin)),

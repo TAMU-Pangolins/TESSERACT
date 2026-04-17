@@ -348,7 +348,6 @@ def step2_generate_xs(basics: dict, resonance: dict, integration: dict, runs: in
             "--E-max-mev",              E_max,
             "--dE",                     dE,
             "--n-grid-points",          integration.get('n_grid_points', '10000'),
-            "--nproc",                  integration.get('nproc',         '1'),
             "--tag",                    tag_j,
             "--run-idx",                str(j),
             "--resonance-output-dir",   res_output_dir,
