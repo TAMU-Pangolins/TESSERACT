@@ -228,6 +228,8 @@ def _convert_reduced_to_partial_widths(
     l1_default: int,
     l2_default: int,
     r0: float = 1.25,
+    Q_mev: float = 0.0,
+    Exf_mev: float = 0.0,
 ):
     projectile = (metadata.proj_Z, _mass_number_from_token(metadata.proj_A_token))
     target = (metadata.Z, _mass_number_from_token(metadata.targ_A_token))
@@ -245,13 +247,14 @@ def _convert_reduced_to_partial_widths(
         zt, at = target
         if None not in (z1, a1, zt, at):
             p1 = penetrability_P_l_mev(l1, z1, zt, a1, at, er_mev, r0)
-            g1 = 2.0 * g1**2 * p1
+            g1 = 2.0 * g1 * p1
 
         z2, a2 = ejectile
         zr, ar = residual
         if convert_exit and None not in (z2, a2, zr, ar):
-            p2 = penetrability_P_l_mev(l2, z2, zr, a2, ar, er_mev, r0)
-            g2 = 2.0 * g2**2 * p2
+            e2_mev = max(er_mev + Q_mev - Exf_mev, 0.0)
+            p2 = penetrability_P_l_mev(l2, z2, zr, a2, ar, e2_mev, r0)
+            g2 = 2.0 * g2 * p2
 
         converted.append(replace(res, Gamma_i=g1, Gamma_o=g2))
     return converted
@@ -440,11 +443,38 @@ def build_ratesmc_input(args) -> None:
         precision=args.precision,
     )
 
+    # Parse Q-value from template separation energies (temporary fix)
+    S_proj = S_exit = None
+    for line in lines:
+        idx = line.find("!")
+        if idx == -1:
+            continue
+        comment = line[idx + 1:].strip().lower()
+        raw = line[:idx].strip().split()
+        if not raw:
+            continue
+        if "projectile separation energy" in comment and S_proj is None:
+            try:
+                S_proj = float(raw[0])
+            except ValueError:
+                pass
+        elif "exit particle separation energy" in comment and S_exit is None:
+            try:
+                S_exit = float(raw[0])
+            except ValueError:
+                pass
+        if S_proj is not None and S_exit is not None:
+            break
+    Q_mev = (S_proj - S_exit) * 1e-3 if (S_proj is not None and S_exit is not None) else 0.0
+    print(f"Q-value: {Q_mev*1e3:.2f} keV  (S_proj={S_proj}, S_exit={S_exit})")
+
     export_resonances = _convert_reduced_to_partial_widths(
         generated.resonances,
         metadata,
         l1_default=args.l1,
         l2_default=args.l2,
+        Q_mev=Q_mev,
+        Exf_mev=args.exf_kev * 1e-3,
     )
     rows, widths = render_rows(export_resonances, opts)
     header_line = resonant_header_line(widths, opts)

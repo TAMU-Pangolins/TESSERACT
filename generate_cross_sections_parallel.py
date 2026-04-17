@@ -298,7 +298,7 @@ def _sigma_worker(args):
             r_j,
             Z1, Z2,
             A1_proj, A1_target,
-            res["L"][j],
+            res["l1"][j],
             Gamma_i_Er_eV=res["g1"][j]
         )
 
@@ -375,10 +375,10 @@ def main():
                              "(sets integration resolution; default 10000).")
 
     parser.add_argument("--nproc", type=int, default=None)
-    # parser.add_argument("--mean-i", dest="mean_i", type=float, default=0.010,
-    #                     help="Theta for entrance channel")
-    # parser.add_argument("--mean-o", dest="mean_o", type=float, default=0.0045,
-    #                     help="Theta for exit channel")
+    parser.add_argument("--mean-i", dest="mean_i", type=float, default=0.010,
+                        help="Wigner-limit fraction for entrance (alpha) channel")
+    parser.add_argument("--mean-o", dest="mean_o", type=float, default=0.0045,
+                        help="Wigner-limit fraction for exit (proton) channel")
     parser.add_argument("--skip-unintegrated", dest="skip_unintegrated",
                         action="store_true", default=False,
                         help="Skip computing unintegrated cross sections and load from "
@@ -437,6 +437,7 @@ def main():
         "Jr":   Jr,
         "g1":   g1,
         "g2":   g2,
+        "l1":   l1,
         "L":    L,
     }
 
@@ -511,7 +512,7 @@ def main():
             end      = start + points_per_bin + 1
             E_slice  = E_test[start:end]
             xs_slice = xs_unint[start:end]
-            xs_int   = np.trapz(xs_slice, E_slice)
+            xs_int   = np.trapezoid(xs_slice, E_slice)
             xs_bin.append(xs_int * 1e3 / dE)   # convert to mb and normalise by bin width
             E_bins.append(0.5 * (E_slice[0] + E_slice[-1]))
 

@@ -196,8 +196,10 @@ def compute_gamma(A_tar: int, mean_i: float, mean_o: float):
     wig_i  = 3 * HBAR**2 / (2 * mu_i * R_sq_i) * 6.242e18
     gamma_i = wig_i * mean_i
 
-    mu_o   = reduced_mass(m_target, A_proton * MASS_PROTON)
-    R_sq_o = (1.25e-15)**2 * (A_tar**(1/3) + A_proton**(1/3))**2
+    A_res  = A_tar + A_alpha - A_proton          # residual nucleus (e.g. 25Al for 22Mg(a,p))
+    m_res  = A_res * MASS_PROTON
+    mu_o   = reduced_mass(m_res, A_proton * MASS_PROTON)
+    R_sq_o = (1.25e-15)**2 * (A_res**(1/3) + A_proton**(1/3))**2
     wig_o  = 3 * HBAR**2 / (2 * mu_o * R_sq_o) * 6.242e18
     gamma_o = wig_o * mean_o
 
