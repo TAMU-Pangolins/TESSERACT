@@ -4,7 +4,7 @@ tesseract.py — TESSERACT pipeline driver.
 
 Reads tesseract.in and runs any combination of:
   Step 1  [resonance]   — build_ratesmc_input.py
-  Step 2  [integration] — generate_cross_sections_parallel.py
+  Step 2  [integration] — generate_cross_sections_vectorized.py
   Step 3  [talys]       — talys_opt_with_unc.py
 
 Rules:
@@ -301,7 +301,7 @@ def step1_build_ratesmc(basics: dict, resonance: dict,
 def step2_generate_xs(basics: dict, resonance: dict, integration: dict, runs: int,
                       run_idx: int = None) -> None:
     """
-    Run generate_cross_sections_parallel.py once per run index j = 0..runs-1.
+    Run generate_cross_sections_vectorized.py once per run index j = 0..runs-1.
     If run_idx is given, only process that single run.
 
     Output filenames encode the run index via --tag:
@@ -342,7 +342,7 @@ def step2_generate_xs(basics: dict, resonance: dict, integration: dict, runs: in
             continue
 
         cmd = [
-            _PYTHON, str(_SCRIPT_DIR / "generate_cross_sections_parallel.py"),
+            _PYTHON, str(_SCRIPT_DIR / "generate_cross_sections_vectorized.py"),
             "--reaction",               reaction,
             "--E-min-mev",              E_min,
             "--E-max-mev",              E_max,
@@ -364,7 +364,7 @@ def step2_generate_xs(basics: dict, resonance: dict, integration: dict, runs: in
         print(f"[integration] run {j}/{runs-1} ...", flush=True)
         result = subprocess.run(cmd)
         if result.returncode != 0:
-            sys.exit(f"[integration] generate_cross_sections_parallel.py failed for run {j}.")
+            sys.exit(f"[integration] generate_cross_sections_vectorized.py failed for run {j}.")
 
     if n_skipped:
         print(f"[integration] {n_skipped}/{runs} run(s) already existed — skipped.")
