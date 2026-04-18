@@ -382,7 +382,7 @@ def step3_talys_opt(talys: dict, exp_files: list, input_path: str,
     exp_files : list of Path — the integrated XS files to fit
     """
     if run_idx is not None:
-        exp_files = [f for f in exp_files if f"_run{run_idx}" in f.stem]
+        exp_files = [f for f in exp_files if re.search(rf'_run{run_idx}(\D|$)', f.stem)]
         if not exp_files:
             sys.exit(f"[talys] No exp_files found matching run index {run_idx}.")
     script_path   = _SCRIPT_DIR / "talys_opt_with_unc.py"
@@ -518,7 +518,7 @@ def main():
                                                   output_dir=int_output_dir)
             # Sanity-check: files for this run must exist before feeding to TALYS
             check_files = (
-                [f for f in exp_files if f"_run{run_idx}" in f.stem]
+                [f for f in exp_files if re.search(rf'_run{run_idx}(\D|$)', f.stem)]
                 if run_idx is not None else exp_files
             )
             missing = [p for p in check_files if not p.exists()]
