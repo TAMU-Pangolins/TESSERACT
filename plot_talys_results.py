@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+1#!/usr/bin/env python3
 """
 plot_talys_results.py — Visualise TALYS optimisation results.
 
@@ -322,8 +322,8 @@ def main():
             ratio[valid] = talys_on_grid[valid] / rmc_on_grid[valid]
             all_ratios.append(ratio)
 
-            ax.plot(t9_common[valid], ratio[valid],
-                    color="steelblue", alpha=0.3, lw=0.8)
+#            ax.plot(t9_common[valid], ratio[valid],
+#                    color="steelblue", alpha=0.3, lw=0.8)
 
         if all_ratios:
             # Median and 16th/84th percentile envelope across all runs
@@ -341,6 +341,7 @@ def main():
 
         ax.axhline(1.0, color="red", lw=1.5, linestyle="--", label="Ratio = 1")
         ax.set_xlabel("T9 (GK)", fontsize=12)
+        ax.set_xlim(0.1,2.2)
         ax.set_ylabel("Rate ratio  (TALYS best-fit / RatesMC median)", fontsize=12)
         ax.set_title(f"{args.reaction} — TALYS vs RatesMC rate ratio", fontsize=13)
         ax.set_yscale("log")
