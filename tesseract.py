@@ -271,12 +271,13 @@ def step1_build_ratesmc(basics: dict, resonance: dict,
             "--pi",               resonance.get('pi',               '1'),
             "--delta-E-mev",      resonance.get('delta_E_mev',      '0.05'),
             "--n-sigma-points",   resonance.get('n_sigma_points',   '4000'),
-            "--U-offset-mev",     resonance.get('U_offset_mev',     '8.0'),
             "--default-frac-unc", resonance.get('default_frac_unc', '0.001'),
             "--int-flag",         resonance.get('int_flag',         '1'),
             "--precision",        resonance.get('precision',        '3'),
             "--n-random-samples", resonance.get('n_random_samples', '1'),
         ]
+        if 'U_offset_mev' in resonance:
+            cmd.extend(["--U-offset-mev", resonance['U_offset_mev']])
         if seed is not None:
             cmd.extend(["--seed", seed])
         if _bool(resonance.get('use_strength'), False):

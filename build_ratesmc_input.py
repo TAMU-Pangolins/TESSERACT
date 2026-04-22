@@ -13,7 +13,12 @@ from nucres.ratesmc_export import (
     render_rows,
     resonant_header_line,
 )
-from nucres.read_qvals import interpret_z_token, mass_from_token, split_nuclide_token
+from nucres.read_qvals import (
+    interpret_z_token,
+    load_ame,
+    mass_from_token,
+    split_nuclide_token,
+)
 from nucres.resonance import penetrability_P_l_mev
 
 
@@ -222,6 +227,51 @@ def _reaction_exit_symbol(reaction: str) -> Optional[str]:
     return symbol.lower() if symbol is not None else None
 
 
+def projectile_separation_energy_mev(
+    z_proj: int,
+    a_proj: int,
+    z_targ: int,
+    a_targ: int,
+    ame=None,
+) -> float:
+    """
+    Compute the projectile separation energy of the compound nucleus in MeV.
+
+    This is the excitation-energy offset used for HFB density lookup:
+    U = E_cm + S_projectile.
+    """
+    ame = ame or load_ame()
+    z_comp = z_proj + z_targ
+    a_comp = a_proj + a_targ
+    return (
+        ame[(z_proj, a_proj)]
+        + ame[(z_targ, a_targ)]
+        - ame[(z_comp, a_comp)]
+    ) * 1e-3
+
+
+def _infer_u_offset_mev(metadata: TemplateMetadata) -> float:
+    z_proj = metadata.proj_Z
+    a_proj = _mass_number_from_token(metadata.proj_A_token)
+    z_targ = metadata.Z
+    a_targ = _mass_number_from_token(metadata.targ_A_token)
+    missing = []
+    if z_proj is None:
+        missing.append("Zproj")
+    if a_proj is None:
+        missing.append("Aproj")
+    if z_targ is None:
+        missing.append("Ztarget")
+    if a_targ is None:
+        missing.append("Atarget")
+    if missing:
+        raise ValueError(
+            "Unable to infer --U-offset-mev from template; please supply it explicitly. "
+            "Missing: " + ", ".join(missing)
+        )
+    return projectile_separation_energy_mev(z_proj, a_proj, z_targ, a_targ)
+
+
 def _convert_reduced_to_partial_widths(
     resonances,
     metadata: TemplateMetadata,
@@ -390,6 +440,12 @@ def build_ratesmc_input(args) -> None:
             + ", ".join(missing)
         )
 
+    U_offset_mev = (
+        args.U_offset_mev
+        if args.U_offset_mev is not None
+        else _infer_u_offset_mev(metadata)
+    )
+
     cfg = HFBSamplerConfig(
         Z=Z_val,
         data_root=args.data_root,
@@ -407,7 +463,7 @@ def build_ratesmc_input(args) -> None:
         E_max_mev=args.E_max_mev,
         n_density_points=args.n_density_points,
         n_sigma_points=args.n_sigma_points,
-        U_offset_mev=args.U_offset_mev,
+        U_offset_mev=U_offset_mev,
         seed=args.seed,
         sample_J=args.sample_J,
         auto_l1=args.auto_l1,
@@ -677,8 +733,11 @@ def parse_args() -> argparse.Namespace:
     p.add_argument(
         "--U-offset-mev",
         type=float,
-        default=8.0,
-        help="Excitation offset added to E_lab in density lookup.",
+        default=None,
+        help=(
+            "Excitation offset added to E_lab in density lookup. "
+            "Defaults to projectile separation energy inferred from AME2020."
+        ),
     )
     p.add_argument("--seed", type=int, default=None, help="RNG seed.")
     p.add_argument(
