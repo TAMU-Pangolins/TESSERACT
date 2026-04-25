@@ -272,6 +272,34 @@ def _infer_u_offset_mev(metadata: TemplateMetadata) -> float:
     return projectile_separation_energy_mev(z_proj, a_proj, z_targ, a_targ)
 
 
+def _infer_compound_nucleus(metadata: TemplateMetadata) -> Tuple[int, int]:
+    """
+    Infer the compound nucleus used for HFB level-density lookup.
+
+    Resonances are sampled in the compound system, so the density table
+    coordinates are target + projectile, not the target nucleus alone.
+    """
+    z_proj = metadata.proj_Z
+    a_proj = _mass_number_from_token(metadata.proj_A_token)
+    z_targ = metadata.Z
+    a_targ = _mass_number_from_token(metadata.targ_A_token)
+    missing = []
+    if z_proj is None:
+        missing.append("Zproj")
+    if a_proj is None:
+        missing.append("Aproj")
+    if z_targ is None:
+        missing.append("Ztarget")
+    if a_targ is None:
+        missing.append("Atarget")
+    if missing:
+        raise ValueError(
+            "Unable to infer compound nucleus from template; please supply --Z/--A explicitly. "
+            "Missing: " + ", ".join(missing)
+        )
+    return z_targ + z_proj, a_targ + a_proj
+
+
 def _convert_reduced_to_partial_widths(
     resonances,
     metadata: TemplateMetadata,
@@ -397,8 +425,9 @@ def build_ratesmc_input(args) -> None:
         auto_output.parent.mkdir(parents=True, exist_ok=True)
     output_path = output_arg if output_arg is not None else auto_output
 
-    Z_val = args.Z if args.Z is not None else metadata.Z
-    A_val = args.A if args.A is not None else metadata.A
+    compound_Z_auto, compound_A_auto = _infer_compound_nucleus(metadata)
+    Z_val = args.Z if args.Z is not None else compound_Z_auto
+    A_val = args.A if args.A is not None else compound_A_auto
     s1_val = args.s1 if args.s1 is not None else metadata.s1
     s2_val = args.s2 if args.s2 is not None else metadata.s2
     J_val = args.J if args.J is not None else metadata.J
@@ -659,7 +688,7 @@ def parse_args() -> argparse.Namespace:
         "--Z",
         type=int,
         default=None,
-        help="Proton number for the density grid lookup (default: parsed from template).",
+        help="Proton number for the density grid lookup (default: compound target+projectile).",
     )
     p.add_argument(
         "--data-root",
@@ -671,7 +700,7 @@ def parse_args() -> argparse.Namespace:
         "--A",
         type=int,
         default=None,
-        help="Mass number slice for density grid (default: parsed from template).",
+        help="Mass number slice for density grid (default: compound target+projectile).",
     )
     p.add_argument(
         "--J",
