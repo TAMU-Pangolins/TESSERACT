@@ -25,3 +25,8 @@ convert_reduced_to_partial_widths.py
 *.job
 plot_xs.py
 integrated_xs_all.png
+*.png
+res_test/
+tesseract*.in
+plot_gamow_integrand.py
+talys_opt/
