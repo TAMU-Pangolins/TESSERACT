@@ -203,14 +203,15 @@ def main():
     parser = argparse.ArgumentParser(description="Plot TALYS optimisation results")
     parser.add_argument("--talys-out",   required=True,
                         help="Path to talys_optimization.out")
-    parser.add_argument("--npz-dir",     required=True,
-                        help="Directory containing talys_results_*.npz files")
+    #parser.add_argument("--npz-dir",
+    #                    help="Directory containing talys_results_*.npz files")
     parser.add_argument("--ratesmc-dir", required=True,
                         help="Root resonance dir, e.g. outputs/resonances/22Mg(a,p)25Al")
     parser.add_argument("--reaction",    required=True,
                         help="Reaction name matching .out filename, e.g. '22Mg(a,p)25Al'")
     parser.add_argument("--output-dir",  default=".",
                         help="Directory to save plots (default: current dir)")
+    parser.add_argument("--save-fig", help='Name of the reaction rate ratio plot',default='rate_vs_T9_plot.png')
     args = parser.parse_args()
 
     os.makedirs(args.output_dir, exist_ok=True)
@@ -233,23 +234,23 @@ def main():
     chi2_vals = np.array([rec["chi2_red"] for rec in records])
 
     n_params = len(all_params)
-    if n_params > 0:
-        fig, axes = plt.subplots(1, n_params, figsize=(5 * n_params, 4), squeeze=False)
-        for ax, pname in zip(axes[0], all_params):
-            pvals = np.array([rec["params"].get(pname, np.nan) for rec in records])
-            mask  = np.isfinite(pvals) & np.isfinite(chi2_vals)
-            sc = ax.scatter(pvals[mask], chi2_vals[mask], c=chi2_vals[mask],
-                            cmap="viridis_r", edgecolors="k", linewidths=0.4, s=40)
-            ax.set_xlabel(pname, fontsize=12)
-            ax.set_ylabel(r"Min $\chi^2_\nu$", fontsize=12)
-            ax.set_title(pname)
-            plt.colorbar(sc, ax=ax, label=r"$\chi^2_\nu$")
-        fig.suptitle(f"{args.reaction} — optimised parameters vs $\\chi^2_\\nu$", fontsize=13)
-        fig.tight_layout()
-        out1 = os.path.join(args.output_dir, "params_vs_chi2.png")
-        fig.savefig(out1, dpi=150, bbox_inches="tight")
-        print(f"Saved: {out1}")
-        plt.show()
+#    if n_params > 0:
+#        fig, axes = plt.subplots(1, n_params, figsize=(5 * n_params, 4), squeeze=False)
+#        for ax, pname in zip(axes[0], all_params):
+#            pvals = np.array([rec["params"].get(pname, np.nan) for rec in records])
+#            mask  = np.isfinite(pvals) & np.isfinite(chi2_vals)
+#            sc = ax.scatter(pvals[mask], chi2_vals[mask], c=chi2_vals[mask],
+#                            cmap="viridis_r", edgecolors="k", linewidths=0.4, s=40)
+#            ax.set_xlabel(pname, fontsize=12)
+#            ax.set_ylabel(r"Min $\chi^2_\nu$", fontsize=12)
+#            ax.set_title(pname)
+#            plt.colorbar(sc, ax=ax, label=r"$\chi^2_\nu$")
+#        fig.suptitle(f"{args.reaction} — optimised parameters vs $\\chi^2_\\nu$", fontsize=13)
+#        fig.tight_layout()
+#        out1 = os.path.join(args.output_dir, "params_vs_chi2.png")
+#        fig.savefig(out1, dpi=150, bbox_inches="tight")
+#        print(f"Saved: {out1}")
+#        plt.show()
 
     # ── Plot 2: TALYS / RatesMC rate ratio vs full T9 curve ──────────────────
     # Build a common T9 grid from the union of all TALYS T9 arrays.
@@ -337,17 +338,17 @@ def main():
                     color="navy", lw=2.0, label="Median across runs")
             ax.fill_between(t9_common[valid_env],
                             lo[valid_env], hi[valid_env],
-                            color="steelblue", alpha=0.25, label="16–84th percentile")
+                            color="steelblue", alpha=0.25, label=r"1$\sigma$ band")
 
-        ax.axhline(1.0, color="red", lw=1.5, linestyle="--", label="Ratio = 1")
+        ax.axhline(1.0, color="k", lw=1.5, linestyle="--", label="Ratio = 1")
         ax.set_xlabel("T9 (GK)", fontsize=12)
-        ax.set_xlim(0.1,2.2)
-        ax.set_ylabel("Rate ratio  (TALYS best-fit / RatesMC median)", fontsize=12)
+        ax.set_xlim(0.,2.1)
+        ax.set_ylabel("Reaction Rate  (TALYS best-fit / RatesMC median)", fontsize=12)
         ax.set_title(f"{args.reaction} — TALYS vs RatesMC rate ratio", fontsize=13)
         ax.set_yscale("log")
         ax.legend(fontsize=10)
         fig.tight_layout()
-        out2 = os.path.join(args.output_dir, "rate_ratio_vs_T9.png")
+        out2 = os.path.join(args.output_dir, args.save_fig)
         fig.savefig(out2, dpi=150, bbox_inches="tight")
         print(f"Saved: {out2}")
         plt.show()
