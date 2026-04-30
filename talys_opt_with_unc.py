@@ -463,7 +463,7 @@ def plot_best_fit_xs(cfg, x_exp, y_exp, x_t, y_t, params_best, y_err=None, out_d
     if log_y:
         plt.yscale("log")
     plt.grid(True, which="both", linestyle="--", linewidth=0.5, alpha=0.6)
-    plt.legend(fontsize=8)
+    #plt.legend(fontsize=8)
     plt.tight_layout()
     fname = os.path.join(out_dir, f"talys_opt_{cfg['tar']}_{cfg['proj']}{cfg['ejec']}_{cfg['residual']}_xs.png")
     plt.savefig(fname, dpi=300)
