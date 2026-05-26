@@ -30,3 +30,4 @@ res_test/
 tesseract*.in
 plot_gamow_integrand.py
 talys_opt/
+plot_xs_ratio.py
