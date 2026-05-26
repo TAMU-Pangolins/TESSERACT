@@ -27,13 +27,35 @@ TIMEOUT = 60
 RETRY   = 3
 WAIT_BETWEEN = 0.25  # be nice to the server
 
+MANUAL_DOWNLOAD_INSTRUCTIONS = f"""
+The RIPL-3 server returned HTTP 403 Forbidden. This can happen if the server or
+its front-end protection blocks scripted downloads.
+
+Manual fallback:
+  1. Open this URL in a browser:
+     {BASE}
+  2. Download the needed zXXX.tab files and, if available, matching zXXX.cor
+     correction files.
+  3. Place them in:
+     {DEST_DIR}
+  4. Point nucres at that directory:
+     export NUCRES_DATA_ROOT="{DEST_DIR}"
+
+After the files are present, rerun the THICC workflow that needed HFB data.
+"""
+
 def http_get(url: str) -> bytes:
     req = urllib.request.Request(url, headers={"User-Agent": UA})
     with urllib.request.urlopen(req, timeout=TIMEOUT) as r:
         return r.read()
 
 def scrape_hfb_listing() -> list[str]:
-    html = http_get(BASE).decode("utf-8", errors="ignore")
+    try:
+        html = http_get(BASE).decode("utf-8", errors="ignore")
+    except urllib.error.HTTPError as exc:
+        if exc.code == 403:
+            raise RuntimeError(MANUAL_DOWNLOAD_INSTRUCTIONS.strip()) from exc
+        raise
     # Pick out zNNN.tab and zNNN.cor names
     hits = re.findall(r"z(\d{3})\.(tab|cor)", html)
     names = {f"z{z}.{ext}" for z, ext in hits}
@@ -80,6 +102,8 @@ def download_file(name: str, dest_dir: Path):
             sys.stdout.write("\n")
             return
         except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError) as e:
+            if isinstance(e, urllib.error.HTTPError) and e.code == 403:
+                raise RuntimeError(MANUAL_DOWNLOAD_INSTRUCTIONS.strip()) from e
             last_err = e
             print(f"  attempt {attempt} failed for {name}: {e}")
             time.sleep(1.0 * attempt)
@@ -87,14 +111,20 @@ def download_file(name: str, dest_dir: Path):
 
 def main():
     print("Destination:", DEST_DIR)
-    files = scrape_hfb_listing()
+    try:
+        files = scrape_hfb_listing()
+    except RuntimeError as exc:
+        raise SystemExit(str(exc)) from exc
     if not files:
         print("No files found — check connectivity or the directory URL.")
         return
     print(f"Found {len(files)} files to fetch.")
     for i, name in enumerate(files, 1):
         print(f"[{i}/{len(files)}] {name}")
-        download_file(name, DEST_DIR)
+        try:
+            download_file(name, DEST_DIR)
+        except RuntimeError as exc:
+            raise SystemExit(str(exc)) from exc
         time.sleep(WAIT_BETWEEN)
     store_data_root(DEST_DIR)
     print("Done.")

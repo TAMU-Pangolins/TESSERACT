@@ -42,6 +42,18 @@ cd THICC
 python download_ripl.py
 ```
 
+If the RIPL‑3 site returns `HTTP Error 403: Forbidden`, the server may be
+blocking scripted downloads. Use the manual fallback:
+
+1. Open `https://www-nds.iaea.org/RIPL-3/densities/level-densities-hfb/` in a browser.
+2. Download the needed `zXXX.tab` files and matching `zXXX.cor` correction files
+   when present.
+3. Put the files in `data/densities/level-densities-hfb`.
+4. Point THICC/nucres at that directory if needed:
+```bash
+export NUCRES_DATA_ROOT="$PWD/data/densities/level-densities-hfb"
+```
+
 3. Install dependencies (using `uv`). The lockfile is built for Python 3.9–3.11; use 3.11 for a guaranteed resolver fit.
 ```bash
 uv sync --python 3.11
