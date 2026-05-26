@@ -203,8 +203,8 @@ def main():
     parser = argparse.ArgumentParser(description="Plot TALYS optimisation results")
     parser.add_argument("--talys-out",   required=True,
                         help="Path to talys_optimization.out")
-    #parser.add_argument("--npz-dir",
-    #                    help="Directory containing talys_results_*.npz files")
+    parser.add_argument("--npz-dir",
+                        help="Directory containing talys_results_*.npz files")
     parser.add_argument("--ratesmc-dir", required=True,
                         help="Root resonance dir, e.g. outputs/resonances/22Mg(a,p)25Al")
     parser.add_argument("--reaction",    required=True,
@@ -330,26 +330,26 @@ def main():
             # Median and 16th/84th percentile envelope across all runs
             stack = np.vstack(all_ratios)   # shape (n_runs, n_t9)
             med   = np.nanpercentile(stack, 50, axis=0)
-            lo    = np.nanpercentile(stack, 16, axis=0)
-            hi    = np.nanpercentile(stack, 84, axis=0)
+            lo    = np.nanpercentile(stack, 2.5, axis=0)
+            hi    = np.nanpercentile(stack, 97.5, axis=0)
 
             valid_env = np.isfinite(med) & (med > 0)
             ax.plot(t9_common[valid_env], med[valid_env],
                     color="navy", lw=2.0, label="Median across runs")
             ax.fill_between(t9_common[valid_env],
                             lo[valid_env], hi[valid_env],
-                            color="steelblue", alpha=0.25, label=r"1$\sigma$ band")
+                            color="steelblue", alpha=0.25, label=r"2$\sigma$ band")
 
-        ax.axhline(1.0, color="k", lw=1.5, linestyle="--", label="Ratio = 1")
+        ax.axhline(1.0, color="k", lw=1.5, linestyle="--")
         ax.set_xlabel("T9 (GK)", fontsize=12)
         ax.set_xlim(0.,2.1)
-        ax.set_ylabel("Reaction Rate  (TALYS best-fit / RatesMC median)", fontsize=12)
-        ax.set_title(f"{args.reaction} — TALYS vs RatesMC rate ratio", fontsize=13)
+        ax.set_ylabel(r"$RR_{\rm Talys} / RR_{\rm RMC}$", fontsize=12)
+        #ax.set_title(f"{args.reaction} — TALYS vs RatesMC rate ratio", fontsize=14)
         ax.set_yscale("log")
         ax.legend(fontsize=10)
         fig.tight_layout()
         out2 = os.path.join(args.output_dir, args.save_fig)
-        fig.savefig(out2, dpi=150, bbox_inches="tight")
+        fig.savefig(out2, dpi=300, bbox_inches="tight")
         print(f"Saved: {out2}")
         plt.show()
 
