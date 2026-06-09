@@ -18,6 +18,7 @@ condor_logs/
 calc_xs_condor.sh
 *condor*
 Figures/
+figures/
 outputs/
 calc_xs_parallel.py
 talys_mc_parallel.py
@@ -26,6 +27,7 @@ convert_reduced_to_partial_widths.py
 plot_xs.py
 integrated_xs_all.png
 *.png
+*.pdf
 res_test/
 tesseract*.in
 plot_gamow_integrand.py
