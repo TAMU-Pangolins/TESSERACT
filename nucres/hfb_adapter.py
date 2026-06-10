@@ -13,6 +13,7 @@ from common.densities_retrieval import (
 )
 
 from .config import resolve_data_root
+from .data import ensure_hfb_dataset
 
 
 def resolve_density_paths(
@@ -34,6 +35,7 @@ def resolve_density_paths(
         root = resolve_data_root()
     else:
         root = Path(data_root)
+    root = ensure_hfb_dataset(root)
     tab = root / f"z{Z:03d}.tab"
     if not tab.exists():
         raise FileNotFoundError(f"Missing level-density .tab file: {tab}")
