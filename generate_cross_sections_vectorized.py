@@ -8,7 +8,11 @@ import re
 from nucres.resonance import Resonance, sigma_bw_energy_dep, make_penetrability_interp
 from nucres.physics import MASS_PROTON
 from extract_resonance_data import load_resonance_data, load_nuclear_params
-from tqdm import tqdm
+try:
+    from tqdm import tqdm
+except ImportError:
+    def tqdm(iterable, **_kwargs):
+        return iterable
 
 
 # ============================================================
