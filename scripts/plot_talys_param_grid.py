@@ -317,6 +317,14 @@ def compact_tick_labels(values: np.ndarray) -> list[str]:
     return [f"{value:.{decimals}f}".rstrip("0").rstrip(".") for value in values]
 
 
+def sparse_tick_values(values: np.ndarray, max_ticks: int = 4) -> np.ndarray:
+    values = np.asarray(values, dtype=float)
+    if values.size <= max_ticks:
+        return values
+    idx = np.linspace(0, values.size - 1, max_ticks, dtype=int)
+    return values[np.unique(idx)]
+
+
 def format_x_tick_labels(ax, *, top: bool = False) -> None:
     labels = ax.get_xticklabels()
     for label in labels:
@@ -419,6 +427,108 @@ def draw_pair_panel(
             linewidths=0.75,
         )
     return artist
+
+
+def strongest_parameter_pairs(
+    table: dict[str, np.ndarray],
+    params: list[str],
+    *,
+    count: int,
+) -> list[tuple[str, str, float]]:
+    pairs: list[tuple[str, str, float]] = []
+    chi2 = table["chi2_red"]
+    for i, left in enumerate(params):
+        for right in params[i + 1 :]:
+            mask = (
+                np.isfinite(table[left])
+                & np.isfinite(table[right])
+                & np.isfinite(chi2)
+            )
+            if np.count_nonzero(mask) < 4:
+                continue
+            corr = float(np.corrcoef(table[left][mask], table[right][mask])[0, 1])
+            if np.isfinite(corr):
+                pairs.append((left, right, corr))
+    pairs.sort(key=lambda item: abs(item[2]), reverse=True)
+    return pairs[:count]
+
+
+def plot_focused_pairs(
+    records: list[dict],
+    params: list[str],
+    pairs: list[tuple[str, str]],
+    output: Path,
+    *,
+    max_chi2: float | None,
+    hist_bins: int,
+    cmap: str,
+    dpi: int,
+) -> None:
+    table = table_from_records(records, params)
+    chi2 = table["chi2_red"].copy()
+    valid_records = np.isfinite(chi2)
+    if max_chi2 is not None:
+        valid_records &= chi2 <= max_chi2
+
+    z_plot = np.where(valid_records, chi2, np.nan)
+    finite_z = z_plot[np.isfinite(z_plot)]
+    if finite_z.size == 0:
+        raise ValueError("No finite chi-square values remain after filtering.")
+
+    n_pairs = len(pairs)
+    fig_width = max(2.55 * n_pairs + 0.75, 4.0)
+    fig, axes = plt.subplots(1, n_pairs, figsize=(fig_width, 2.7), squeeze=False)
+    axes_flat = axes[0]
+    norm = plt.Normalize(vmin=float(np.nanmin(finite_z)), vmax=float(np.nanmax(finite_z)))
+    cmap_obj = plt.get_cmap(cmap)
+    artist = None
+
+    for ax, (x_name, y_name) in zip(axes_flat, pairs):
+        x = np.where(valid_records, table[x_name], np.nan)
+        y = np.where(valid_records, table[y_name], np.nan)
+        x, y, z = finite_pair(x, y, z_plot)
+        ax.set_box_aspect(1)
+        if x.size == 0:
+            ax.text(0.5, 0.5, "no data", transform=ax.transAxes, ha="center", va="center")
+            continue
+        if not has_range(x) or not has_range(y):
+            ax.text(0.5, 0.5, "constant", transform=ax.transAxes, ha="center", va="center")
+            continue
+
+        x_edges, y_edges, grid = hist_min_grid(x, y, z, hist_bins=hist_bins)
+        artist = ax.pcolormesh(x_edges, y_edges, grid, cmap=cmap, norm=norm, shading="flat")
+
+        x_centers = bin_centers(x, hist_bins)
+        y_centers = bin_centers(y, hist_bins)
+        if x_centers is not None:
+            x_ticks = sparse_tick_values(x_centers)
+            ax.set_xticks(x_ticks)
+            ax.set_xticklabels(compact_tick_labels(x_ticks))
+            format_x_tick_labels(ax)
+        if y_centers is not None:
+            y_ticks = sparse_tick_values(y_centers)
+            ax.set_yticks(y_ticks)
+            ax.set_yticklabels(compact_tick_labels(y_ticks))
+        ax.set_xlabel(x_name, fontsize=9)
+        ax.set_ylabel(y_name, fontsize=9)
+        ax.tick_params(axis="both", labelsize=6.5, length=2)
+
+    reaction = next((rec["reaction"] for rec in records if rec.get("reaction")), "")
+    title = "Selected TALYS parameter correlations"
+    if reaction:
+        title += f" - {reaction}"
+    fig.suptitle(title, fontsize=11, y=0.985)
+    fig.subplots_adjust(left=0.09, right=0.845, bottom=0.22, top=0.84, wspace=0.16)
+
+    if artist is not None:
+        cbar_ax = fig.add_axes([0.865, 0.24, 0.028, 0.54])
+        cbar = fig.colorbar(ScalarMappable(norm=norm, cmap=cmap_obj), cax=cbar_ax)
+        cbar.set_label(r"Lowest-bin min $\chi^2_\nu$", fontsize=8.5)
+        cbar.ax.tick_params(labelsize=7)
+
+    output.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(output, dpi=dpi, bbox_inches="tight")
+    plt.close(fig)
 
 
 def plot_grid(
@@ -649,6 +759,23 @@ def parse_args() -> argparse.Namespace:
         help="Optional subset/order of parameter names to plot.",
     )
     parser.add_argument(
+        "--pair",
+        nargs=2,
+        action="append",
+        metavar=("X_PARAM", "Y_PARAM"),
+        default=None,
+        help=(
+            "Plot one compact 2D histogram for a selected parameter pair. "
+            "Can be repeated. Focused-pair plots do not draw individual points."
+        ),
+    )
+    parser.add_argument(
+        "--auto-pairs",
+        type=int,
+        default=0,
+        help="Plot this many strongest absolute-correlation parameter pairs.",
+    )
+    parser.add_argument(
         "--triangle",
         choices=("lower", "full"),
         default="full",
@@ -753,22 +880,53 @@ def main() -> int:
         write_csv(csv_output, records, params)
         print(f"Wrote parsed records: {csv_output}")
 
-    plot_grid(
-        records,
-        params,
-        output,
-        max_chi2=args.max_chi2,
-        hist_bins=args.hist_bins,
-        diag_bins=args.diag_bins,
-        triangle=args.triangle,
-        best_fraction=args.best_fraction,
-        best_count=args.best_count,
-        cmap=args.cmap,
-        dpi=args.dpi,
-        max_size=args.max_size,
-        show_inner_ticks=args.show_inner_ticks,
-    )
-    print(f"Wrote parameter grid: {output}")
+    focused_pairs: list[tuple[str, str]] = []
+    if args.pair:
+        focused_pairs.extend((left, right) for left, right in args.pair)
+    if args.auto_pairs > 0:
+        table = table_from_records(records, params)
+        auto_pairs = strongest_parameter_pairs(table, params, count=args.auto_pairs)
+        focused_pairs.extend((left, right) for left, right, _corr in auto_pairs)
+        if auto_pairs:
+            print(
+                "Auto-selected pair(s): "
+                + ", ".join(f"{left}/{right} (r={corr:+.3f})" for left, right, corr in auto_pairs)
+            )
+
+    if focused_pairs:
+        missing = sorted({name for pair in focused_pairs for name in pair if name not in params})
+        if missing:
+            raise SystemExit("Focused pair parameter(s) not found: " + ", ".join(missing))
+        if args.output is None:
+            output = output.with_name("talys_param_pairs_chi2_red.png")
+        plot_focused_pairs(
+            records,
+            params,
+            focused_pairs,
+            output,
+            max_chi2=args.max_chi2,
+            hist_bins=args.hist_bins,
+            cmap=args.cmap,
+            dpi=args.dpi,
+        )
+        print(f"Wrote focused parameter-pair plot: {output}")
+    else:
+        plot_grid(
+            records,
+            params,
+            output,
+            max_chi2=args.max_chi2,
+            hist_bins=args.hist_bins,
+            diag_bins=args.diag_bins,
+            triangle=args.triangle,
+            best_fraction=args.best_fraction,
+            best_count=args.best_count,
+            cmap=args.cmap,
+            dpi=args.dpi,
+            max_size=args.max_size,
+            show_inner_ticks=args.show_inner_ticks,
+        )
+        print(f"Wrote parameter grid: {output}")
     print(f"Records: {len(records)} | Parameters: {len(params)}")
     return 0
 
