@@ -41,7 +41,7 @@ rate = spectrum.compute_rate([0.1], temperature_unit="GK")
 The resulting `spectrum` contains the cross-section grid, sampled resonances,
 level-density grid, and metadata about the draw.
 
-This example requires local HFB level-density tables.
+The complete HFB level-density dataset is downloaded and cached on first use.
 
 ::: nucres.generator
     options:

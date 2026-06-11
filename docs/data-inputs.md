@@ -26,33 +26,29 @@ The diagnostic script can read either templates or generated files.
 
 ## HFB Level Density Tables
 
-The HFB-driven synthesis requires RIPL-3 level density tables in:
+HFB-driven synthesis uses the RIPL-3 `zXXX.tab` and `zXXX.cor` level-density
+tables. On first use, the complete hosted dataset is downloaded automatically
+from [`aldusv/TESSERACT-data`](https://github.com/aldusv/TESSERACT-data).
+The checksum-verified ZIP archive is roughly 76 MB and extracts to roughly 488 MB.
 
-```
-data/densities/level-densities-hfb
-```
+Source checkouts with `data/densities/level-densities-hfb` use that existing
+directory. Installed packages default to
+`~/.cache/nucres/densities/level-densities-hfb`.
 
-By default, `nucres` looks for `zXXX.tab` (and optional `zXXX.cor`) files
-through `NUCRES_DATA_ROOT` or the checkout-local default.
-
-The helper script can download these tables:
+To prefetch the hosted dataset:
 
 ```bash
-python download_ripl.py
+uv run python download_ripl.py
 ```
 
-If the RIPL-3 server returns `HTTP Error 403: Forbidden`, the server or its
-front-end protection may be blocking scripted downloads. The manual fallback is:
-
-1. Open `https://www-nds.iaea.org/RIPL-3/densities/level-densities-hfb/` in a browser.
-2. Download the needed `zXXX.tab` files and matching `zXXX.cor` correction files
-   when present.
-3. Place them in `data/densities/level-densities-hfb`.
-4. Set the data root if the files are outside the checkout-local default:
+Set the data root when files should live somewhere else:
 
 ```bash
 export NUCRES_DATA_ROOT="/path/to/level-densities-hfb"
 ```
+
+`NUCRES_DATA_BASE_URL` can override the hosted source for mirrors or offline
+test environments.
 
 ## AME Mass Data
 

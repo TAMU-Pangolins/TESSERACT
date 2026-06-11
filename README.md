@@ -37,35 +37,29 @@ git clone https://github.com/aldusv/THICC
 cd THICC
 ```
 
-2. Download the RIPL‑3 data (inside the project root):
-```bash
-python download_ripl.py
-```
-
-If the RIPL‑3 site returns `HTTP Error 403: Forbidden`, the server may be
-blocking scripted downloads. Use the manual fallback:
-
-1. Open `https://www-nds.iaea.org/RIPL-3/densities/level-densities-hfb/` in a browser.
-2. Download the needed `zXXX.tab` files and matching `zXXX.cor` correction files
-   when present.
-3. Put the files in `data/densities/level-densities-hfb`.
-4. Point THICC/nucres at that directory if needed:
-```bash
-export NUCRES_DATA_ROOT="$PWD/data/densities/level-densities-hfb"
-```
-
-3. Install dependencies (using `uv`). The lockfile is built for Python 3.9–3.11; use 3.11 for a guaranteed resolver fit.
+2. Install dependencies (using `uv`). The lockfile is built for Python 3.9–3.11; use 3.11 for a guaranteed resolver fit.
 ```bash
 uv sync --python 3.11
 ```
 
-4. Verify the setup:
+3. Verify the setup:
 ```bash
 uv run -- python -c "import nucres; print('nucres ready, data root =', nucres.config.resolve_data_root())"
 ```
 
+The complete HFB table and correction dataset is downloaded on first use from
+[`aldusv/TESSERACT-data`](https://github.com/aldusv/TESSERACT-data) and cached
+locally. The download is a checksum-verified ZIP archive of roughly 76 MB that
+extracts to roughly 488 MB. To prefetch it explicitly:
+
+```bash
+uv run python download_ripl.py
+```
+
+Set `NUCRES_DATA_ROOT` to override the cache directory.
+
 **Data Requirements**
-- RIPL‑3 level density tables are required for HFB‑driven synthesis and rate workflows.
+- RIPL‑3 level density tables are fetched automatically for HFB-driven workflows.
 - AME2020 mass data (`data/ame20.csv`) is used for Q‑value related utilities.
 
 **Tests**

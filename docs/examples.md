@@ -38,7 +38,7 @@ uv run -- python scripts/diagnostic_plot.py
 
 ## Rate Table from HFB
 
-This example requires HFB level-density tables to be available locally.
+The complete HFB level-density dataset is downloaded and cached on first use.
 
 ```bash
 uv run -- python - <<'PY'

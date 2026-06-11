@@ -38,5 +38,6 @@ This example is self-contained and does not require HFB density tables.
 ## HFB Data Prerequisite
 
 Examples that use `HFBRateRequest`, `HFBSamplerConfig`, or `synthesize_sigma_from_hfb`
-require HFB level-density tables under `data/densities/level-densities-hfb` or
-through `NUCRES_DATA_ROOT`.
+download the complete HFB level-density dataset from `aldusv/TESSERACT-data`
+on first use and cache it locally. `NUCRES_DATA_ROOT` overrides the cache
+directory.
