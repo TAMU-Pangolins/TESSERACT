@@ -249,7 +249,8 @@ def build_density_grid(
 
     # Default U≈E if not provided
     if U_of_E_mev is None:
-        U_of_E_mev = lambda E_eV: np.asarray(E_eV, dtype=float) * 1e-6
+        def U_of_E_mev(E_eV):
+            return np.asarray(E_eV, dtype=float) * 1e-6
 
     # Let load_rho_function decide how to handle corrections when cor_p is present
     rho_UJpi = load_rho_function(
@@ -332,7 +333,8 @@ def build_total_density_grid(
         cor_p = candidate_cor if candidate_cor.exists() else None
 
     if U_of_E_mev is None:
-        U_of_E_mev = lambda E_eV: np.asarray(E_eV, dtype=float) * 1e-6
+        def U_of_E_mev(E_eV):
+            return np.asarray(E_eV, dtype=float) * 1e-6
 
     record = load_hfb_record(
         tab_path=str(tab_p),
