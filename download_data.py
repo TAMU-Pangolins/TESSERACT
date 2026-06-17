@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Install the complete hosted RIPL-3 HFB dataset."""
+"""Install the complete hosted HFB dataset."""
 
 from __future__ import annotations
 

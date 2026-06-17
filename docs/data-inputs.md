@@ -38,7 +38,7 @@ directory. Installed packages default to
 To prefetch the hosted dataset:
 
 ```bash
-uv run python download_ripl.py
+uv run python download_data.py
 ```
 
 Set the data root when files should live somewhere else:

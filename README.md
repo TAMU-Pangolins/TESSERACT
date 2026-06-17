@@ -1,9 +1,21 @@
 # Thick Target Measurement Comparison (THICC)
 Physics helpers and Monte Carlo tools for nuclear resonance cross sections and rate modeling.
 
-**Quickstart**
+**Install**
 ```bash
+git clone https://github.com/aldusv/THICC
+cd THICC
 uv sync --python 3.11
+uv run python download_data.py
+```
+
+`download_data.py` installs the complete HFB table and correction dataset from
+[`aldusv/TESSERACT-data`](https://github.com/aldusv/TESSERACT-data). It
+downloads a checksum-verified ZIP archive of roughly 76 MB and extracts roughly
+488 MB of data. Set `NUCRES_DATA_ROOT` to choose a different cache directory.
+
+**Quick Sanity Check**
+```bash
 uv run -- python - <<'PY'
 from nucres import Resonance, energy_grid
 from nucres.resonance import sigma_bw_constant
@@ -30,33 +42,10 @@ Then open `http://127.0.0.1:8000`.
 - Reaction rate computation from synthesized spectra
 - Helper utilities for kinematics, units, and sampling distributions
 
-**Installation**
-1. Download the code:
-```bash
-git clone https://github.com/aldusv/THICC
-cd THICC
-```
-
-2. Install dependencies (using `uv`). The lockfile is built for Python 3.9–3.11; use 3.11 for a guaranteed resolver fit.
-```bash
-uv sync --python 3.11
-```
-
-3. Verify the setup:
+**Verify Data Setup**
 ```bash
 uv run -- python -c "import nucres; print('nucres ready, data root =', nucres.config.resolve_data_root())"
 ```
-
-The complete HFB table and correction dataset is downloaded on first use from
-[`aldusv/TESSERACT-data`](https://github.com/aldusv/TESSERACT-data) and cached
-locally. The download is a checksum-verified ZIP archive of roughly 76 MB that
-extracts to roughly 488 MB. To prefetch it explicitly:
-
-```bash
-uv run python download_ripl.py
-```
-
-Set `NUCRES_DATA_ROOT` to override the cache directory.
 
 **Data Requirements**
 - RIPL‑3 level density tables are fetched automatically for HFB-driven workflows.
