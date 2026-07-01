@@ -111,7 +111,7 @@ def main():
     args = parser.parse_args()
 
     if args.unint_dir is None:
-        args.unint_dir = str(Path(args.output_dir).parent / args.reaction)
+        args.unint_dir = str(Path(args.output_dir).parent)
 
     reaction  = args.reaction
     res_dir   = os.path.join(args.resonance_output_dir, reaction, f"RUN_{args.run_idx}")

@@ -319,7 +319,7 @@ def step2_generate_xs(basics: dict, resonance: dict, integration: dict, runs: in
     res_output_dir = resonance.get('output_dir', 'outputs')
     int_output_dir = integration.get('output_dir', '.')
     unint_dir      = integration.get('unint_output_dir',
-                                     str(Path(int_output_dir).parent / reaction))
+                                     str(Path(int_output_dir).parent))
     dE_lst        = [x.strip() for x in dE.split(',')]
 
     rxn = re.match(r'([^(]+)\(a,p\)(.+)', reaction)

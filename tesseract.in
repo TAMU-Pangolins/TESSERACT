@@ -65,7 +65,7 @@ n_grid_points         = 10000    # unintegrated σ(E) grid points (also sets int
 #tag                   = test
 output_dir            = /data/pagroup/pa02/THICC/outputs/cross_sections/22Mg_ap_25Al/binwidth_0.2   # absolute path for integrated CSV files
 #unint_output_dir     =          # optional: directory for unintegrated σ(E) file
-#                                #   default: <output_dir>/../<reaction>/
+#                                #   default: parent of output_dir
 #                                #   i.e. /data/.../cross_sections/22Mg_ap_25Al/
 skip_unintegrated     = false    # true: skip recomputing σ(E) and reuse existing file
 skip_integrated       = false    # true: skip integrated cross-section computation entirely
