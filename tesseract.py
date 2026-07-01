@@ -318,6 +318,8 @@ def step2_generate_xs(basics: dict, resonance: dict, integration: dict, runs: in
     base_tag       = integration.get('tag', '')
     res_output_dir = resonance.get('output_dir', 'outputs')
     int_output_dir = integration.get('output_dir', '.')
+    unint_dir      = integration.get('unint_output_dir',
+                                     str(Path(int_output_dir).parent / reaction))
     dE_lst        = [x.strip() for x in dE.split(',')]
 
     rxn = re.match(r'([^(]+)\(a,p\)(.+)', reaction)
@@ -332,7 +334,7 @@ def step2_generate_xs(basics: dict, resonance: dict, integration: dict, runs: in
         tag_suffix  = f"_{tag_clean_j}" if tag_clean_j else ""
 
         # All expected outputs for this run
-        unint = Path(int_output_dir) / f"{reaction}_xs_unintegrated_parallel{tag_suffix}.txt"
+        unint = Path(unint_dir) / f"{reaction}_xs_unintegrated_parallel{tag_suffix}.txt"
         int_files = [
             Path(int_output_dir) / f"{target}_ap_{residual}_integrated_xs_dE_{dE}{tag_suffix}.csv"
             for dE in dE_lst
@@ -353,6 +355,7 @@ def step2_generate_xs(basics: dict, resonance: dict, integration: dict, runs: in
             "--run-idx",                str(j),
             "--resonance-output-dir",   res_output_dir,
             "--output-dir",             int_output_dir,
+            "--unint-dir",              unint_dir,
         ]
         # Skip sub-steps whose files already exist
         if unint.exists():
