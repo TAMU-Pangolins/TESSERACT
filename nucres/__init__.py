@@ -4,6 +4,11 @@ ensure_data_root_env()
 
 from .api import (
     Resonance,
+    alpha_omp_metadata,
+    effective_alpha_potential_mev,
+    finite_size_coulomb_mev,
+    jwkb_log_transmission_mev,
+    make_jwkb_log_transmission_interp,
     sigma_bw_constant,
     sigma_bw_energy_dep,
     energy_grid,

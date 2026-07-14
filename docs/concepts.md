@@ -34,6 +34,27 @@ When `Gamma_i` is not known, `sigma_bw_energy_dep` uses:
 
 Here `gamma2` is the reduced width (in eV), and `P_l` is dimensionless.
 
+The default `penetrability_model="coulomb"` preserves the original behavior.
+For alpha-induced reactions, `penetrability_model="jwkb_real_omp"` replaces the
+Coulomb penetrability energy dependence with a JWKB transmission ratio:
+
+- `Gamma_i(E) = Gamma_i(E_r) * T_l(E) / T_l(E_r)`
+
+The sampled `Gamma_i(E_r)` is not recomputed. The first implemented alpha OMP
+is McFadden-Satchler. Its real Woods-Saxon term is included with finite-size
+Coulomb and centrifugal terms in the JWKB barrier; the imaginary OMP part is
+recorded as ignored and is not included in the tunneling integral. If no
+forbidden region or valid turning-point pair is found, the JWKB transmission is
+set to `T=1`.
+
+The vectorized cross-section driver exposes this through:
+
+- `--penetrability-model jwkb_real_omp`
+- `--omp-model mcfadden_satchler`
+
+Runs write a metadata JSON sidecar describing the penetrability model, OMP
+radii, Coulomb geometry, diffuseness, transmission floor, and fallback behavior.
+
 ## Sampling and HFB Level Densities
 
 The HFB-driven workflow samples resonance energies from level densities.
