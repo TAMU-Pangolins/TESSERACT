@@ -17,8 +17,10 @@ import fcntl
 import glob
 import os
 import re
+import shutil
 import tempfile
 import subprocess
+import time
 from dataclasses import dataclass
 from datetime import datetime
 from typing import List, Optional, Tuple
@@ -328,24 +330,52 @@ def read_ratesmc_file(path: str) -> Optional[Tuple[np.ndarray, np.ndarray]]:
         return None
 
 
+def _cleanup_workdir(path: str, retries: int = 5, delay: float = 0.2) -> None:
+    """
+    Remove a TALYS scratch workdir, tolerating condor/NFS scratch races where
+    a file TALYS just closed briefly isn't visible to rmtree's directory
+    listing and then reappears before the final rmdir (OSError: Directory
+    not empty). Retries a few times before giving up and leaving it behind,
+    rather than crashing a long-running optimisation.
+    """
+    for attempt in range(retries):
+        try:
+            shutil.rmtree(path)
+            return
+        except FileNotFoundError:
+            return
+        except OSError:
+            if attempt == retries - 1:
+                print(f"[TALYS] WARNING: could not remove scratch dir {path} "
+                      f"after {retries} attempts; leaving it behind.", flush=True)
+                return
+            time.sleep(delay)
+
+
 def run_talys_get_xs(
     opt_values: np.ndarray, cfg: dict
 ) -> Optional[Tuple[np.ndarray, np.ndarray]]:
     """Run TALYS (no astro) and return ap.tot (E, sigma) or None."""
-    with tempfile.TemporaryDirectory(prefix="talys_xs_") as wd:
+    wd = tempfile.mkdtemp(prefix="talys_xs_")
+    try:
         inp = write_talys_files(wd, opt_values, cfg, astro="n", astrogs="n")
         return read_ap_tot(wd) if run_talys(wd, inp) else None
+    finally:
+        _cleanup_workdir(wd)
 
 
 def run_talys_get_rate(
     opt_values: np.ndarray, cfg: dict
 ) -> Tuple[Optional[Tuple], Optional[Tuple]]:
     """Run TALYS (astro=y) and return (astrorate_xy, ap_tot_xy); either may be None."""
-    with tempfile.TemporaryDirectory(prefix="talys_rate_") as wd:
+    wd = tempfile.mkdtemp(prefix="talys_rate_")
+    try:
         inp = write_talys_files(wd, opt_values, cfg, astro="y", astrogs="y")
         if not run_talys(wd, inp):
             return None, None
         return read_astrorate(wd), read_ap_tot(wd)
+    finally:
+        _cleanup_workdir(wd)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
