@@ -29,7 +29,8 @@ integrated_xs_all.png
 *.png
 *.pdf
 res_test/
-tesseract*.in
+*.in
 plot_gamow_integrand.py
 talys_opt/
 plot_xs_ratio.py
+plot_talys_results.py
