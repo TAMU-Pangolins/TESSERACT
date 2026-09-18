@@ -60,7 +60,7 @@ class OptParam:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# tesseract.in parser  (standalone — no imports from the THICC package)
+# tesseract.in parser  (standalone — no imports from the TESSERACT package)
 # ─────────────────────────────────────────────────────────────────────────────
 def parse_tesseract_in(path: str) -> dict:
     """

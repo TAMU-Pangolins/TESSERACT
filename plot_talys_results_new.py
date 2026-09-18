@@ -6,7 +6,7 @@ Plots the ratio of TALYS best-fit reaction rate to RatesMC rate (median +
 2-sigma band), across one or more bin widths overlaid on the same graph.
 
 All input/output paths are derived from the reaction elements and a base
-outputs directory, following the THICC layout:
+outputs directory, following the TESSERACT layout:
 
     {base_dir}/talys_opt/{target}_{projectile}{ejectile}_{residual}/binwidth_{bw}/talys_optimization.out
     {base_dir}/resonances/{target}_{projectile}{ejectile}_{residual}/{target}({projectile},{ejectile}){residual}/RUN_N/...
@@ -333,7 +333,7 @@ def main():
     parser.add_argument("--bin-width", nargs="*", default=None,
                          help="Bin width(s) to plot, e.g. 0.2 or 0.2 0.5. "
                               "Default: plot every bin width found for this reaction.")
-    parser.add_argument("--base-dir", default="/data/pagroup/pa02/THICC/outputs",
+    parser.add_argument("--base-dir", default="/data/pagroup/pa02/TESSERACT/outputs",
                          help="Root outputs directory containing talys_opt/, resonances/, and plots/")
     parser.add_argument("--output-dir", default=None,
                          help="Directory to save plots (default: {base-dir}/plots)")

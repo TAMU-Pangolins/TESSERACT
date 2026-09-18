@@ -8,8 +8,8 @@ fractional contribution of each energy to the total reaction-rate integral.
 
 Usage:
     python calc_gamow_window_cdf.py \
-        --npz   /data/pagroup/pa02/THICC/outputs/talys_opt/RUN_0/talys_results_*.npz \
-        --xs    /data/pagroup/pa02/THICC/outputs/cross_sections/22Mg_ap_25Al_xs_unintegrated_parallel_run0.txt \
+        --npz   /data/pagroup/pa02/TESSERACT/outputs/talys_opt/RUN_0/talys_results_*.npz \
+        --xs    /data/pagroup/pa02/TESSERACT/outputs/cross_sections/22Mg_ap_25Al_xs_unintegrated_parallel_run0.txt \
         --t9    0.3 0.5 1.0 1.5 2.0 \
         --e-max 10.0
 """

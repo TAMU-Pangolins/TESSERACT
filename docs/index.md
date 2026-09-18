@@ -1,6 +1,6 @@
-# THICC Documentation
+# TESSERACT Documentation
 
-Welcome. This documentation covers how to use the THICC tools locally.
+Welcome. This documentation covers how to use the TESSERACT tools locally.
 
 Use this page for a quick sanity check and orientation:
 

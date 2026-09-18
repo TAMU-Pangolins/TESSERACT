@@ -1,6 +1,6 @@
 # Package
 
-`nucres` is the top-level Python package for THICC's resonance sampling,
+`nucres` is the top-level Python package for TESSERACT's resonance sampling,
 Breit-Wigner cross sections, reaction-rate integration, and HFB-driven spectrum
 generation.
 
@@ -59,7 +59,7 @@ E = energy_grid(r.E_r, half_width_eV=25.0, n=200)
 sigma = sigma_bw_constant(E, r)
 ```
 
-Use the high-level path if you want THICC to build a synthetic spectrum and
+Use the high-level path if you want TESSERACT to build a synthetic spectrum and
 rate table from HFB densities:
 
 ```python

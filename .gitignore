@@ -11,7 +11,7 @@ __pycache__/
 site/
 *.log
 .DS_STORE
-.thicc/
+.tesseract/
 .tess/
 condor_logs/
 *.err

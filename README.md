@@ -1,10 +1,13 @@
-# Thick Target Measurement Comparison (THICC)
+# TESSERACT
 Physics helpers and Monte Carlo tools for nuclear resonance cross sections and rate modeling.
 
 **Install**
+
+Copy the repository URL from GitHub's **Code** menu:
+
 ```bash
-git clone https://github.com/aldusv/THICC
-cd THICC
+git clone <repository-url> TESSERACT
+cd TESSERACT
 uv sync --python 3.11
 uv run python download_data.py
 ```

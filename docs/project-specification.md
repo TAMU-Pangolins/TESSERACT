@@ -1,6 +1,6 @@
 # Project Specification and Physical Motivation
 
-This page captures the physics motivation, project scope, and implementation mapping for THICC.
+This page captures the physics motivation, project scope, and implementation mapping for TESSERACT.
 
 ## Physical Motivation
 
@@ -29,11 +29,11 @@ Two major active-target classes are relevant:
 - Multi-sampling ionization chambers (MuSIC-style systems with segmented anodes).
 - Active-target TPC systems (AT-TPC) with full track reconstruction from segmented readouts.
 
-Key limitation: thick-target measurements typically have center-of-mass energy resolution broader than narrow resonance scales. This smooths resonance structure and can bias inferred rates when extrapolated with statistical models (for example TALYS). THICC focuses on quantifying this information-loss effect.
+Key limitation: thick-target measurements typically have center-of-mass energy resolution broader than narrow resonance scales. This smooths resonance structure and can bias inferred rates when extrapolated with statistical models (for example TALYS). TESSERACT focuses on quantifying this information-loss effect.
 
 ## Scope and Terms
 
-THICC evaluates uncertainty introduced by finite energy resolution in thick-target active-target measurements.
+TESSERACT evaluates uncertainty introduced by finite energy resolution in thick-target active-target measurements.
 
 Definitions used throughout the framework:
 
@@ -123,11 +123,11 @@ with
 
 The framework supports three statistically analyzable rate outputs:
 
-- THICC internal model outputs.
+- TESSERACT internal model outputs.
 - RatesMC outputs generated from the same sampled resonance population.
 - TALYS-based external reference outputs.
 
-Because THICC and RatesMC share resonance-level structures, direct distribution-level comparison is possible when sufficient Monte Carlo samples are produced. TALYS is used as an external modeling benchmark.
+Because TESSERACT and RatesMC share resonance-level structures, direct distribution-level comparison is possible when sufficient Monte Carlo samples are produced. TALYS is used as an external modeling benchmark.
 
 ## Documentation Value (Software Perspective)
 
@@ -138,4 +138,4 @@ This content strengthens standard software documentation in six ways:
 3. It maps physics concepts to concrete modules/scripts, improving maintainability and onboarding.
 4. It documents pipeline boundaries and artifacts, which supports reproducibility and debugging.
 5. It states known limitations (resolution-induced information loss), guiding validation priorities.
-6. It clarifies cross-tool comparisons (THICC vs RatesMC vs TALYS), supporting test and review strategy.
+6. It clarifies cross-tool comparisons (TESSERACT vs RatesMC vs TALYS), supporting test and review strategy.

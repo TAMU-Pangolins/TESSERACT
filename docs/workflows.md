@@ -2,7 +2,7 @@
 
 This page outlines common end-to-end flows in the project. Unlike
 [Examples](examples.md), the emphasis here is on prerequisites and where each
-step fits into the larger THICC process.
+step fits into the larger TESSERACT process.
 
 ## A. Generate a Spectrum from HFB Densities
 
