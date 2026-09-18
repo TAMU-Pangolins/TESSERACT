@@ -13,6 +13,7 @@ from common.densities_retrieval import (
 )
 
 from .config import resolve_data_root
+from .data import ensure_hfb_dataset
 
 
 def resolve_density_paths(
@@ -34,6 +35,7 @@ def resolve_density_paths(
         root = resolve_data_root()
     else:
         root = Path(data_root)
+    root = ensure_hfb_dataset(root)
     tab = root / f"z{Z:03d}.tab"
     if not tab.exists():
         raise FileNotFoundError(f"Missing level-density .tab file: {tab}")
@@ -247,7 +249,8 @@ def build_density_grid(
 
     # Default U≈E if not provided
     if U_of_E_mev is None:
-        U_of_E_mev = lambda E_eV: np.asarray(E_eV, dtype=float) * 1e-6
+        def U_of_E_mev(E_eV):
+            return np.asarray(E_eV, dtype=float) * 1e-6
 
     # Let load_rho_function decide how to handle corrections when cor_p is present
     rho_UJpi = load_rho_function(
@@ -330,7 +333,8 @@ def build_total_density_grid(
         cor_p = candidate_cor if candidate_cor.exists() else None
 
     if U_of_E_mev is None:
-        U_of_E_mev = lambda E_eV: np.asarray(E_eV, dtype=float) * 1e-6
+        def U_of_E_mev(E_eV):
+            return np.asarray(E_eV, dtype=float) * 1e-6
 
     record = load_hfb_record(
         tab_path=str(tab_p),

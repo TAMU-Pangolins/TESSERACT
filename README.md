@@ -1,9 +1,21 @@
 # Thick Target Measurement Comparison (THICC)
 Physics helpers and Monte Carlo tools for nuclear resonance cross sections and rate modeling.
 
-**Quickstart**
+**Install**
 ```bash
+git clone https://github.com/aldusv/THICC
+cd THICC
 uv sync --python 3.11
+uv run python download_data.py
+```
+
+`download_data.py` installs the complete HFB table and correction dataset from
+[`aldusv/TESSERACT-data`](https://github.com/aldusv/TESSERACT-data). It
+downloads a checksum-verified ZIP archive of roughly 76 MB and extracts roughly
+488 MB of data. Set `NUCRES_DATA_ROOT` to choose a different cache directory.
+
+**Quick Sanity Check**
+```bash
 uv run -- python - <<'PY'
 from nucres import Resonance, energy_grid
 from nucres.resonance import sigma_bw_constant
@@ -30,42 +42,13 @@ Then open `http://127.0.0.1:8000`.
 - Reaction rate computation from synthesized spectra
 - Helper utilities for kinematics, units, and sampling distributions
 
-**Installation**
-1. Download the code:
-```bash
-git clone https://github.com/aldusv/THICC
-cd THICC
-```
-
-2. Download the RIPL‑3 data (inside the project root):
-```bash
-python download_ripl.py
-```
-
-If the RIPL‑3 site returns `HTTP Error 403: Forbidden`, the server may be
-blocking scripted downloads. Use the manual fallback:
-
-1. Open `https://www-nds.iaea.org/RIPL-3/densities/level-densities-hfb/` in a browser.
-2. Download the needed `zXXX.tab` files and matching `zXXX.cor` correction files
-   when present.
-3. Put the files in `data/densities/level-densities-hfb`.
-4. Point THICC/nucres at that directory if needed:
-```bash
-export NUCRES_DATA_ROOT="$PWD/data/densities/level-densities-hfb"
-```
-
-3. Install dependencies (using `uv`). The lockfile is built for Python 3.9–3.11; use 3.11 for a guaranteed resolver fit.
-```bash
-uv sync --python 3.11
-```
-
-4. Verify the setup:
+**Verify Data Setup**
 ```bash
 uv run -- python -c "import nucres; print('nucres ready, data root =', nucres.config.resolve_data_root())"
 ```
 
 **Data Requirements**
-- RIPL‑3 level density tables are required for HFB‑driven synthesis and rate workflows.
+- RIPL‑3 level density tables are fetched automatically for HFB-driven workflows.
 - AME2020 mass data (`data/ame20.csv`) is used for Q‑value related utilities.
 
 **Tests**

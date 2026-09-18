@@ -6,10 +6,8 @@ step fits into the larger THICC process.
 
 ## A. Generate a Spectrum from HFB Densities
 
-Prerequisite: HFB level-density tables must be present locally.
-
-1. Ensure HFB level densities are present (`zXXX.tab` and optional `zXXX.cor`).
-2. Create a `HFBSamplerConfig` and synthesize a spectrum.
+The complete HFB level-density dataset is downloaded and cached automatically
+on first use. Create a `HFBSamplerConfig` and synthesize a spectrum.
 
 ```bash
 uv run -- python - <<'PY'
@@ -24,8 +22,7 @@ PY
 
 ## B. Compute a Reaction Rate Table
 
-Prerequisite: the same HFB density tables are required here because
-`HFBRateRequest` ultimately calls the generator layer.
+`HFBRateRequest` uses the same automatic HFB data cache as the generator layer.
 
 ```bash
 uv run -- python - <<'PY'

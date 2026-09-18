@@ -1,6 +1,8 @@
 *.dat
 *.cor
 *.tab
+.tesseract-hfb-*
+.nucres-download-cache/
 __pycache__/
 *.pyc
 *.venv

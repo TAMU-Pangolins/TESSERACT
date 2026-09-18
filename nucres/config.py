@@ -12,7 +12,14 @@ from typing import Optional
 ENV_VAR = "NUCRES_DATA_ROOT"
 CONFIG_DIR = Path.home() / ".nucres"
 CONFIG_PATH = CONFIG_DIR / "config.json"
-DEFAULT_RELATIVE_DATA = (
+CACHE_DATA_ROOT = (
+    Path.home()
+    / ".cache"
+    / "nucres"
+    / "densities"
+    / "level-densities-hfb"
+)
+CHECKOUT_DATA_ROOT = (
     Path(__file__).resolve().parent.parent
     / "data"
     / "densities"
@@ -43,16 +50,21 @@ def _load_config_path() -> Optional[Path]:
 
 def _default_data_root() -> Path:
     """
-    Ensure the checkout-local data directory exists and return it.
-    This keeps HFB assets alongside the repository (same level as `nucres/`).
+    Return checkout-local data when present, otherwise use the user cache.
+
+    Source checkouts with an existing HFB dataset retain their current behavior.
+    Installed packages use a writable cache instead of attempting to modify
+    site-packages.
     """
+    if CHECKOUT_DATA_ROOT.exists():
+        return CHECKOUT_DATA_ROOT
     try:
-        DEFAULT_RELATIVE_DATA.mkdir(parents=True, exist_ok=True)
-    except OSError as exc:  # pragma: no cover - only occurs on read-only installs
+        CACHE_DATA_ROOT.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:  # pragma: no cover - depends on host permissions
         raise FileNotFoundError(
-            f"Cannot create default data directory at {DEFAULT_RELATIVE_DATA}"
+            f"Cannot create default data directory at {CACHE_DATA_ROOT}"
         ) from exc
-    return DEFAULT_RELATIVE_DATA
+    return CACHE_DATA_ROOT
 
 
 def resolve_data_root() -> Path:
@@ -69,8 +81,8 @@ def resolve_data_root() -> Path:
         return _default_data_root()
     except FileNotFoundError as exc:
         raise FileNotFoundError(
-            "nucres data root not found, and the default checkout-local directory could not be created. "
-            "Set the NUCRES_DATA_ROOT environment variable or run download_ripl.py to fetch the density tables."
+            "nucres data root not found and the user cache could not be created. "
+            f"Set the {ENV_VAR} environment variable to a writable directory."
         ) from exc
 
 

@@ -500,16 +500,8 @@ def build_ratesmc_input(args) -> None:
     try:
         generated = synthesize_sigma_from_hfb(cfg)
     except FileNotFoundError as exc:
-        expected = (
-            Path(args.data_root)
-            if args.data_root
-            else Path(__file__).resolve().parent
-            / "data"
-            / "densities"
-            / "level-densities-hfb"
-        )
         raise FileNotFoundError(
-            f"Missing HFB level-density file for Z={Z_val}. "
+            f"Unable to load or download the HFB level-density file for Z={Z_val}: {exc}"
         ) from exc
 
     opts = RatesMCExportOptions(
@@ -694,7 +686,7 @@ def parse_args() -> argparse.Namespace:
         "--data-root",
         type=Path,
         default=None,
-        help="Override path to HFB density tables.",
+        help="Override the local cache path for HFB density tables.",
     )
     p.add_argument(
         "--A",
