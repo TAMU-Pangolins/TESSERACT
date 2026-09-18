@@ -1,7 +1,8 @@
 site_name: TESSERACT
 site_description: Nuclear reaction rate tooling and utilities.
-site_url: ""
-repo_url: ""
+site_url: !ENV [DOCS_SITE_URL, ""]
+repo_url: !ENV [DOCS_REPOSITORY_URL, ""]
+edit_uri: ""
 theme:
     name: material
     language: en
@@ -16,6 +17,7 @@ plugins:
     - mkdocstrings:
           handlers:
               python:
+                  paths: ["."]
                   options:
                       show_source: true
                       show_root_heading: true
@@ -48,6 +50,7 @@ nav:
     - Data & Inputs: data-inputs.md
     - Workflows: workflows.md
     - Examples: examples.md
+    - Documentation Deployment: deployment.md
     - API Reference:
           - Overview: api/package.md
           - Physics Core:

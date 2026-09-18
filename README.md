@@ -40,6 +40,9 @@ uv run --extra docs mkdocs serve
 ```
 Then open `http://127.0.0.1:8000`.
 
+Check the site with `uv run --extra docs mkdocs build --strict`.
+See [documentation deployment](docs/deployment.md) for the one-time GitHub Pages setup.
+
 **Core Features**
 - Breit–Wigner cross sections with constant or energy‑dependent widths
 - HFB‑driven resonance sampling with selectable Poisson or same-\(J^\pi\)
