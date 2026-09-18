@@ -42,5 +42,5 @@ PY
 This workflow does not depend on HFB density tables.
 
 ```bash
-uv run -- python scripts/diagnostic_plot.py --input input/22Mg(a,p)25Al.txt --no-show
+uv run -- python scripts/diagnostic_plot.py --input 'input/22Mg(a,p)25Al.txt' --no-show
 ```

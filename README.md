@@ -8,7 +8,7 @@ Copy the repository URL from GitHub's **Code** menu:
 ```bash
 git clone <repository-url> TESSERACT
 cd TESSERACT
-uv sync --python 3.11
+uv sync --locked --python 3.11
 uv run python download_data.py
 ```
 
@@ -17,7 +17,7 @@ uv run python download_data.py
 downloads a checksum-verified ZIP archive of roughly 76 MB and extracts roughly
 488 MB of data. Set `NUCRES_DATA_ROOT` to choose a different cache directory.
 
-**Quick Sanity Check**
+**Example calculation**
 ```bash
 uv run -- python - <<'PY'
 from nucres import Resonance, energy_grid
@@ -35,7 +35,8 @@ PY
 **Documentation (local)**
 Run the docs site locally:
 ```bash
-uv run mkdocs serve
+uv sync --locked --extra docs --python 3.11
+uv run --extra docs mkdocs serve
 ```
 Then open `http://127.0.0.1:8000`.
 

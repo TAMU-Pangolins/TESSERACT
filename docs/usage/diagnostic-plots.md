@@ -22,7 +22,7 @@ python scripts/diagnostic_plot.py
 **Common overrides**
 
 ```bash
-python scripts/diagnostic_plot.py --input outputs/22Mg(a,p)25Al/RUN_0/22Mg(a,p)25Al.in
+python scripts/diagnostic_plot.py --input 'outputs/22Mg(a,p)25Al/RUN_0/22Mg(a,p)25Al.in'
 python scripts/diagnostic_plot.py --emin 0.1 --emax 3.0 --npts 3000
 python scripts/diagnostic_plot.py --output outputs/diagnostics/custom.png --no-show
 ```
