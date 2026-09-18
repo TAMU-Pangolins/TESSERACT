@@ -1,6 +1,7 @@
 # Sampling
 
-Sampling primitives for resonance energies, widths, and Poisson placement models.
+Sampling primitives for resonance energies, widths, Poisson placement, and
+unfolded Wigner-surmise renewal models.
 
 ## Example
 

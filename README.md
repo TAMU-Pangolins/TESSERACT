@@ -38,7 +38,8 @@ Then open `http://127.0.0.1:8000`.
 
 **Core Features**
 - Breit–Wigner cross sections with constant or energy‑dependent widths
-- HFB‑driven resonance sampling and spectrum synthesis
+- HFB‑driven resonance sampling with selectable Poisson or same-\(J^\pi\)
+  Wigner-surmise spacing
 - Reaction rate computation from synthesized spectra
 - Helper utilities for kinematics, units, and sampling distributions
 
@@ -64,7 +65,7 @@ uv run -- python -m unittest discover -s tests -p "test_*.py"
 
   - `resonance.py` - resonance dataclass plus single level Breit-Wigner sigma(E) (constant and energy-dependent widths), Coulomb penetrability via Coulomb wave functions f and g. 
 
-  - `sampling.py` - Porter–Thomas and inverse-CDF samplers, Poisson placement of levels, mean widths from strength/penetrability.
+  - `sampling.py` - Porter–Thomas and inverse-CDF samplers, Poisson and unfolded Wigner-surmise placement of levels, mean widths from strength/penetrability.
 
   - `generator.py` - Monte Carlo synthesis of spectra using HFB level densities. Integrates sampled resonances with Breit-Wigner shapes. 
 

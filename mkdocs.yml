@@ -44,6 +44,7 @@ nav:
     - Home: index.md
     - Project Spec: project-specification.md
     - Concepts: concepts.md
+    - Spacing Models: spacing-models.md
     - Data & Inputs: data-inputs.md
     - Workflows: workflows.md
     - Examples: examples.md

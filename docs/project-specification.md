@@ -63,13 +63,19 @@ Core method:
 
 - Interpolate the HFB level density \(\rho(E)\) on the configured energy range.
 - Partition energy interval into bins of width `delta_E_mev`.
-- Sample resonance counts per bin from Poisson statistics:
+- Select the resonance spacing model. The backward-compatible default samples
+  resonance counts per bin from Poisson statistics:
 
 \[
 N_k \sim \mathrm{Poisson}\!\left(\int_{E_k}^{E_{k+1}}\rho(E)\,dE\right)
 \]
 
 - Sample resonance energies within occupied bins by inverse-CDF logic.
+- Alternatively, `spacing_model = wigner` builds an independent ladder for
+  each fixed \(J^\pi\) sequence. Each ladder is unfolded with its spin-resolved
+  HFB density, assigned Wigner-surmise nearest-neighbour spacings, and mapped
+  back into physical energy. This supplies nearest-neighbour repulsion but is
+  not a full GOE eigenspectrum.
 - Sample resonance attributes (for example `J`, widths, optional `L1`) using configured distributions and Porter-Thomas fluctuations.
 
 Cross section model contribution per resonance is generated with Breit-Wigner calculations in `nucres/resonance.py` (`sigma_bw_constant` and energy-dependent variants).

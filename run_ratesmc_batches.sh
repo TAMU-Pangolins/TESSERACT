@@ -119,7 +119,10 @@ for template in "${templates[@]}"; do
 
         input_path="${run_dir}/RatesMC.in"
         echo "Generating input for ${reaction_name} Run ${run_idx} -> ${input_path}"
-        "$PYTHON_BIN" build_ratesmc_input.py --template "$template" --output "$input_path"
+        "$PYTHON_BIN" build_ratesmc_input.py \
+            --template "$template" \
+            --output "$input_path" \
+            --spacing-model "${SPACING_MODEL:-poisson}"
 
         echo "Running RatesMC for ${reaction_name} Run ${run_idx}"
         (cd "$run_dir" && ./RatesMC > RatesMC.log 2>&1 || true)

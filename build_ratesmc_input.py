@@ -496,6 +496,7 @@ def build_ratesmc_input(args) -> None:
         seed=args.seed,
         sample_J=args.sample_J,
         auto_l1=args.auto_l1,
+        spacing_model=getattr(args, "spacing_model", "poisson"),
     )
     try:
         generated = synthesize_sigma_from_hfb(cfg)
@@ -732,6 +733,15 @@ def parse_args() -> argparse.Namespace:
         type=float,
         default=0.05,
         help="Bin width for level placements (MeV).",
+    )
+    p.add_argument(
+        "--spacing-model",
+        choices=("poisson", "wigner"),
+        default="poisson",
+        help=(
+            "Resonance-energy spacing model: independent Poisson placement "
+            "(default) or Wigner-surmise repulsion within each J-parity ladder."
+        ),
     )
     p.add_argument(
         "--E-min-mev", type=float, default=0.1, help="Lower energy bound (MeV)."

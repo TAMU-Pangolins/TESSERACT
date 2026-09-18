@@ -17,6 +17,7 @@ from .hfb_adapter import (
 from .physics import MASS_PROTON
 from .rates import ReactionRateResult, na_sigma_v_from_sigma
 from .resonance import Resonance, sigma_bw_constant
+from .sampling import unfolded_wigner_placements
 
 
 @dataclass(frozen=True)
@@ -59,6 +60,11 @@ class HFBSamplerConfig:
         If true, sample resonance spins from the HFB record.
     auto_l1 : bool
         If true, infer the smallest allowed `L1` from spin/parity coupling.
+    spacing_model : {"poisson", "wigner"}
+        Model used to place resonance energies. `"poisson"` preserves the
+        independent placement used historically. `"wigner"` generates a
+        Wigner-surmise renewal ladder independently for every fixed
+        :math:`J^\pi` sequence in unfolded HFB-density space.
     """
 
     Z: int
@@ -81,6 +87,7 @@ class HFBSamplerConfig:
     seed: Optional[int] = None
     sample_J: bool = True
     auto_l1: bool = True
+    spacing_model: str = "poisson"
 
 
 @dataclass
@@ -229,8 +236,9 @@ def synthesize_sigma_from_hfb(config: HFBSamplerConfig) -> GeneratedSpectrum:
 
     1. Build an HFB level-density grid over the configured energy range.
     2. Partition the interval into bins of width `delta_E_mev`.
-    3. Draw the number of resonances in each bin from Poisson statistics.
-    4. Sample resonance energies from the local density profile in each occupied bin.
+    3. Place resonances using the configured Poisson or Wigner spacing model.
+    4. For Wigner placement, unfold and sample each fixed-J, fixed-parity
+       sequence independently before mapping back to physical energy.
     5. Sample widths from Porter-Thomas fluctuations and sum the resulting
        Breit-Wigner contributions.
 
@@ -250,6 +258,13 @@ def synthesize_sigma_from_hfb(config: HFBSamplerConfig) -> GeneratedSpectrum:
     resonance energy stored in `resonances` is recorded in eV.
     Missing HFB files propagate as `FileNotFoundError` from the adapter layer.
     """
+    spacing_model = str(config.spacing_model).strip().lower()
+    if spacing_model not in {"poisson", "wigner"}:
+        raise ValueError(
+            "spacing_model must be either 'poisson' or 'wigner'; "
+            f"got {config.spacing_model!r}."
+        )
+
     rng = np.random.default_rng(config.seed)
 
     def _U_of_E_mev(E_eV: np.ndarray) -> np.ndarray:
@@ -303,9 +318,49 @@ def synthesize_sigma_from_hfb(config: HFBSamplerConfig) -> GeneratedSpectrum:
             rb = np.interp(b, E_mev, rho_per_mev)
             lambdas[k] = 0.5 * (ra + rb) * (b - a)
 
-    counts = rng.poisson(lambdas)
-    n_drawn = int(counts.sum())
     nz_bins = int((lambdas > 0).sum())
+
+    counts = None
+    wigner_levels: List[tuple[float, float]] = []
+    n_ladders = 0
+    if spacing_model == "poisson":
+        counts = rng.poisson(lambdas)
+        n_drawn = int(counts.sum())
+    elif config.sample_J and record is not None:
+        block = record.positive if config.pi == +1 else record.negative
+        U_values = np.asarray(_U_of_E_mev(E_mev * 1e6), dtype=float)
+        rho_j_grid = np.column_stack(
+            [
+                np.interp(
+                    U_values,
+                    block.U,
+                    block.rho_J[:, idx],
+                    left=block.rho_J[0, idx],
+                    right=block.rho_J[-1, idx],
+                )
+                for idx in range(block.rho_J.shape[1])
+            ]
+        )
+        rho_j_grid = np.clip(rho_j_grid, a_min=0.0, a_max=None)
+        J_values = spin_grid(config.A)
+        if rho_j_grid.shape[1] != len(J_values):
+            raise ValueError(
+                "HFB spin-density columns do not match the physical spin grid: "
+                f"{rho_j_grid.shape[1]} columns versus {len(J_values)} spins."
+            )
+        for idx, J_val in enumerate(J_values):
+            Er_values = unfolded_wigner_placements(E_mev, rho_j_grid[:, idx], rng=rng)
+            if Er_values.size:
+                n_ladders += 1
+                wigner_levels.extend((float(Er), float(J_val)) for Er in Er_values)
+        wigner_levels.sort(key=lambda item: item[0])
+        n_drawn = len(wigner_levels)
+    else:
+        Er_values = unfolded_wigner_placements(E_mev, rho_per_mev, rng=rng)
+        if Er_values.size:
+            n_ladders = 1
+            wigner_levels = [(float(Er), float(config.J)) for Er in Er_values]
+        n_drawn = len(wigner_levels)
 
     E_plot_MeV = np.linspace(config.E_min_mev, config.E_max_mev, config.n_sigma_points)
     E_plot_eV = E_plot_MeV * 1e6
@@ -347,44 +402,56 @@ def synthesize_sigma_from_hfb(config: HFBSamplerConfig) -> GeneratedSpectrum:
             u = rng.random(n) * total
             return np.interp(u, accum, Ex)
 
-        for k, Nk in enumerate(counts):
-            if Nk == 0:
-                continue
-            a_mev, b_mev = edges_mev[k], edges_mev[k + 1]
-            Er_mev = sample_E_in_bin(a_mev, b_mev, int(Nk))
-            for Er in Er_mev:
-                Er_eV = float(Er * 1e6)
-                if config.sample_J and record is not None:
-                    U_mev = float(_U_of_E_mev(Er_eV))
-                    J_val = _sample_J_from_hfb(
-                        record, config.A, config.pi, U_mev, rng, config.J
-                    )
-                else:
-                    J_val = config.J
-                L1_val = (
-                    _pick_L1(J_val, config.s1, config.s2, config.pi)
-                    if config.auto_l1
-                    else None
-                )
-                resonance = Resonance(
-                    E_r=Er_eV,
-                    J=J_val,
-                    s1=config.s1,
-                    s2=config.s2,
-                    m1=config.m1,
-                    m2=config.m2,
-                    Gamma_i=pt_width(config.Gamma_i_mean_eV),
-                    Gamma_o=pt_width(config.Gamma_o_mean_eV),
-                    L1=L1_val,
-                )
-                resonances.append(resonance)
-                sigma_tot += sigma_bw_constant(E_plot_eV, resonance)
+        def add_resonance(Er: float, J_val: float) -> None:
+            nonlocal sigma_tot
+            Er_eV = float(Er * 1e6)
+            L1_val = (
+                _pick_L1(J_val, config.s1, config.s2, config.pi)
+                if config.auto_l1
+                else None
+            )
+            resonance = Resonance(
+                E_r=Er_eV,
+                J=J_val,
+                s1=config.s1,
+                s2=config.s2,
+                m1=config.m1,
+                m2=config.m2,
+                Gamma_i=pt_width(config.Gamma_i_mean_eV),
+                Gamma_o=pt_width(config.Gamma_o_mean_eV),
+                L1=L1_val,
+            )
+            resonances.append(resonance)
+            sigma_tot += sigma_bw_constant(E_plot_eV, resonance)
+
+        if spacing_model == "poisson":
+            assert counts is not None
+            for k, Nk in enumerate(counts):
+                if Nk == 0:
+                    continue
+                a_mev, b_mev = edges_mev[k], edges_mev[k + 1]
+                Er_mev = sample_E_in_bin(a_mev, b_mev, int(Nk))
+                for Er in Er_mev:
+                    Er_eV = float(Er * 1e6)
+                    if config.sample_J and record is not None:
+                        U_mev = float(_U_of_E_mev(Er_eV))
+                        J_val = _sample_J_from_hfb(
+                            record, config.A, config.pi, U_mev, rng, config.J
+                        )
+                    else:
+                        J_val = config.J
+                    add_resonance(float(Er), float(J_val))
+        else:
+            for Er, J_val in wigner_levels:
+                add_resonance(Er, J_val)
 
     metadata: Dict[str, Any] = {
         "expected_levels": total_levels,
         "n_bins": n_bins,
         "nonzero_lambda_bins": nz_bins,
         "n_drawn": n_drawn,
+        "spacing_model": spacing_model,
+        "n_spacing_ladders": n_ladders if spacing_model == "wigner" else None,
         "seed": config.seed,
         "m1": config.m1,
         "m2": config.m2,

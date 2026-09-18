@@ -42,6 +42,9 @@ class HFBRateRequest:
         Excitation-energy offset used by the default \(U(E)\) mapping.
     seed : int or None
         Random seed for reproducible sampling.
+    spacing_model : {"poisson", "wigner"}
+        Resonance-energy spacing model. The default preserves independent
+        Poisson placement; `"wigner"` enables same-J, same-parity repulsion.
     data_root : str or Path or None
         Optional override for the HFB density-table directory.
     """
@@ -64,6 +67,7 @@ class HFBRateRequest:
     U_offset_mev: float = 8.0
     seed: Optional[int] = None
     data_root: Optional[str | Path] = None
+    spacing_model: str = "poisson"
 
     def to_sampler_config(self) -> HFBSamplerConfig:
         """
@@ -93,6 +97,7 @@ class HFBRateRequest:
             n_sigma_points=self.n_sigma_points,
             U_offset_mev=self.U_offset_mev,
             seed=self.seed,
+            spacing_model=self.spacing_model,
         )
 
     def with_overrides(self, **overrides) -> "HFBRateRequest":
