@@ -28,7 +28,7 @@ The diagnostic script can read either templates or generated files.
 
 HFB-driven synthesis uses the RIPL-3 `zXXX.tab` and `zXXX.cor` level-density
 tables. On first use, the complete hosted dataset is downloaded automatically
-from [`aldusv/TESSERACT-data`](https://github.com/aldusv/TESSERACT-data).
+from [`TAMU-Pangolins/TESSERACT-data`](https://github.com/TAMU-Pangolins/TESSERACT-data).
 The checksum-verified ZIP archive is roughly 76 MB and extracts to roughly 488 MB.
 
 Source checkouts with `data/densities/level-densities-hfb` use that existing

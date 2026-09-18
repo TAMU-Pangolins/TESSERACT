@@ -3,17 +3,15 @@ Physics helpers and Monte Carlo tools for nuclear resonance cross sections and r
 
 **Install**
 
-Copy the repository URL from GitHub's **Code** menu:
-
 ```bash
-git clone <repository-url> TESSERACT
+git clone https://github.com/TAMU-Pangolins/TESSERACT.git
 cd TESSERACT
 uv sync --locked --python 3.11
 uv run python download_data.py
 ```
 
 `download_data.py` installs the complete HFB table and correction dataset from
-[`aldusv/TESSERACT-data`](https://github.com/aldusv/TESSERACT-data). It
+[`TAMU-Pangolins/TESSERACT-data`](https://github.com/TAMU-Pangolins/TESSERACT-data). It
 downloads a checksum-verified ZIP archive of roughly 76 MB and extracts roughly
 488 MB of data. Set `NUCRES_DATA_ROOT` to choose a different cache directory.
 

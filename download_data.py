@@ -14,7 +14,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
             "Download, verify, and extract all HFB level-density tables and "
-            "correction files from aldusv/TESSERACT-data."
+            "correction files from TAMU-Pangolins/TESSERACT-data."
         )
     )
     parser.add_argument(

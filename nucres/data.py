@@ -16,7 +16,7 @@ from .config import resolve_data_root
 
 DATA_BASE_URL_ENV = "NUCRES_DATA_BASE_URL"
 DEFAULT_DATA_BASE_URL = (
-    "https://raw.githubusercontent.com/aldusv/TESSERACT-data/main/hfb"
+    "https://raw.githubusercontent.com/TAMU-Pangolins/TESSERACT-data/main/hfb"
 )
 DATASET_ARCHIVE_NAME = "hfb-level-densities-v1.zip"
 DATASET_ARCHIVE_SHA256 = (
