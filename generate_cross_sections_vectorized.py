@@ -2,11 +2,18 @@
 
 import numpy as np
 import argparse
+import json
 import os
 import re
 from pathlib import Path
 
-from nucres.resonance import Resonance, sigma_bw_energy_dep, make_penetrability_interp
+from nucres.resonance import (
+    Resonance,
+    alpha_omp_metadata,
+    make_jwkb_log_transmission_interp,
+    make_penetrability_interp,
+    sigma_bw_energy_dep,
+)
 from nucres.physics import MASS_PROTON
 from extract_resonance_data import load_resonance_data, load_nuclear_params
 try:
@@ -17,7 +24,18 @@ except ImportError:
 
 
 # ============================================================
-def calc_cross_sections(E_test, Z1, A1_proj, Z2, A1_target, res_data):
+def calc_cross_sections(
+    E_test,
+    Z1,
+    A1_proj,
+    Z2,
+    A1_target,
+    res_data,
+    penetrability_model="coulomb",
+    omp_model="mcfadden_satchler",
+    jwkb_npts=300,
+    jwkb_radial_npts=2400,
+):
     """
     Compute σ(E) for every energy in E_test by summing single-level
     Breit-Wigner contributions from all resonances.
@@ -32,17 +50,36 @@ def calc_cross_sections(E_test, Z1, A1_proj, Z2, A1_target, res_data):
     E_eV  = E_test * 1e6          # MeV → eV
     E_mev = E_test                 # already MeV
 
-    # Pre-build one P_interp per unique l1 value
+    # Pre-build one penetrability/transmission interpolator per unique l1 value.
     Emin_mev = max(float(E_mev.min()), 1e-6)
     Emax_mev = float(E_mev.max())
     unique_l1 = set(int(x) for x in res_data["l1"])
-    P_interps = {
-        l_val: make_penetrability_interp(
-            l_val, Z1, Z2, A1_proj, A1_target,
-            Emin_mev=Emin_mev, Emax_mev=Emax_mev, npts=600
-        )
-        for l_val in unique_l1
-    }
+    if penetrability_model == "jwkb_real_omp":
+        P_interps = {}
+        logT_interps = {
+            l_val: make_jwkb_log_transmission_interp(
+                l_val,
+                Z1,
+                Z2,
+                A1_proj,
+                A1_target,
+                omp_model=omp_model,
+                Emin_mev=Emin_mev,
+                Emax_mev=Emax_mev,
+                npts=jwkb_npts,
+                radial_npts=jwkb_radial_npts,
+            )
+            for l_val in unique_l1
+        }
+    else:
+        P_interps = {
+            l_val: make_penetrability_interp(
+                l_val, Z1, Z2, A1_proj, A1_target,
+                Emin_mev=Emin_mev, Emax_mev=Emax_mev, npts=600
+            )
+            for l_val in unique_l1
+        }
+        logT_interps = {}
 
     n = len(res_data["E_cm"])
     xs_total = np.zeros(len(E_test))
@@ -64,7 +101,10 @@ def calc_cross_sections(E_test, Z1, A1_proj, Z2, A1_target, res_data):
             A1_proj, A1_target,
             l1_j,
             Gamma_i_Er_eV=res_data["g1"][j],
-            P_interp=P_interps[l1_j],
+            P_interp=P_interps.get(l1_j),
+            penetrability_model=penetrability_model,
+            omp_model=omp_model,
+            logT_interp=logT_interps.get(l1_j),
         )
         xs_total += np.asarray(xs_j).ravel()
 
@@ -108,6 +148,16 @@ def main():
                         type=str, default=None,
                         help="Directory for the unintegrated cross section file. "
                              "Defaults to <output_dir>/../<reaction>/ if not set.")
+    parser.add_argument("--penetrability-model", dest="penetrability_model",
+                        choices=["coulomb", "jwkb_real_omp"], default="coulomb",
+                        help="Entrance-width energy-dependence model.")
+    parser.add_argument("--omp-model", dest="omp_model", default="mcfadden_satchler",
+                        help="Alpha OMP used with --penetrability-model jwkb_real_omp.")
+    parser.add_argument("--jwkb-npts", dest="jwkb_npts", type=int, default=300,
+                        help="Energy-grid samples per l for JWKB logT interpolation.")
+    parser.add_argument("--jwkb-radial-npts", dest="jwkb_radial_npts",
+                        type=int, default=2400,
+                        help="Radial samples for each JWKB action integral.")
     args = parser.parse_args()
 
     if args.unint_dir is None:
@@ -146,6 +196,9 @@ def main():
     print(f"Projectile: Z={Z1}, A={A1_proj}")
     print(f"Target:     Z={Z2}, A={A1_target}")
     print(f"Resonances: {len(E_cm)}")
+    print(f"Penetrability model: {args.penetrability_model}")
+    if args.penetrability_model == "jwkb_real_omp":
+        print(f"OMP model: {args.omp_model} (real part only)")
 
     res_data = {
         "E_cm": E_cm,
@@ -174,16 +227,49 @@ def main():
             Z1, A1_proj,
             Z2, A1_target,
             res_data,
+            penetrability_model=args.penetrability_model,
+            omp_model=args.omp_model,
+            jwkb_npts=args.jwkb_npts,
+            jwkb_radial_npts=args.jwkb_radial_npts,
         )
+
+        metadata = {
+            "reaction": reaction,
+            "projectile": {"Z": int(Z1), "A": float(A1_proj)},
+            "target": {"Z": int(Z2), "A": float(A1_target)},
+            "n_resonances": int(len(E_cm)),
+            "E_min_mev": float(args.E_min),
+            "E_max_mev": float(args.E_max),
+            "n_grid_points": int(args.n_grid_points),
+            "jwkb_npts": int(args.jwkb_npts),
+            "jwkb_radial_npts": int(args.jwkb_radial_npts),
+        }
+        if args.penetrability_model == "jwkb_real_omp":
+            metadata.update(alpha_omp_metadata(args.omp_model))
+        else:
+            metadata.update({
+                "penetrability_model": "coulomb",
+                "omp_model": None,
+                "coulomb_geometry": "Coulomb functions at channel radius",
+                "imaginary_omp_ignored": None,
+            })
 
         np.savetxt(
             unint_file,
             np.column_stack((E_test, xs_unint * 1e3)),
             delimiter=",",
-            header="E (MeV),sigma (mb)",
+            header=(
+                "E (MeV),sigma (mb)"
+                f" | penetrability_model={args.penetrability_model}"
+                f" | omp_model={args.omp_model if args.penetrability_model == 'jwkb_real_omp' else 'none'}"
+            ),
             fmt="%.4e"
         )
+        metadata_file = unint_file.replace(".txt", "_metadata.json")
+        with open(metadata_file, "w", encoding="utf-8") as fh:
+            json.dump(metadata, fh, indent=2, sort_keys=True)
         print(f"Saved unintegrated cross sections to {unint_file}")
+        print(f"Saved penetrability metadata to {metadata_file}")
 
     # ============================================================
     # Integrated cross sections

@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import math
 import sys
+from functools import lru_cache
 from pathlib import Path
 
 import matplotlib
@@ -34,6 +35,7 @@ from nucres.hfb_adapter import load_hfb_record, resolve_density_paths  # noqa: E
 from nucres.read_qvals import AMU_TO_KG, mass_from_token  # noqa: E402
 from nucres.resonance import (  # noqa: E402
     Resonance,
+    make_jwkb_log_transmission_interp,
     make_penetrability_interp,
     penetrability_P_l_mev,
     sigma_bw_energy_dep,
@@ -65,6 +67,7 @@ def parse_q_value_mev(lines: list[str]) -> float:
     return 0.0
 
 
+@lru_cache(maxsize=256)
 def load_run_table(path: Path):
     lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
     metadata = _parse_template_metadata(lines)
@@ -79,7 +82,14 @@ def collect_run_inputs(ratesmc_dir: Path, reaction: str, limit: int | None = Non
     return paths
 
 
-def recovered_reduced_widths(path: Path, channel: str) -> tuple[np.ndarray, str]:
+def recovered_reduced_widths(
+    path: Path,
+    channel: str,
+    penetrability_model: str = "coulomb",
+    omp_model: str = "mcfadden_satchler",
+    jwkb_npts: int = 300,
+    jwkb_radial_npts: int = 2400,
+) -> tuple[np.ndarray, str]:
     lines, metadata, table = load_run_table(path)
     q_mev = parse_q_value_mev(lines)
     projectile, ejectile, residual = _parse_reaction_channels(metadata.reaction)
@@ -107,12 +117,40 @@ def recovered_reduced_widths(path: Path, channel: str) -> tuple[np.ndarray, str]
         return widths[np.isfinite(widths) & (widths > 0)], label
 
     reduced = np.full_like(widths, np.nan, dtype=float)
+    model = penetrability_model.lower()
+    logt_interp_by_l = {}
     for i, (width, energy, l_val) in enumerate(zip(widths, energies, l_vals)):
         if not np.isfinite(width) or width <= 0.0 or energy <= 0.0:
             continue
-        p_l = penetrability_P_l_mev(int(l_val), int(z1), int(z2), int(a1), int(a2), float(energy))
-        if p_l > 0.0:
-            reduced[i] = width / (2.0 * p_l)
+        if model == "jwkb_real_omp" and channel == "entrance":
+            l_int = int(l_val)
+            if l_int not in logt_interp_by_l:
+                finite_energies = np.asarray(energies, dtype=float)
+                finite_energies = finite_energies[np.isfinite(finite_energies) & (finite_energies > 0.0)]
+                emin = max(1e-6, float(np.nanmin(finite_energies)))
+                emax = float(np.nanmax(finite_energies))
+                logt_interp_by_l[l_int] = make_jwkb_log_transmission_interp(
+                    l_int,
+                    int(z1),
+                    int(z2),
+                    int(a1),
+                    int(a2),
+                    omp_model=omp_model,
+                    Emin_mev=emin,
+                    Emax_mev=emax,
+                    npts=jwkb_npts,
+                    radial_npts=jwkb_radial_npts,
+                )
+            log_t = float(logt_interp_by_l[l_int](float(energy)))
+            scale = max(float(np.exp(max(log_t, np.log(1e-300)))), 1e-300)
+        else:
+            scale = penetrability_P_l_mev(int(l_val), int(z1), int(z2), int(a1), int(a2), float(energy))
+        if scale > 0.0:
+            reduced[i] = width / (2.0 * scale)
+    if channel == "entrance" and model == "jwkb_real_omp":
+        label = r"Entrance model-reduced width (JWKB real OMP)"
+    elif channel == "entrance":
+        label = r"Entrance reduced width (Coulomb)"
     return reduced[np.isfinite(reduced) & (reduced > 0.0)], label
 
 
@@ -140,6 +178,49 @@ def plot_width_panel(ax, widths: np.ndarray, label: str) -> None:
     ax.set_title(label)
 
 
+def _normalized_positive(widths: np.ndarray) -> np.ndarray:
+    if widths.size == 0:
+        return np.array([], dtype=float)
+    normalized = widths / np.nanmean(widths)
+    return normalized[np.isfinite(normalized) & (normalized > 0.0)]
+
+
+def plot_width_comparison_panel(
+    ax,
+    coulomb_widths: np.ndarray,
+    jwkb_widths: np.ndarray,
+    label: str,
+) -> None:
+    plotted = False
+    finite_sets = []
+    for widths, color, model_label in (
+        (coulomb_widths, "C0", "Coulomb"),
+        (jwkb_widths, "C1", "JWKB real OMP"),
+    ):
+        finite = _normalized_positive(widths)
+        if finite.size < 3:
+            continue
+        finite_sets.append(finite)
+        p98 = max(float(np.nanpercentile(finite, 98)), 1e-3)
+        bins = np.logspace(np.log10(max(np.nanmin(finite), 1e-4)), np.log10(p98), 26)
+        hist, edges = np.histogram(finite, bins=bins, density=True)
+        centers = np.sqrt(edges[:-1] * edges[1:])
+        ax.plot(centers, hist, "o-", color=color, markersize=3.0, linewidth=1.1, label=model_label)
+        plotted = True
+    if not plotted:
+        ax.text(0.5, 0.5, "not enough widths", ha="center", va="center", transform=ax.transAxes)
+        ax.set_title(label)
+        return
+    all_finite = np.concatenate(finite_sets)
+    x = np.logspace(np.log10(max(np.nanmin(all_finite), 1e-4)), np.log10(max(np.nanpercentile(all_finite, 98), 1e-3)), 300)
+    ax.plot(x, porter_thomas_pdf(x), "--", color="black", linewidth=1.3, label="Porter-Thomas")
+    ax.set_xscale("log")
+    ax.set_yscale("log")
+    ax.set_xlabel(r"$\Gamma / \langle\Gamma\rangle$")
+    ax.set_ylabel("Density")
+    ax.set_title(label)
+
+
 def porter_thomas_cdf(x: np.ndarray) -> np.ndarray:
     vals = np.sqrt(np.maximum(x, 0.0) / 2.0)
     return np.asarray([math.erf(float(v)) for v in vals], dtype=float)
@@ -156,6 +237,38 @@ def plot_width_cdf_panel(ax, widths: np.ndarray) -> None:
     ax.plot(finite, y, "o-", color="C0", markersize=2.6, linewidth=1.0, label="Sample")
     x = np.logspace(np.log10(max(finite[0], 1e-4)), np.log10(max(finite[-1], 1e-3)), 400)
     ax.plot(x, porter_thomas_cdf(x), "--", color="black", linewidth=1.4, label="Porter-Thomas")
+    ax.set_xscale("log")
+    ax.set_xlabel(r"$\Gamma / \langle\Gamma\rangle$")
+    ax.set_ylabel("Cumulative probability")
+    ax.set_ylim(-0.03, 1.03)
+    ax.set_title("Reduced-width CDF")
+
+
+def plot_width_cdf_comparison_panel(
+    ax,
+    coulomb_widths: np.ndarray,
+    jwkb_widths: np.ndarray,
+) -> None:
+    plotted = False
+    finite_sets = []
+    for widths, color, model_label in (
+        (coulomb_widths, "C0", "Coulomb"),
+        (jwkb_widths, "C1", "JWKB real OMP"),
+    ):
+        finite = np.sort(_normalized_positive(widths))
+        if finite.size < 3:
+            continue
+        finite_sets.append(finite)
+        y = np.arange(1, finite.size + 1, dtype=float) / finite.size
+        ax.plot(finite, y, "o-", color=color, markersize=2.2, linewidth=0.9, label=model_label)
+        plotted = True
+    if not plotted:
+        ax.text(0.5, 0.5, "not enough widths", ha="center", va="center", transform=ax.transAxes)
+        ax.set_title("Reduced-width CDF")
+        return
+    all_finite = np.concatenate(finite_sets)
+    x = np.logspace(np.log10(max(np.nanmin(all_finite), 1e-4)), np.log10(max(np.nanmax(all_finite), 1e-3)), 400)
+    ax.plot(x, porter_thomas_cdf(x), "--", color="black", linewidth=1.3, label="Porter-Thomas")
     ax.set_xscale("log")
     ax.set_xlabel(r"$\Gamma / \langle\Gamma\rangle$")
     ax.set_ylabel("Cumulative probability")
@@ -214,6 +327,7 @@ def plot_spin_panel(ax, path: Path, parity: int) -> None:
     ax.set_title("Resonance spin distribution")
 
 
+@lru_cache(maxsize=128)
 def expected_energy_density(path: Path, parity: int) -> tuple[np.ndarray, np.ndarray] | None:
     lines, metadata, table = load_run_table(path)
     try:
@@ -245,6 +359,7 @@ def expected_energy_density(path: Path, parity: int) -> tuple[np.ndarray, np.nda
     return grid, rho / area
 
 
+@lru_cache(maxsize=256)
 def expected_j_density(path: Path, parity: int, j_value: float) -> tuple[np.ndarray, np.ndarray] | None:
     lines, metadata, table = load_run_table(path)
     try:
@@ -557,7 +672,17 @@ def _mass_or_amu(token: str | None, z_hint: int | None, fallback_a: int | None) 
     return AMU_TO_KG
 
 
-def reconstructed_sigma(path: Path, npts: int = 2400) -> tuple[np.ndarray, np.ndarray] | None:
+@lru_cache(maxsize=32)
+def reconstructed_sigma(
+    path: Path,
+    npts: int = 2400,
+    penetrability_model: str = "coulomb",
+    omp_model: str = "mcfadden_satchler",
+    penetrability_npts: int = 600,
+    jwkb_npts: int = 300,
+    jwkb_radial_npts: int = 2400,
+    emin_floor_mev: float = 1e-6,
+) -> tuple[np.ndarray, np.ndarray] | None:
     _lines, metadata, table = load_run_table(path)
     ecm_mev = np.asarray(table["Ecm"], dtype=float) * 1e-3
     finite = ecm_mev[np.isfinite(ecm_mev)]
@@ -574,7 +699,7 @@ def reconstructed_sigma(path: Path, npts: int = 2400) -> tuple[np.ndarray, np.nd
     m2 = _mass_or_amu(metadata.targ_A_token, metadata.Z, metadata.A)
     s1 = float(metadata.s1 if metadata.s1 is not None else 0.0)
     s2 = float(metadata.s2 if metadata.s2 is not None else 0.0)
-    emin = max(1e-6, float(np.nanmin(finite)) * 0.8)
+    emin = max(float(emin_floor_mev), float(np.nanmin(finite)) * 0.8)
     emax = float(np.nanmax(finite)) * 1.05
     e_grid_mev = np.linspace(emin, emax, npts)
     e_grid_ev = e_grid_mev * 1e6
@@ -584,11 +709,26 @@ def reconstructed_sigma(path: Path, npts: int = 2400) -> tuple[np.ndarray, np.nd
     g2_vals = np.asarray(table["G2"], dtype=float)
     l1_vals = np.asarray(table["L1"], dtype=float)
     p_interp_by_l = {}
+    logt_interp_by_l = {}
+    model = penetrability_model.lower()
     for er_mev, spin, g1, g2, l1 in zip(ecm_mev, spins, g1_vals, g2_vals, l1_vals):
         if not np.isfinite(er_mev + spin + g1 + g2 + l1) or g1 <= 0.0 or g2 <= 0.0:
             continue
         l1_int = int(l1)
-        if l1_int not in p_interp_by_l:
+        if model == "jwkb_real_omp" and l1_int not in logt_interp_by_l:
+            logt_interp_by_l[l1_int] = make_jwkb_log_transmission_interp(
+                l1_int,
+                z1,
+                z2,
+                a1,
+                a2,
+                omp_model=omp_model,
+                Emin_mev=emin,
+                Emax_mev=emax,
+                npts=jwkb_npts,
+                radial_npts=jwkb_radial_npts,
+            )
+        elif model != "jwkb_real_omp" and l1_int not in p_interp_by_l:
             p_interp_by_l[l1_int] = make_penetrability_interp(
                 l1_int,
                 z1,
@@ -598,6 +738,7 @@ def reconstructed_sigma(path: Path, npts: int = 2400) -> tuple[np.ndarray, np.nd
                 r0=1.25,
                 Emin_mev=emin,
                 Emax_mev=emax,
+                npts=penetrability_npts,
             )
         resonance = Resonance(
             E_r=float(er_mev) * 1e6,
@@ -619,7 +760,10 @@ def reconstructed_sigma(path: Path, npts: int = 2400) -> tuple[np.ndarray, np.nd
             l1_int,
             Gamma_i_Er_eV=float(g1),
             r0=1.25,
-            P_interp=p_interp_by_l[l1_int],
+            P_interp=p_interp_by_l.get(l1_int),
+            penetrability_model=model,
+            omp_model=omp_model,
+            logT_interp=logt_interp_by_l.get(l1_int),
         )
     return e_grid_mev, sigma
 
@@ -635,6 +779,48 @@ def plot_reconstructed_sigma_panel(ax, path: Path) -> None:
     if np.any(mask):
         ax.plot(e_grid_mev[mask], sigma[mask], "-", color="C0", linewidth=1.0)
         ax.set_yscale("log")
+    ax.set_xlabel(r"$E_\mathrm{cm}$ [MeV]")
+    ax.set_ylabel(r"$\sigma$ [b]")
+    ax.set_title("Reconstructed Breit-Wigner sum")
+
+
+def plot_reconstructed_sigma_comparison_panel(
+    ax,
+    path: Path,
+    omp_model: str,
+    penetrability_npts: int,
+    jwkb_npts: int,
+    jwkb_radial_npts: int,
+    reconstruct_emin_mev: float,
+) -> None:
+    result_c = reconstructed_sigma(
+        path,
+        penetrability_model="coulomb",
+        penetrability_npts=penetrability_npts,
+        emin_floor_mev=reconstruct_emin_mev,
+    )
+    result_j = reconstructed_sigma(
+        path,
+        penetrability_model="jwkb_real_omp",
+        omp_model=omp_model,
+        penetrability_npts=penetrability_npts,
+        jwkb_npts=jwkb_npts,
+        jwkb_radial_npts=jwkb_radial_npts,
+        emin_floor_mev=reconstruct_emin_mev,
+    )
+    if result_c is None or result_j is None:
+        ax.text(0.5, 0.5, "could not reconstruct", ha="center", va="center", transform=ax.transAxes)
+        ax.set_title("Reconstructed cross section")
+        return
+    for result, color, label, linestyle in (
+        (result_c, "C0", "Coulomb", "-"),
+        (result_j, "C1", "JWKB real OMP", "--"),
+    ):
+        e_grid_mev, sigma = result
+        mask = np.isfinite(sigma) & (sigma > 0.0)
+        if np.any(mask):
+            ax.plot(e_grid_mev[mask], sigma[mask], linestyle=linestyle, color=color, linewidth=1.0, label=label)
+    ax.set_yscale("log")
     ax.set_xlabel(r"$E_\mathrm{cm}$ [MeV]")
     ax.set_ylabel(r"$\sigma$ [b]")
     ax.set_title("Reconstructed Breit-Wigner sum")
@@ -756,6 +942,57 @@ def plot_gamow_window_integrand_panel(
     ax.set_title(rf"Gamow window integrand ($T_9={t9:g}$)")
 
 
+def plot_gamow_window_integrand_comparison_panel(
+    ax,
+    path: Path,
+    t9: float,
+    omp_model: str,
+    penetrability_npts: int,
+    jwkb_npts: int,
+    jwkb_radial_npts: int,
+    reconstruct_emin_mev: float,
+) -> None:
+    result_c = reconstructed_sigma(
+        path,
+        penetrability_model="coulomb",
+        penetrability_npts=penetrability_npts,
+        emin_floor_mev=reconstruct_emin_mev,
+    )
+    result_j = reconstructed_sigma(
+        path,
+        penetrability_model="jwkb_real_omp",
+        omp_model=omp_model,
+        penetrability_npts=penetrability_npts,
+        jwkb_npts=jwkb_npts,
+        jwkb_radial_npts=jwkb_radial_npts,
+        emin_floor_mev=reconstruct_emin_mev,
+    )
+    if result_c is None or result_j is None:
+        ax.text(0.5, 0.5, "could not reconstruct", ha="center", va="center", transform=ax.transAxes)
+        ax.set_title("Gamow window integrand")
+        return
+    for result, color, label, linestyle in (
+        (result_c, "C0", "Coulomb reconstructed", "-"),
+        (result_j, "C1", "JWKB real OMP reconstructed", "--"),
+    ):
+        e_grid_mev, sigma = result
+        plot_weighted_sigma_curve(
+            ax,
+            e_grid_mev,
+            1.0e3 * np.clip(sigma, 0.0, None),
+            t9=t9,
+            label=label,
+            color=color,
+            linewidth=1.3,
+            linestyle=linestyle,
+        )
+    ax.axhline(WEIGHTED_SIGMA_FLOOR_MB, color="0.5", linewidth=0.8, linestyle=":")
+    ax.set_ylim(bottom=WEIGHTED_SIGMA_FLOOR_MB)
+    ax.set_xlabel(r"$E_\mathrm{cm}$ [MeV]")
+    ax.set_ylabel(r"$\sigma(E)\exp(-11.6045 E/T_9)$ [mb]")
+    ax.set_title(rf"Gamow window integrand ($T_9={t9:g}$)")
+
+
 def style_axes(ax) -> None:
     ax.grid(True, which="both", linestyle="--", linewidth=0.5, alpha=0.45)
     ax.tick_params(direction="in", top=True, right=True, labelsize=8)
@@ -807,6 +1044,60 @@ def save_requested_individual_plots(
     )
 
 
+def save_requested_model_comparison_individual_plots(
+    input_path: Path,
+    output_dir: Path,
+    entrance_coulomb: np.ndarray,
+    entrance_jwkb: np.ndarray,
+    exit_widths: np.ndarray,
+    exit_label: str,
+    all_coulomb: np.ndarray,
+    all_jwkb: np.ndarray,
+    parity: int,
+    integrand_t9: float,
+    omp_model: str,
+    jwkb_npts: int,
+    jwkb_radial_npts: int,
+    penetrability_npts: int,
+    reconstruct_emin_mev: float,
+) -> None:
+    save_single_panel(
+        output_dir / "entrance_reduced_width_shared.png",
+        plot_width_panel,
+        entrance_coulomb,
+        "Entrance reduced width (shared ensemble)",
+    )
+    save_single_panel(output_dir / "exit_reduced_width_shared.png", plot_width_panel, exit_widths, exit_label)
+    save_single_panel(
+        output_dir / "reduced_width_cdf_shared.png",
+        plot_width_cdf_panel,
+        all_coulomb,
+    )
+    save_single_panel(output_dir / "level_spacing_wigner.png", plot_spacing_wigner_panel, input_path, parity)
+    save_single_panel(output_dir / "level_spacing_same_Jpi.png", plot_j_resolved_spacing_panel, input_path, parity)
+    save_single_panel(
+        output_dir / "reconstructed_sigma_coulomb_vs_jwkb.png",
+        plot_reconstructed_sigma_comparison_panel,
+        input_path,
+        omp_model,
+        penetrability_npts,
+        jwkb_npts,
+        jwkb_radial_npts,
+        reconstruct_emin_mev,
+    )
+    save_single_panel(
+        output_dir / "gamow_window_integrand_coulomb_vs_jwkb.png",
+        plot_gamow_window_integrand_comparison_panel,
+        input_path,
+        integrand_t9,
+        omp_model,
+        penetrability_npts,
+        jwkb_npts,
+        jwkb_radial_npts,
+        reconstruct_emin_mev,
+    )
+
+
 def default_input_for_run(run_idx: int, reaction: str, ratesmc_dir: Path) -> Path:
     return ratesmc_dir / f"RUN_{run_idx}" / f"{reaction}.in"
 
@@ -834,7 +1125,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--integrand-t9",
         type=float,
-        default=2.0,
+        default=1.0,
         help="T9 value used for the Gamow-window integrand diagnostic.",
     )
     parser.add_argument(
@@ -861,6 +1152,40 @@ def parse_args() -> argparse.Namespace:
         default=200,
         help="Maximum number of RUN_*/reaction inputs used for multi-run recovery panels.",
     )
+    parser.add_argument(
+        "--compare-penetrability-models",
+        action="store_true",
+        help="Overlay Coulomb and JWKB real-OMP penetrability models on affected familiar panels.",
+    )
+    parser.add_argument(
+        "--omp-model",
+        default="mcfadden_satchler",
+        help="Alpha OMP used when comparing against jwkb_real_omp.",
+    )
+    parser.add_argument(
+        "--jwkb-npts",
+        type=int,
+        default=300,
+        help="Energy-grid samples per l for JWKB logT interpolation in comparison mode.",
+    )
+    parser.add_argument(
+        "--jwkb-radial-npts",
+        type=int,
+        default=2400,
+        help="Radial samples for each JWKB action integral in comparison mode.",
+    )
+    parser.add_argument(
+        "--penetrability-npts",
+        type=int,
+        default=200,
+        help="Coulomb penetrability interpolation samples per l for diagnostic reconstruction.",
+    )
+    parser.add_argument(
+        "--reconstruct-emin-mev",
+        type=float,
+        default=1e-6,
+        help="Optional lower E_cm bound for reconstructed sigma/integrand diagnostic panels.",
+    )
     return parser.parse_args()
 
 
@@ -873,24 +1198,47 @@ def main() -> int:
     entrance_widths, entrance_label = recovered_reduced_widths(input_path, "entrance")
     exit_widths, exit_label = recovered_reduced_widths(input_path, "exit")
     all_widths = np.concatenate([entrance_widths, exit_widths])
+    entrance_widths_jwkb = np.array([], dtype=float)
+    all_widths_jwkb = np.array([], dtype=float)
     recovery_inputs = collect_run_inputs(args.ratesmc_dir, args.reaction, args.recovery_limit)
     integrated_xs = args.integrated_xs or default_integrated_xs_path(input_path, args.reaction)
 
     if args.individual_dir is not None:
-        save_requested_individual_plots(
-            input_path,
-            args.individual_dir,
-            entrance_widths,
-            entrance_label,
-            exit_widths,
-            exit_label,
-            args.parity,
-            args.integrand_t9,
-            integrated_xs,
-            args.talys_out,
-        )
+        if args.compare_penetrability_models:
+            save_requested_model_comparison_individual_plots(
+                input_path,
+                args.individual_dir,
+                entrance_widths,
+                entrance_widths_jwkb,
+                exit_widths,
+                exit_label,
+                all_widths,
+                all_widths_jwkb,
+                args.parity,
+                args.integrand_t9,
+                args.omp_model,
+                args.jwkb_npts,
+                args.jwkb_radial_npts,
+                args.penetrability_npts,
+                args.reconstruct_emin_mev,
+            )
+        else:
+            save_requested_individual_plots(
+                input_path,
+                args.individual_dir,
+                entrance_widths,
+                entrance_label,
+                exit_widths,
+                exit_label,
+                args.parity,
+                args.integrand_t9,
+                integrated_xs,
+                args.talys_out,
+            )
 
     fig, axes = plt.subplots(5, 3, figsize=(10.5, 12.8))
+    if args.compare_penetrability_models:
+        entrance_label = "Entrance reduced width (shared ensemble)"
     plot_width_panel(axes[0, 0], entrance_widths, entrance_label)
     plot_width_panel(axes[0, 1], exit_widths, exit_label)
     plot_width_cdf_panel(axes[0, 2], all_widths)
@@ -900,12 +1248,49 @@ def main() -> int:
     plot_spacing_panel(axes[2, 0], input_path, args.parity)
     plot_l_panel(axes[2, 1], input_path)
     plot_width_energy_panel(axes[2, 2], input_path)
-    plot_reconstructed_sigma_panel(axes[3, 0], input_path)
-    plot_gamow_window_integrand_panel(axes[3, 1], input_path, args.integrand_t9, integrated_xs, args.talys_out)
+    if args.compare_penetrability_models:
+        plot_reconstructed_sigma_comparison_panel(
+            axes[3, 0],
+            input_path,
+            args.omp_model,
+            args.penetrability_npts,
+            args.jwkb_npts,
+            args.jwkb_radial_npts,
+            args.reconstruct_emin_mev,
+        )
+        plot_gamow_window_integrand_comparison_panel(
+            axes[3, 1],
+            input_path,
+            args.integrand_t9,
+            args.omp_model,
+            args.penetrability_npts,
+            args.jwkb_npts,
+            args.jwkb_radial_npts,
+            args.reconstruct_emin_mev,
+        )
+    else:
+        plot_reconstructed_sigma_panel(axes[3, 0], input_path)
+        plot_gamow_window_integrand_panel(axes[3, 1], input_path, args.integrand_t9, integrated_xs, args.talys_out)
     plot_level_density_recovery_panel(axes[3, 2], recovery_inputs, args.parity)
     plot_spin_occupancy_recovery_panel(axes[4, 0], recovery_inputs, args.parity)
     plot_j_resolved_spacing_panel(axes[4, 1], input_path, args.parity)
     axes[4, 2].axis("off")
+    if args.compare_penetrability_models:
+        axes[4, 2].text(
+            0.0,
+            1.0,
+            "Penetrability comparison\n"
+            "same resonance ensemble\n"
+            "Coulomb vs JWKB real OMP\n"
+            f"OMP: {args.omp_model}\n"
+            "sampled widths unchanged\n"
+            "level spacings unchanged\n"
+            "exit widths unchanged",
+            va="top",
+            family="monospace",
+            fontsize=8,
+            transform=axes[4, 2].transAxes,
+        )
 
     for ax in axes.ravel():
         if ax.axison:
@@ -913,7 +1298,10 @@ def main() -> int:
             handles, labels = ax.get_legend_handles_labels()
             if handles:
                 ax.legend(frameon=False, fontsize=7, loc="best")
-    fig.suptitle(input_path.parent.name.replace("_", " "), y=1.04, fontsize=12)
+    title = input_path.parent.name.replace("_", " ")
+    if args.compare_penetrability_models:
+        title += " | Coulomb vs JWKB real OMP"
+    fig.suptitle(title, y=1.04, fontsize=12)
     fig.tight_layout()
     args.output.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(args.output, dpi=300, bbox_inches="tight")
