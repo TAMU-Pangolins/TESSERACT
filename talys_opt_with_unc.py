@@ -14,10 +14,13 @@ Usage:
 
 import argparse
 import fcntl
+import glob
 import os
 import re
+import shutil
 import tempfile
 import subprocess
+import time
 from dataclasses import dataclass
 from datetime import datetime
 from typing import List, Optional, Tuple
@@ -327,24 +330,52 @@ def read_ratesmc_file(path: str) -> Optional[Tuple[np.ndarray, np.ndarray]]:
         return None
 
 
+def _cleanup_workdir(path: str, retries: int = 5, delay: float = 0.2) -> None:
+    """
+    Remove a TALYS scratch workdir, tolerating condor/NFS scratch races where
+    a file TALYS just closed briefly isn't visible to rmtree's directory
+    listing and then reappears before the final rmdir (OSError: Directory
+    not empty). Retries a few times before giving up and leaving it behind,
+    rather than crashing a long-running optimisation.
+    """
+    for attempt in range(retries):
+        try:
+            shutil.rmtree(path)
+            return
+        except FileNotFoundError:
+            return
+        except OSError:
+            if attempt == retries - 1:
+                print(f"[TALYS] WARNING: could not remove scratch dir {path} "
+                      f"after {retries} attempts; leaving it behind.", flush=True)
+                return
+            time.sleep(delay)
+
+
 def run_talys_get_xs(
     opt_values: np.ndarray, cfg: dict
 ) -> Optional[Tuple[np.ndarray, np.ndarray]]:
     """Run TALYS (no astro) and return ap.tot (E, sigma) or None."""
-    with tempfile.TemporaryDirectory(prefix="talys_xs_") as wd:
+    wd = tempfile.mkdtemp(prefix="talys_xs_")
+    try:
         inp = write_talys_files(wd, opt_values, cfg, astro="n", astrogs="n")
         return read_ap_tot(wd) if run_talys(wd, inp) else None
+    finally:
+        _cleanup_workdir(wd)
 
 
 def run_talys_get_rate(
     opt_values: np.ndarray, cfg: dict
 ) -> Tuple[Optional[Tuple], Optional[Tuple]]:
     """Run TALYS (astro=y) and return (astrorate_xy, ap_tot_xy); either may be None."""
-    with tempfile.TemporaryDirectory(prefix="talys_rate_") as wd:
+    wd = tempfile.mkdtemp(prefix="talys_rate_")
+    try:
         inp = write_talys_files(wd, opt_values, cfg, astro="y", astrogs="y")
         if not run_talys(wd, inp):
             return None, None
         return read_astrorate(wd), read_ap_tot(wd)
+    finally:
+        _cleanup_workdir(wd)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -646,6 +677,153 @@ def replot(npz_path: str, tesseract_path: str = "tesseract.in",
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Recover missing reaction rates from already-optimised runs
+#
+# Some runs finish optimisation fine but TALYS fails to produce astrorate.p
+# on that attempt (see the try/except around run_talys_get_rate() in main()).
+# save_results() still writes the .npz unconditionally, just with empty
+# x_rate / y_best_rate arrays, so tesseract.py's existence-only skip check
+# (`if npz.exists(): continue`) treats that run as "done" forever.  These
+# helpers find such npz files, reuse their already-saved params_best to run
+# TALYS once more (astro-only, no re-optimisation), and patch just the rate
+# fields in place.
+# ─────────────────────────────────────────────────────────────────────────────
+_BLOCK_RE = re.compile(r"={72}\n.*?\n={72}\n", re.DOTALL)
+
+
+def _rate_is_missing(data: dict) -> bool:
+    x = data.get('x_rate')
+    y = data.get('y_best_rate')
+    return x is None or y is None or len(np.asarray(x)) == 0 or len(np.asarray(y)) == 0
+
+
+def _append_rate_recovered_note(shared_out: str, npz_path: str, n_points: int) -> bool:
+    """
+    Insert a short note immediately after this run's existing block in the
+    shared talys_optimization.out, flagging that its rate was recomputed
+    later. Uses the same exclusive flock as write_optimization_output() so
+    it can never interleave with a concurrent worker appending a new block.
+    Only the one matching block is touched — every other block in the file
+    (i.e. every other run's rate data) is left byte-for-byte unchanged.
+
+    Returns True if a matching block was found and annotated.
+    """
+    if not os.path.exists(shared_out):
+        return False
+
+    stem = re.sub(r'\.npz$', '', re.sub(r'^talys_results_', '', os.path.basename(npz_path)))
+
+    with open(shared_out, "r+") as fh:
+        fcntl.flock(fh, fcntl.LOCK_EX)
+        try:
+            content = fh.read()
+            target = None
+            for m in _BLOCK_RE.finditer(content):
+                block = m.group(0)
+                if "Run index" not in block:
+                    continue
+                mf = re.search(r"Input file\s*:\s*(.+)", block)
+                if not mf:
+                    continue
+                block_stem = os.path.splitext(os.path.basename(mf.group(1).strip()))[0]
+                if block_stem == stem:
+                    target = m   # keep the LAST match — the most recent attempt
+
+            if target is None:
+                return False
+
+            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            note = (
+                f"[UPDATE {timestamp}] Reaction rate for this run was recomputed "
+                f"post-hoc from the saved best-fit parameters ({n_points} T9 points), "
+                f"after the original run failed to produce astrorate.p. See "
+                f"{os.path.basename(npz_path)} for the updated rate.\n\n"
+            )
+            insert_at   = target.end()
+            new_content = content[:insert_at] + note + content[insert_at:]
+            fh.seek(0)
+            fh.write(new_content)
+            fh.truncate()
+        finally:
+            fcntl.flock(fh, fcntl.LOCK_UN)
+    return True
+
+
+def fix_missing_rate(npz_path: str, cfg: dict, shared_out: str) -> str:
+    """
+    Recompute the reaction rate for one saved run, in place, if it's missing.
+
+    Only x_rate / y_best_rate are touched; x_exp, y_exp, y_err, x_xs, y_xs,
+    params_best and param_names are re-saved exactly as loaded. No other
+    run's .npz or .out block is read or written.
+
+    Returns "skipped_has_rate", "fixed", "still_failed", or "param_mismatch".
+    """
+    data = dict(np.load(npz_path, allow_pickle=True))
+
+    if not _rate_is_missing(data):
+        return "skipped_has_rate"
+
+    saved_names   = [str(n) for n in data['param_names']]
+    current_names = [op.name for op in cfg['opt_params']]
+    if saved_names != current_names:
+        print(
+            f"[fix-rates] {npz_path}: saved param_names {saved_names} != "
+            f"current \\opt block {current_names} — skipping (tesseract.in "
+            "\\opt block may have changed since this run)."
+        )
+        return "param_mismatch"
+
+    params_best   = np.asarray(data['params_best'], dtype=float)
+    run_cfg       = dict(cfg)                       # don't mutate caller's cfg
+    run_cfg['_x_exp'] = np.asarray(data['x_exp'], dtype=float)
+
+    print(f"[fix-rates] {npz_path}: re-running TALYS at saved best-fit params "
+          f"{dict(zip(saved_names, params_best))} ...", flush=True)
+    rate_best, _ = run_talys_get_rate(params_best, run_cfg)
+    if rate_best is None:
+        print(f"[fix-rates] {npz_path}: TALYS still failed to produce astrorate.p.")
+        return "still_failed"
+
+    x_rate, y_rate = rate_best
+    data['x_rate']      = x_rate
+    data['y_best_rate'] = y_rate
+    np.savez(npz_path, **data)
+    print(f"[fix-rates] {npz_path}: rate recovered ({len(x_rate)} T9 points) — npz updated.")
+
+    _append_rate_recovered_note(shared_out, npz_path, len(x_rate))
+    return "fixed"
+
+
+def fix_missing_rates_batch(out_root: str, cfg: dict, only_npz: str = None) -> None:
+    """Run fix_missing_rate() over one npz (only_npz) or every npz under out_root."""
+    shared_out = os.path.join(out_root, "talys_optimization.out")
+    if only_npz:
+        npz_paths = [only_npz]
+    else:
+        npz_paths = sorted(glob.glob(os.path.join(out_root, "RUN_*", "talys_results_*.npz")))
+
+    if not npz_paths:
+        print(f"[fix-rates] No talys_results_*.npz files found under {out_root}.")
+        return
+
+    tally = {"fixed": 0, "still_failed": 0, "skipped_has_rate": 0, "param_mismatch": 0}
+    for npz_path in npz_paths:
+        if not os.path.exists(npz_path):
+            print(f"[fix-rates] {npz_path}: not found — skipping.")
+            continue
+        outcome = fix_missing_rate(npz_path, cfg, shared_out)
+        tally[outcome] = tally.get(outcome, 0) + 1
+
+    print(
+        f"\n[fix-rates] Done. {tally['fixed']} fixed, "
+        f"{tally['still_failed']} still failing, "
+        f"{tally['skipped_has_rate']} already had rate data, "
+        f"{tally['param_mismatch']} skipped (param mismatch)."
+    )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Main
 # ─────────────────────────────────────────────────────────────────────────────
 def main():
@@ -667,6 +845,23 @@ def main():
     ap.add_argument(
         "--debug-talys", action="store_true",
         help="Run one TALYS call at x0 with verbose output, print workdir files, then exit",
+    )
+    ap.add_argument(
+        "--fix-missing-rates", action="store_true",
+        help="For runs whose talys_results_*.npz already exists but has empty "
+             "x_rate/y_best_rate (TALYS failed to produce astrorate.p on the "
+             "original run), reuse the saved best-fit params to rerun TALYS "
+             "for the rate only (no re-optimisation), patch the npz in place, "
+             "and note the update in talys_optimization.out. With --run-idx or "
+             "--exp-file, fixes only that one run; otherwise scans every "
+             "RUN_*/talys_results_*.npz under the output root. Then exits.",
+    )
+    ap.add_argument(
+        "--run-idx", type=int, default=None,
+        help="With --fix-missing-rates, fix only RUN_{run-idx}'s npz (found as "
+             "RUN_{run-idx}/talys_results_*.npz under the output root) — lets a "
+             "condor job file reuse $(Process) directly without reconstructing "
+             "the exp_file name. Ignored outside --fix-missing-rates mode.",
     )
     args = ap.parse_args()
 
@@ -695,6 +890,27 @@ def main():
             "No optimisation parameters found in \\opt block of tesseract.in.\n"
             "Add lines of the form  'keyword [qualifiers] x0 lo hi'  inside \\opt."
         )
+
+    # ── Rate-recovery mode: patch missing rates in existing npz, then exit ────
+    # Doesn't need the original exp_file CSV — x_exp is read back from each
+    # npz itself, so a single run's fix cannot disturb any other run's data.
+    if args.fix_missing_rates:
+        only_npz = None
+        if args.run_idx is not None:
+            run_glob = os.path.join(out_root, f"RUN_{args.run_idx}", "talys_results_*.npz")
+            matches  = sorted(glob.glob(run_glob))
+            if not matches:
+                raise SystemExit(f"[fix-rates] No npz found matching {run_glob}.")
+            if len(matches) > 1:
+                raise SystemExit(
+                    f"[fix-rates] Expected exactly one npz for RUN_{args.run_idx}, "
+                    f"found {len(matches)}: {matches}"
+                )
+            only_npz = matches[0]
+        elif args.exp_file:
+            only_npz = os.path.join(run_dir, f"talys_results_{stem_cfg}.npz")
+        fix_missing_rates_batch(out_root, cfg, only_npz=only_npz)
+        raise SystemExit(0)
 
     # ── Load experimental data ────────────────────────────────────────────────
     exp_file = script.get('exp_file')

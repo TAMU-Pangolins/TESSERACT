@@ -5,6 +5,7 @@ import argparse
 import json
 import os
 import re
+from pathlib import Path
 
 from nucres.resonance import (
     Resonance,
@@ -142,7 +143,11 @@ def main():
                         help="Root directory containing RUN_N/.in files (default: outputs).")
     parser.add_argument("--output-dir", dest="output_dir",
                         type=str, default=".",
-                        help="Directory to write output files (default: .).")
+                        help="Directory to write integrated CSV files (default: .).")
+    parser.add_argument("--unint-dir", dest="unint_dir",
+                        type=str, default=None,
+                        help="Directory for the unintegrated cross section file. "
+                             "Defaults to <output_dir>/../<reaction>/ if not set.")
     parser.add_argument("--penetrability-model", dest="penetrability_model",
                         choices=["coulomb", "jwkb_real_omp"], default="coulomb",
                         help="Entrance-width energy-dependence model.")
@@ -155,6 +160,9 @@ def main():
                         help="Radial samples for each JWKB action integral.")
     args = parser.parse_args()
 
+    if args.unint_dir is None:
+        args.unint_dir = str(Path(args.output_dir).parent)
+
     reaction  = args.reaction
     res_dir   = os.path.join(args.resonance_output_dir, reaction, f"RUN_{args.run_idx}")
     infile    = os.path.join(res_dir, f"{reaction}.in")
@@ -163,6 +171,7 @@ def main():
         raise FileNotFoundError(f"{infile} not found.")
 
     os.makedirs(args.output_dir, exist_ok=True)
+    os.makedirs(args.unint_dir, exist_ok=True)
 
     rxn_match = re.match(r'([^(]+)\(a,p\)(.+)', reaction)
     if not rxn_match:
@@ -202,7 +211,7 @@ def main():
     # ============================================================
     # Unintegrated cross section
     # ============================================================
-    unint_file = os.path.join(args.output_dir, f"{reaction}_xs_unintegrated_parallel{tag_suffix}.txt")
+    unint_file = os.path.join(args.unint_dir, f"{reaction}_xs_unintegrated_parallel{tag_suffix}.txt")
 
     if args.skip_unintegrated:
         print(f"Loading existing unintegrated cross sections from {unint_file} ...")

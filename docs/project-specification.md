@@ -90,11 +90,13 @@ Default output pattern:
 
 ## Thick-Target Cross-Section Computation
 
-Implemented by `plot_cross_sections.py`.
+Implemented by `generate_cross_sections_vectorized.py` (run as Step 2 of the
+`tesseract.py` pipeline via its `[integration]` section), using resonance
+parsing helpers from `extract_resonance_data.py`.
 
 Current behavior:
 
-1. Parse resonance data from the RatesMC resonant-contribution section.
+1. Parse resonance data from the RatesMC `.in` file's resonant-contribution section.
 2. Compute total cross section from resonance sum.
 3. Apply bin-wise integration over user-defined energy range and bin width.
 4. Write integrated cross sections for downstream TALYS parameter studies.
