@@ -100,3 +100,8 @@ uv run -- python -m unittest discover -s tests -p "test_*.py"
 - Prefer stdlib first (`csv`, `pathlib.Path`, etc.) and keep dependencies to the existing set (`numpy`, `mpmath`, `matplotlib`)
 
 - Keep units consistent (MeV/eV barns as used in `nucres`), document inputs/outputs in docstrings, and return informative errors for missing datasets or bad inputs.
+
+## License
+
+TESSERACT is licensed under the [GNU General Public License, version 3](LICENSE)
+(`GPL-3.0-only`). Third-party dependencies and data retain their own licenses.

@@ -5,6 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "nucres"
 version = "0.1.0"
+license = { file = "LICENSE" }
 requires-python = ">=3.9"
 dependencies = [
   "numpy>=1.21",
@@ -28,6 +29,7 @@ include = [
   "nucres",
   "common",
   "README.md",
+  "LICENSE",
   "download_data.py",
   "tests",
 ]
