@@ -4,7 +4,14 @@ TALYS parameter optimiser — driven by tesseract.in.
 
 Optimises any set of TALYS parameters listed in the \\opt block of
 tesseract.in by minimising log-space reduced chi-square on (a,p) cross
-sections using scipy.optimize.minimize (Powell or Nelder-Mead).
+sections.  Three optimisers are available via  method = ...  in [talys]:
+
+    Powell         scipy.optimize.minimize, derivative-free (default)
+    Nelder-Mead    scipy.optimize.minimize, derivative-free
+    least_squares  scipy.optimize.least_squares (trust-region reflective).
+                   Exploits the sum-of-squares form of the loss and usually
+                   needs far fewer TALYS runs.  Its Jacobian can be evaluated
+                   with several TALYS runs in parallel (lsq_workers).
 
 Usage:
     python talys_opt_with_unc.py --input /path/to/tesseract.in
@@ -40,7 +47,12 @@ _SCRIPT_KEYS = frozenset({
     'debug_every', 'exp_file', 'output_file', 'rates_mc_file',
     'rate_xmin', 'rate_xmax', 'plot_log_y_xs', 'plot_log_y_rate',
     'talys_output_dir',
+    # least_squares-only settings
+    'gtol', 'lsq_diff_step', 'lsq_workers',
 })
+
+# Accepted spellings of the least-squares method in tesseract.in
+_LSQ_METHODS = frozenset({'least_squares', 'least-squares', 'lsq', 'trf'})
 
 FLOOR = 1e-12
 BIG   = 1e99
@@ -385,19 +397,28 @@ def make_objective(cfg: dict, x_exp: np.ndarray, y_exp: np.ndarray,
                    y_err: np.ndarray, mask: np.ndarray,
                    checkpoint_path: str = None):
     """
-    Build and return an objective function (closure) over cfg and exp data.
+    Build the objective for the optimiser.
 
-    The returned callable accepts a 1-D params array (aligned with
-    cfg['opt_params']) and returns the penalised reduced chi-square.
+    Returns a callable ``objective(params) -> float`` giving the penalised
+    reduced chi-square (chi2_red + prior).  Powell and Nelder-Mead use this.
 
-    Internal state is accessible via:
-        obj.state['count']  — number of evaluations so far
-        obj.state['best']   — (best_total, best_params) seen so far
+    Attached to it:
+        objective.residuals(params) -> np.ndarray
+            The same loss written as a residual vector r, such that
+            sum(r**2) == objective(params).  method = least_squares uses this.
+        objective.state['count']  — number of evaluations so far
+        objective.state['best']   — (best_total, best_params) seen so far
+
+    Both callables share a single evaluation routine, so the loss, prior,
+    checkpointing and debug printout are identical for every optimiser.
+    The routine is thread-safe, so the least-squares Jacobian can run
+    several TALYS evaluations at the same time (see lsq_workers).
 
     If checkpoint_path is given, a JSON checkpoint is written every time a
     new best is found so the run can resume after eviction.
     """
     import json as _json
+    import threading
 
     opt_params  = cfg['opt_params']
     script      = cfg['script']
@@ -407,67 +428,206 @@ def make_objective(cfg: dict, x_exp: np.ndarray, y_exp: np.ndarray,
     PRIOR_FLOOR = float(script.get('prior_abs_floor', '0.01'))
     DEBUG_EVERY = int(script.get(  'debug_every',     '10'))
 
-    state = {'count': 0, 'best': (np.inf, None)}
+    n_fit = int(np.count_nonzero(mask))
+    dof   = max(n_fit - len(opt_params), 1)
 
-    def objective(params: np.ndarray) -> float:
-        state['count'] += 1
+    # Prior width per parameter (None → no prior term)
+    prior_sigma = (PRIOR_STD * np.maximum(np.abs(X0), PRIOR_FLOOR)
+                   if PRIOR_STD > 0.0 else None)
+
+    # Length of the residual vector: data points (+ one entry per parameter
+    # for the prior).  FAIL_RESID fills it when TALYS fails, so the least-
+    # squares solver sees a large-but-finite loss instead of BIG (1e99),
+    # which would wreck its trust-region steps.
+    n_resid    = n_fit + (len(opt_params) if prior_sigma is not None else 0)
+    FAIL_RESID = 1e3
+
+    state = {'count': 0, 'best': (np.inf, None)}
+    lock  = threading.Lock()
+
+    def _evaluate(params: np.ndarray):
+        """
+        One TALYS evaluation.  Returns (residual_vector, total_loss);
+        residual_vector is None when params are out of bounds or TALYS failed
+        (total_loss is then BIG).
+        """
+        params = np.asarray(params, dtype=float)
+        with lock:
+            state['count'] += 1
+            count = state['count']
 
         # ── Bounds penalty ───────────────────────────────────────────────────
         for i, op in enumerate(opt_params):
             if not (op.lo <= params[i] <= op.hi):
-                return BIG
+                return None, BIG
 
         # ── TALYS evaluation ─────────────────────────────────────────────────
         out = run_talys_get_xs(params, cfg)
         if out is None:
-            return BIG
+            return None, BIG
         _, y_t = out
         if len(y_t) != len(y_exp):
-            return BIG
+            return None, BIG
 
-        # ── Log-space reduced chi-square ─────────────────────────────────────
+        # ── Log-space reduced chi-square, as residuals ───────────────────────
+        # sum(r_data**2) = sum(log_res**2) / dof = chi2_red
         log_res  = (np.log(y_exp[mask] + FLOOR) - np.log(y_t[mask] + FLOOR)) / EXP_REL_ERR
-        dof      = max(len(y_exp[mask]) - len(params), 1)
-        chi2_red = float(np.sum(log_res ** 2) / dof)
+        r_data   = log_res / np.sqrt(dof)
+        chi2_red = float(np.sum(r_data ** 2))
 
-        # ── Gaussian prior ───────────────────────────────────────────────────
-        prior = 0.0
-        if PRIOR_STD > 0.0:
-            sigma = PRIOR_STD * np.maximum(np.abs(X0), PRIOR_FLOOR)
-            prior = float(np.sum(((params - X0) / sigma) ** 2))
+        # ── Gaussian prior, as residuals ─────────────────────────────────────
+        if prior_sigma is not None:
+            r_prior = (params - X0) / prior_sigma
+        else:
+            r_prior = np.zeros(0)
+        prior = float(np.sum(r_prior ** 2))
 
         total = chi2_red + prior
 
-        if total < state['best'][0]:
-            state['best'] = (total, params.copy())
-            if checkpoint_path:
-                ckpt = {
-                    'params': params.tolist(),
-                    'loss':   total,
-                    'nfev':   state['count'],
-                    'timestamp': datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                }
-                tmp = checkpoint_path + ".tmp"
-                with open(tmp, 'w') as fh:
-                    _json.dump(ckpt, fh, indent=2)
-                os.replace(tmp, checkpoint_path)  # atomic on POSIX
+        with lock:
+            if total < state['best'][0]:
+                state['best'] = (total, params.copy())
+                if checkpoint_path:
+                    ckpt = {
+                        'params': params.tolist(),
+                        'loss':   total,
+                        'nfev':   state['count'],
+                        'timestamp': datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                    }
+                    tmp = checkpoint_path + ".tmp"
+                    with open(tmp, 'w') as fh:
+                        _json.dump(ckpt, fh, indent=2)
+                    os.replace(tmp, checkpoint_path)  # atomic on POSIX
+            best_val = state['best'][0]
 
-        if DEBUG_EVERY and (state['count'] % DEBUG_EVERY == 0):
-            best_val, _ = state['best']
+        if DEBUG_EVERY and (count % DEBUG_EVERY == 0):
             pstr = "  ".join(
                 f"{op.name}={params[i]:.5g}" for i, op in enumerate(opt_params)
             )
             print(
-                f"[eval {state['count']:4d}]  {pstr}  "
+                f"[eval {count:4d}]  {pstr}  "
                 f"chi2_red={chi2_red:.4e}  prior={prior:.4e}  total={total:.4e}  "
                 f"| best={best_val:.4e}",
                 flush=True,
             )
 
-        return total
+        return np.concatenate([r_data, r_prior]), total
 
-    objective.state = state
+    def objective(params: np.ndarray) -> float:
+        """Scalar loss chi2_red + prior (Powell / Nelder-Mead)."""
+        return _evaluate(params)[1]
+
+    def residuals(params: np.ndarray) -> np.ndarray:
+        """Residual vector r with sum(r**2) = chi2_red + prior (least_squares)."""
+        r, _ = _evaluate(params)
+        return np.full(n_resid, FAIL_RESID) if r is None else r
+
+    objective.residuals = residuals
+    objective.state     = state
     return objective
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Least-squares optimiser  (method = least_squares)
+# ─────────────────────────────────────────────────────────────────────────────
+def run_least_squares(obj, x0: np.ndarray, cfg: dict):
+    """
+    Minimise chi2_red + prior with scipy.optimize.least_squares.
+
+    Why this is faster than Powell: the loss is a sum of squared residuals,
+    so the solver can build a local linear model of TALYS from one Jacobian
+    (N_opt extra TALYS runs) and jump straight towards the minimum, instead
+    of doing one line search per parameter direction.
+
+    Settings read from [talys] in tesseract.in:
+        maxiter        cap on solver iterations (passed as max_nfev)
+        xtol, ftol     relative step / loss-change tolerances
+        gtol           gradient tolerance                      (default 1e-8)
+        lsq_diff_step  relative finite-difference step for the Jacobian:
+                       h_i = lsq_diff_step * max(|x_i|, 1)     (default 1e-2)
+        lsq_workers    TALYS runs evaluated in parallel for each Jacobian
+                       (default 1 = serial; useful up to N_opt)
+
+    The Jacobian is computed here (forward differences) rather than by scipy
+    so that its N_opt TALYS runs can go to a thread pool.  Threads are enough
+    because each TALYS run is a separate process in its own scratch dir.
+
+    Returns a scipy OptimizeResult with the fields main() expects:
+        x, fun (scalar loss), success, message, nfev (total TALYS runs).
+    """
+    from concurrent.futures import ThreadPoolExecutor
+    from scipy.optimize import least_squares, OptimizeResult
+
+    opt_params = cfg['opt_params']
+    script     = cfg['script']
+    lo = np.array([op.lo for op in opt_params], dtype=float)
+    hi = np.array([op.hi for op in opt_params], dtype=float)
+
+    maxiter   = int(script.get('maxiter', '250'))
+    xtol      = float(script.get('xtol', '1e-3'))
+    ftol      = float(script.get('ftol', '1e-3'))
+    gtol      = float(script.get('gtol', '1e-8'))
+    diff_step = float(script.get('lsq_diff_step', '1e-2'))
+    workers   = max(1, min(int(script.get('lsq_workers', '1')), len(opt_params)))
+
+    x0 = np.clip(np.asarray(x0, dtype=float), lo, hi)   # solver needs a feasible start
+
+    # Remember the last residual so jac() can reuse it (saves one TALYS run
+    # per iteration: scipy always calls fun(x) before jac(x) at the same x).
+    last = {'x': None, 'r': None}
+
+    def fun(x):
+        r = obj.residuals(x)
+        last['x'], last['r'] = np.array(x, dtype=float), r
+        return r
+
+    def jac(x):
+        x = np.asarray(x, dtype=float)
+        r0 = last['r'] if (last['x'] is not None and np.array_equal(last['x'], x)) else fun(x)
+
+        steps = diff_step * np.maximum(np.abs(x), 1.0)
+        steps = np.where(x + steps > hi, -steps, steps)    # step backwards at the upper bound
+        shifted = []
+        for i in range(len(x)):
+            xp = x.copy()
+            xp[i] += steps[i]
+            shifted.append(xp)
+
+        if workers > 1:
+            with ThreadPoolExecutor(max_workers=workers) as pool:
+                r_shift = list(pool.map(obj.residuals, shifted))
+        else:
+            r_shift = [obj.residuals(xp) for xp in shifted]
+
+        J = np.empty((len(r0), len(x)))
+        for i in range(len(x)):
+            J[:, i] = (r_shift[i] - r0) / steps[i]
+
+        best_loss, _ = obj.state['best']
+        vals = "  ".join(f"{op.name}={x[i]:.4g}" for i, op in enumerate(opt_params))
+        print(f"[lsq] loss={float(np.sum(r0 ** 2)):.4e}  best={best_loss:.4e}  {vals}",
+              flush=True)
+        return J
+
+    print(f"[lsq] trust-region reflective | diff_step={diff_step} | "
+          f"workers={workers} | max iterations={maxiter}", flush=True)
+
+    ls = least_squares(
+        fun, x0, jac=jac, bounds=(lo, hi), method='trf',
+        x_scale='jac', xtol=xtol, ftol=ftol, gtol=gtol,
+        max_nfev=maxiter, verbose=1,
+    )
+
+    return OptimizeResult(
+        x       = ls.x,
+        fun     = float(np.sum(ls.fun ** 2)),   # = chi2_red + prior, same scale as Powell
+        success = ls.success,
+        status  = ls.status,
+        message = ls.message,
+        nfev    = obj.state['count'],           # total TALYS runs, incl. Jacobians
+        nit     = ls.nfev,
+        njev    = ls.njev,
+    )
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1001,7 +1161,10 @@ def main():
         )
         print(f"loss={best_loss:.4e}  {vals}", flush=True)
 
-    res = minimize(obj, X0, method=method, options=options, callback=callback)
+    if method.lower() in _LSQ_METHODS:
+        res = run_least_squares(obj, X0, cfg)
+    else:
+        res = minimize(obj, X0, method=method, options=options, callback=callback)
 
     print("\n=== Optimisation complete ===")
     print(res)
