@@ -4,6 +4,7 @@ tesseract.py — TESSERACT pipeline driver.
 
 Reads tesseract.in and runs any combination of:
   Step 1  [resonance]   — build_ratesmc_input.py
+  Step 1b [ratesmc]     — executes the compiled RatesMC binary (optional)
   Step 2  [integration] — generate_cross_sections_vectorized.py
   Step 3  [talys]       — talys_opt_with_unc.py
 
@@ -16,9 +17,14 @@ Rules:
       exits with a clear error if any are missing.
   • All skip/resume decisions are file-existence checks — no interactive
       prompts, safe for nohup / background execution.
+  • [ratesmc] is the one exception: nothing downstream ([integration]/
+      [talys]) reads RatesMC's own output, so if the RatesMC executable
+      can't be resolved this step is skipped with a warning instead of
+      aborting the pipeline.
 
 Output naming with multiple runs (runs = N):
   [resonance]   outputs/{reaction}/RUN_{j}/{reaction}.in          j = 0..N-1
+  [ratesmc]     outputs/{reaction}/RUN_{j}/RatesMC.out            j = 0..N-1
   [integration] {target}_ap_{residual}_integrated_xs_dE_{dE}      one per (j, dE)
                   _{tag}_run{j}.csv
   [talys]       talys_results_{exp_file_stem}.npz                 one per file
@@ -29,7 +35,9 @@ Usage:
 """
 
 import argparse
+import os
 import re
+import shutil
 import sys
 import subprocess
 from pathlib import Path
@@ -298,6 +306,104 @@ def step1_build_ratesmc(basics: dict, resonance: dict,
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Step 1b — [ratesmc]  (optional; skipped with a warning if RatesMC isn't found)
+# ─────────────────────────────────────────────────────────────────────────────
+_RATESMC_SUPPORT_FILES = ("mass_1.mas20", "nubase_3.mas20")
+
+
+def _resolve_ratesmc_bin(ratesmc: dict):
+    """
+    Resolve the RatesMC executable, or return None if it can't be found/run.
+    Checks, in order: ratesmc_bin in [ratesmc], $RATESMC_BIN, then $PATH
+    (matching the convention already used by run_ratesmc_batches.sh).
+    """
+    configured = ratesmc.get('ratesmc_bin') or os.environ.get('RATESMC_BIN')
+    if configured:
+        p = Path(configured).expanduser()
+        return p if p.is_file() and os.access(p, os.X_OK) else None
+    for name in ('RatesMC', 'ratesmc'):
+        found = shutil.which(name)
+        if found:
+            return Path(found)
+    return None
+
+
+def _link_or_copy(src: Path, dest: Path) -> None:
+    if dest.exists() or dest.is_symlink():
+        dest.unlink()
+    try:
+        dest.symlink_to(src.resolve())
+    except OSError:
+        shutil.copy2(src, dest)
+
+
+def step_run_ratesmc(basics: dict, resonance: dict, ratesmc: dict,
+                     run_idx: int = None) -> None:
+    """
+    Execute the compiled RatesMC binary on each RUN_j/{reaction}.in produced by
+    [resonance]. Skips a run silently if its RatesMC.out already exists.
+
+    If the RatesMC executable can't be resolved, this step prints a warning
+    and returns without error — nothing downstream ([integration]/[talys])
+    depends on RatesMC having actually run.
+    """
+    reaction   = basics['reaction']
+    output_dir = resonance.get('output_dir', 'outputs/')
+    runs       = int(resonance.get('runs',   '1'))
+
+    ratesmc_bin = _resolve_ratesmc_bin(ratesmc)
+    if ratesmc_bin is None:
+        configured = ratesmc.get('ratesmc_bin') or os.environ.get('RATESMC_BIN')
+        where = f" at {configured}" if configured else " (checked ratesmc_bin, $RATESMC_BIN, and $PATH)"
+        print(f"[ratesmc] WARNING: RatesMC executable could not be found{where}. "
+              "Skipping the [ratesmc] step.", flush=True)
+        return
+
+    run_range = [run_idx] if run_idx is not None else range(runs)
+    print(f"[ratesmc] using executable: {ratesmc_bin}")
+    print(f"[ratesmc] processing run(s): {list(run_range)}")
+
+    n_skipped = 0
+    for j in run_range:
+        run_dir = Path(output_dir) / reaction / f"RUN_{j}"
+        infile  = run_dir / f"{reaction}.in"
+        outfile = run_dir / "RatesMC.out"
+
+        if not infile.exists():
+            sys.exit(f"[ratesmc] Missing [resonance] output for RUN_{j}: {infile}")
+
+        if outfile.exists():
+            n_skipped += 1
+            continue
+
+        _link_or_copy(ratesmc_bin, run_dir / "RatesMC")
+        for fname in _RATESMC_SUPPORT_FILES:
+            support_src = ratesmc_bin.parent / fname
+            if support_src.exists():
+                _link_or_copy(support_src, run_dir / fname)
+        _link_or_copy(infile, run_dir / "RatesMC.in")
+
+        print(f"[ratesmc] RUN_{j} ...", flush=True)
+        log_path = run_dir / "RatesMC.log"
+        with open(log_path, "w") as log:
+            result = subprocess.run(["./RatesMC"], cwd=run_dir,
+                                    stdout=log, stderr=subprocess.STDOUT)
+
+        if result.returncode != 0:
+            print(f"[ratesmc] WARNING: RatesMC exited with code {result.returncode} "
+                  f"for RUN_{j}; see {log_path}.", flush=True)
+            continue
+
+        log_text = log_path.read_text(errors="replace")
+        if re.search(r"ERROR|WARNING|FATAL", log_text):
+            print(f"[ratesmc] WARNING: RatesMC reported issues for RUN_{j}; "
+                  f"see {log_path}.", flush=True)
+
+    if n_skipped:
+        print(f"[ratesmc] {n_skipped}/{runs} run(s) already had RatesMC.out — skipped.")
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Step 2 — [integration]
 # ─────────────────────────────────────────────────────────────────────────────
 def step2_generate_xs(basics: dict, resonance: dict, integration: dict, runs: int,
@@ -448,21 +554,22 @@ def main():
     # ── Python executable for subprocess calls ────────────────────────────────
     # sys.executable can be empty in some condor execution environments.
     # Set python_exec in [basics] to provide an explicit path.
-    import shutil as _shutil
     global _PYTHON
     _PYTHON = (basics.get('python_exec') or
                (sys.executable if sys.executable else None) or
-               _shutil.which('python3') or
-               _shutil.which('python'))
+               shutil.which('python3') or
+               shutil.which('python'))
     if not _PYTHON:
         sys.exit("Cannot determine Python executable. Set python_exec in [basics].")
 
     # ── Detect which sections are present ─────────────────────────────────────
     has_resonance   = 'resonance'   in raw
+    has_ratesmc     = 'ratesmc'     in raw
     has_integration = 'integration' in raw
     has_talys       = 'talys'       in raw
 
     resonance   = raw.get('resonance',   {})
+    ratesmc     = raw.get('ratesmc',     {})
     integration = raw.get('integration', {})
     talys       = raw.get('talys',       {})
 
@@ -473,6 +580,11 @@ def main():
     STEPS   = ('resonance', 'integration', 'talys')
     active  = [s for s in STEPS if s in raw]
     skipped = [s for s in STEPS if s not in raw]
+    if has_ratesmc:
+        # [ratesmc] has no downstream dependents, so it's tracked for display
+        # only, not folded into the outputs-assumed-to-exist STEPS gating.
+        insert_at = active.index('resonance') + 1 if 'resonance' in active else 0
+        active.insert(insert_at, 'ratesmc')
 
     run_idx = args.run_idx
 
@@ -497,9 +609,15 @@ def main():
         _banner("resonance", "start")
         step1_build_ratesmc(basics, resonance, run_idx=run_idx)
         _banner("resonance", "end")
-    elif has_integration or has_talys:
+    elif has_ratesmc or has_integration or has_talys:
         _check_resonance_outputs(reaction, output_dir, runs,
                                  next_step='integration', run_idx=run_idx)
+
+    # ── Step 1b: [ratesmc] (optional) ─────────────────────────────────────────
+    if has_ratesmc:
+        _banner("ratesmc", "start")
+        step_run_ratesmc(basics, resonance, ratesmc, run_idx=run_idx)
+        _banner("ratesmc", "end")
 
     # ── Step 2: [integration] ─────────────────────────────────────────────────
     if has_integration:
