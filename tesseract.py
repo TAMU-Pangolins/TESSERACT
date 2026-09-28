@@ -24,7 +24,7 @@ Rules:
 
 Output naming with multiple runs (runs = N):
   [resonance]   outputs/{reaction}/RUN_{j}/{reaction}.in          j = 0..N-1
-  [ratesmc]     outputs/{reaction}/RUN_{j}/RatesMC.out            j = 0..N-1
+  [ratesmc]     outputs/{reaction}/RUN_{j}/{reaction}.out         j = 0..N-1
   [integration] {target}_ap_{residual}_integrated_xs_dE_{dE}      one per (j, dE)
                   _{tag}_run{j}.csv
   [talys]       talys_results_{exp_file_stem}.npz                 one per file
@@ -308,14 +308,10 @@ def step1_build_ratesmc(basics: dict, resonance: dict,
 # ─────────────────────────────────────────────────────────────────────────────
 # Step 1b — [ratesmc]  (optional; skipped with a warning if RatesMC isn't found)
 # ─────────────────────────────────────────────────────────────────────────────
-_RATESMC_SUPPORT_FILES = ("mass_1.mas20", "nubase_3.mas20")
-
-
 def _resolve_ratesmc_bin(ratesmc: dict):
     """
     Resolve the RatesMC executable, or return None if it can't be found/run.
-    Checks, in order: ratesmc_bin in [ratesmc], $RATESMC_BIN, then $PATH
-    (matching the convention already used by run_ratesmc_batches.sh).
+    Checks, in order: ratesmc_bin in [ratesmc], $RATESMC_BIN, then $PATH.
     """
     configured = ratesmc.get('ratesmc_bin') or os.environ.get('RATESMC_BIN')
     if configured:
@@ -328,20 +324,15 @@ def _resolve_ratesmc_bin(ratesmc: dict):
     return None
 
 
-def _link_or_copy(src: Path, dest: Path) -> None:
-    if dest.exists() or dest.is_symlink():
-        dest.unlink()
-    try:
-        dest.symlink_to(src.resolve())
-    except OSError:
-        shutil.copy2(src, dest)
-
-
 def step_run_ratesmc(basics: dict, resonance: dict, ratesmc: dict,
                      run_idx: int = None) -> None:
     """
     Execute the compiled RatesMC binary on each RUN_j/{reaction}.in produced by
-    [resonance]. Skips a run silently if its RatesMC.out already exists.
+    [resonance], matching how RatesMC is actually invoked in practice: run from
+    its own install directory (where it finds its mass-table data files) with
+    the input file's absolute path passed as an argument, producing
+    {reaction}.out beside that input file. Skips a run silently if its .out
+    already exists.
 
     If the RatesMC executable can't be resolved, this step prints a warning
     and returns without error — nothing downstream ([integration]/[talys])
@@ -367,7 +358,7 @@ def step_run_ratesmc(basics: dict, resonance: dict, ratesmc: dict,
     for j in run_range:
         run_dir = Path(output_dir) / reaction / f"RUN_{j}"
         infile  = run_dir / f"{reaction}.in"
-        outfile = run_dir / "RatesMC.out"
+        outfile = run_dir / f"{reaction}.out"
 
         if not infile.exists():
             sys.exit(f"[ratesmc] Missing [resonance] output for RUN_{j}: {infile}")
@@ -376,18 +367,13 @@ def step_run_ratesmc(basics: dict, resonance: dict, ratesmc: dict,
             n_skipped += 1
             continue
 
-        _link_or_copy(ratesmc_bin, run_dir / "RatesMC")
-        for fname in _RATESMC_SUPPORT_FILES:
-            support_src = ratesmc_bin.parent / fname
-            if support_src.exists():
-                _link_or_copy(support_src, run_dir / fname)
-        _link_or_copy(infile, run_dir / "RatesMC.in")
-
         print(f"[ratesmc] RUN_{j} ...", flush=True)
         log_path = run_dir / "RatesMC.log"
         with open(log_path, "w") as log:
-            result = subprocess.run(["./RatesMC"], cwd=run_dir,
-                                    stdout=log, stderr=subprocess.STDOUT)
+            result = subprocess.run(
+                [str(ratesmc_bin), str(infile.resolve())],
+                cwd=ratesmc_bin.parent, stdout=log, stderr=subprocess.STDOUT,
+            )
 
         if result.returncode != 0:
             print(f"[ratesmc] WARNING: RatesMC exited with code {result.returncode} "
@@ -400,7 +386,7 @@ def step_run_ratesmc(basics: dict, resonance: dict, ratesmc: dict,
                   f"see {log_path}.", flush=True)
 
     if n_skipped:
-        print(f"[ratesmc] {n_skipped}/{runs} run(s) already had RatesMC.out — skipped.")
+        print(f"[ratesmc] {n_skipped}/{runs} run(s) already had a .out file — skipped.")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
