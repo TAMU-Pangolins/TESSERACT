@@ -312,13 +312,15 @@ def _resolve_ratesmc_bin(ratesmc: dict):
     """
     Resolve the RatesMC executable, or return None if it can't be found/run.
     Checks, in order: ratesmc_bin in [ratesmc], $RATESMC_BIN, then $PATH.
+    Each candidate may be a full path or a bare command name -- shutil.which
+    handles both (a path is checked directly; a bare name is searched on
+    $PATH), so ratesmc_bin = RatesMC resolves the same way an unset
+    ratesmc_bin does.
     """
     configured = ratesmc.get('ratesmc_bin') or os.environ.get('RATESMC_BIN')
-    if configured:
-        p = Path(configured).expanduser()
-        return p if p.is_file() and os.access(p, os.X_OK) else None
-    for name in ('RatesMC', 'ratesmc'):
-        found = shutil.which(name)
+    candidates = [configured] if configured else ['RatesMC', 'ratesmc']
+    for candidate in candidates:
+        found = shutil.which(os.path.expanduser(candidate))
         if found:
             return Path(found)
     return None
