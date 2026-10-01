@@ -25,7 +25,7 @@ Rules:
 Output naming with multiple runs (runs = N):
   [resonance]   outputs/{reaction}/RUN_{j}/{reaction}.in          j = 0..N-1
   [ratesmc]     outputs/{reaction}/RUN_{j}/{reaction}.out         j = 0..N-1
-  [integration] {target}_ap_{residual}_integrated_xs_dE_{dE}      one per (j, dE)
+  [integration] {target}_{proj}{ejec}_{residual}_integrated_xs_dE_{dE}  one per (j, dE)
                   _{tag}_run{j}.csv
   [talys]       talys_results_{exp_file_stem}.npz                 one per file
 
@@ -47,7 +47,8 @@ from pathlib import Path
 _SCRIPT_DIR = Path(__file__).resolve().parent
 _PYTHON     = None   # set in main() after reading python_exec from [basics]
 
-from nucres.physics import HBAR, MASS_PROTON, reduced_mass
+from extract_resonance_data import load_reaction_params
+from nucres.reaction_names import file_stem
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -132,16 +133,14 @@ def _integrated_output_paths(reaction: str, dE_list: list, tag: str, runs: int,
     Return all integrated XS file paths that [integration] will produce.
     One file per (run index, bin width).
     """
-    rxn = re.match(r'([^(]+)\(a,p\)(.+)', reaction)
-    target   = rxn.group(1) if rxn else reaction
-    residual = rxn.group(2) if rxn else ""
+    stem  = file_stem(reaction)
     paths = []
     for j in range(runs):
         tag_j      = f"{tag}_run{j}"
         tag_suffix = f"_{tag_j.lstrip('_')}" if tag_j.lstrip('_') else ""
         for dE in dE_list:
             paths.append(
-                Path(output_dir) / f"{target}_ap_{residual}_integrated_xs_dE_{dE}{tag_suffix}.csv"
+                Path(output_dir) / f"{stem}_integrated_xs_dE_{dE}{tag_suffix}.csv"
             )
     return paths
 
@@ -193,25 +192,34 @@ def _check_integration_outputs(exp_file_str: str) -> None:
 # ─────────────────────────────────────────────────────────────────────────────
 # Physics helper
 # ─────────────────────────────────────────────────────────────────────────────
-def compute_gamma(A_tar: int, mean_i: float, mean_o: float):
-    A_alpha  = 4
-    A_proton = 1
-    m_alpha  = A_alpha  * MASS_PROTON
-    m_target = A_tar    * MASS_PROTON
+HBARC_MEV_FM = 197.3269804
+AMU_MEV = 931.49410242
 
-    mu_i   = reduced_mass(m_target, m_alpha)
-    R_sq_i = (1.25e-15)**2 * (A_tar**(1/3) + A_alpha**(1/3))**2
-    wig_i  = 3 * HBAR**2 / (2 * mu_i * R_sq_i) * 6.242e18
-    gamma_i = wig_i * mean_i
 
-    A_res  = A_tar + A_alpha - A_proton          # residual nucleus (e.g. 25Al for 22Mg(a,p))
-    m_res  = A_res * MASS_PROTON
-    mu_o   = reduced_mass(m_res, A_proton * MASS_PROTON)
-    R_sq_o = (1.25e-15)**2 * (A_res**(1/3) + A_proton**(1/3))**2
-    wig_o  = 3 * HBAR**2 / (2 * mu_o * R_sq_o) * 6.242e18
-    gamma_o = wig_o * mean_o
+def _wigner_limit_ev(m1_u: float, m2_u: float, r0_fm: float) -> float:
+    """Wigner limit 3 hbar^2 / (2 mu R^2) in eV, R = r0 (m1^1/3 + m2^1/3)."""
+    mu = m1_u * m2_u / (m1_u + m2_u) * AMU_MEV
+    R = r0_fm * (m1_u ** (1 / 3) + m2_u ** (1 / 3))
+    return 3.0 * HBARC_MEV_FM ** 2 / (2.0 * mu * R ** 2) * 1e6
 
-    return gamma_i, gamma_o, m_target, m_alpha
+
+def compute_gamma(rxn, mean_i: float, mean_o: float):
+    """
+    Mean entrance and exit reduced widths (eV) passed to build_ratesmc_input.py.
+
+    rxn is the template's ReactionParams (masses in u, R0), so the channel
+    radius and reduced mass are the ones RatesMC uses.
+      gamma_i = mean_i * (Wigner limit of projectile + target)
+      gamma_o = mean_o * (Wigner limit of ejectile + residual) for particle exits;
+                for gamma exits mean_o is taken as the mean gamma width in eV.
+    """
+    gamma_i = mean_i * _wigner_limit_ev(rxn.M_proj, rxn.M_targ, rxn.R0_fm)
+    if rxn.Z_exit == 0 and rxn.M_exit == 0.0:
+        gamma_o = mean_o
+    else:
+        M_res = rxn.M_proj + rxn.M_targ - rxn.M_exit
+        gamma_o = mean_o * _wigner_limit_ev(rxn.M_exit, M_res, rxn.R0_fm)
+    return gamma_i, gamma_o
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -246,15 +254,13 @@ def step1_build_ratesmc(basics: dict, resonance: dict,
     if not template.exists():
         sys.exit(f"[resonance] Template not found: {template}")
 
-    match = re.match(r'(\d+)', reaction)
-    if not match:
-        sys.exit(f"[resonance] Cannot parse mass number from reaction: {reaction}")
-    A_tar = int(match.group(1))
-
-    gamma_i, gamma_o, m_target, m_alpha = compute_gamma(
-        A_tar, float(mean_i), float(mean_o)
-    )
-    print(f"[resonance] gamma_i = {gamma_i:.4e} eV  |  gamma_o = {gamma_o:.4e} eV")
+    try:
+        rxn = load_reaction_params(template)
+    except ValueError as exc:
+        sys.exit(f"[resonance] {exc}")
+    gamma_i, gamma_o = compute_gamma(rxn, float(mean_i), float(mean_o))
+    exit_note = "mean gamma width" if (rxn.Z_exit == 0 and rxn.M_exit == 0.0) else "reduced width"
+    print(f"[resonance] gamma_i = {gamma_i:.4e} eV  |  gamma_o = {gamma_o:.4e} eV ({exit_note})")
     run_range = [run_idx] if run_idx is not None else range(runs)
     print(f"[resonance] processing run(s): {list(run_range)}")
 
@@ -275,8 +281,6 @@ def step1_build_ratesmc(basics: dict, resonance: dict,
             "--output",           str(output_in),
             "--E-min-mev",        E_min,
             "--E-max-mev",        E_max,
-            "--m1",               str(m_target),
-            "--m2",               str(m_alpha),
             "--n-density-points", n_samples,
             "--Gamma-i-mean-eV",  str(gamma_i),
             "--Gamma-o-mean-eV",  str(gamma_o),
@@ -490,7 +494,7 @@ def step2_generate_xs(basics: dict, resonance: dict, integration: dict, runs: in
 
     Output filenames encode the run index via --tag:
       unintegrated : {reaction}_xs_unintegrated_parallel_{base_tag}_run{j}.txt
-      integrated   : {target}_ap_{residual}_integrated_xs_dE_{dE}_{base_tag}_run{j}.csv
+      integrated   : {target}_{proj}{ejec}_{residual}_integrated_xs_dE_{dE}_{base_tag}_run{j}.csv
 
     Skips a (run, file) silently if the outputs already exist.
     """
@@ -505,9 +509,7 @@ def step2_generate_xs(basics: dict, resonance: dict, integration: dict, runs: in
                                      str(Path(int_output_dir).parent))
     dE_lst        = [x.strip() for x in dE.split(',')]
 
-    rxn = re.match(r'([^(]+)\(a,p\)(.+)', reaction)
-    target   = rxn.group(1) if rxn else reaction
-    residual = rxn.group(2) if rxn else ""
+    stem = file_stem(reaction)
 
     run_range = [run_idx] if run_idx is not None else range(runs)
     n_skipped = 0
@@ -519,7 +521,7 @@ def step2_generate_xs(basics: dict, resonance: dict, integration: dict, runs: in
         # All expected outputs for this run
         unint = Path(unint_dir) / f"{reaction}_xs_unintegrated_parallel{tag_suffix}.txt"
         int_files = [
-            Path(int_output_dir) / f"{target}_ap_{residual}_integrated_xs_dE_{dE}{tag_suffix}.csv"
+            Path(int_output_dir) / f"{stem}_integrated_xs_dE_{dE}{tag_suffix}.csv"
             for dE in dE_lst
         ]
         all_exist = unint.exists() and all(f.exists() for f in int_files)

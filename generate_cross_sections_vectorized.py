@@ -20,6 +20,7 @@ import re
 from pathlib import Path
 
 from nucres.resonance import alpha_omp_metadata
+from nucres.reaction_names import file_stem
 from nucres.resonance_sum import ResonanceSum, rows_from_dataframe
 from extract_resonance_data import extract_data, load_reaction_params
 
@@ -47,7 +48,7 @@ def main():
     parser = argparse.ArgumentParser()
 
     parser.add_argument("--reaction", required=True,
-                        help="Reaction name e.g. 22Mg(a,p)25Al")
+                        help="Reaction name e.g. 22Mg(a,p)25Al or 24Mg(p,g)25Al")
     parser.add_argument("--E-min-mev", dest="E_min", type=float, default=0.1,
                         help="Minimum energy [MeV]")
     parser.add_argument("--E-max-mev", dest="E_max", type=float, default=10.0,
@@ -103,11 +104,7 @@ def main():
     os.makedirs(args.output_dir, exist_ok=True)
     os.makedirs(args.unint_dir, exist_ok=True)
 
-    rxn_match = re.match(r'([^(]+)\(a,p\)(.+)', reaction)
-    if not rxn_match:
-        raise ValueError(f"Cannot parse target/residual from reaction: {reaction}")
-    target    = rxn_match.group(1)
-    residual  = rxn_match.group(2)
+    stem      = file_stem(reaction)      # e.g. 22Mg_ap_25Al, 24Mg_pg_25Al
     tag_clean  = args.tag.lstrip('_')
     tag_suffix = f"_{tag_clean}" if tag_clean else ""
 
@@ -205,7 +202,7 @@ def main():
         print(f"\nIntegrating with ΔE = {dE} MeV")
         E_bins, xs_bin = binned_cross_section(res_sum, args.E_min, args.E_max, dE)
 
-        outfile = os.path.join(args.output_dir, f"{target}_ap_{residual}_integrated_xs_dE_{dE}{tag_suffix}.csv")
+        outfile = os.path.join(args.output_dir, f"{stem}_integrated_xs_dE_{dE}{tag_suffix}.csv")
         np.savetxt(
             outfile,
             np.column_stack((E_bins, xs_bin)),
