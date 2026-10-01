@@ -1,4 +1,7 @@
+import os
+import tempfile
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
 import numpy as np
@@ -118,6 +121,57 @@ class BinAveragedComparisonTest(unittest.TestCase):
             obj_centre = topt.make_objective(cfg, x_exp, centre_values.copy(),
                                              0.1 * centre_values, mask)
             self.assertGreater(obj_centre(np.array([1.0])), 1e-3)
+
+
+class ExpTableHeaderParsingTest(unittest.TestCase):
+    """
+    pd.read_csv(path, comment='#') with no explicit header= defaults to
+    header=0, so for a file with only a '#'-prefixed header line (step 2's
+    integrated-cross-section output), it silently took the first DATA row
+    as column names and dropped it.
+    """
+
+    def test_hash_only_header_keeps_every_data_row(self):
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.csv', delete=False) as fh:
+            fh.write("# E (MeV),sigma (mb)| dE=0.2\n"
+                     "1.0,2.0\n2.0,3.0\n3.0,4.0\n")
+            path = fh.name
+        try:
+            table = topt.read_exp_table(path)
+        finally:
+            os.remove(path)
+        self.assertEqual(len(table), 3)
+        np.testing.assert_allclose(table[0], [1.0, 2.0])
+
+    def test_real_integrated_xs_file_is_read_in_full(self):
+        repo = Path(__file__).resolve().parent.parent
+        path = repo / "22Mg_ap_25Al_integrated_xs_dE_0.2.csv"
+        if not path.exists():
+            self.skipTest("sample integrated-xs file not present in this checkout")
+        with open(path) as fh:
+            n_data_lines = sum(1 for ln in fh if not ln.startswith("#"))
+        table = topt.read_exp_table(str(path))
+        self.assertEqual(len(table), n_data_lines)
+
+    def test_plain_text_header_without_hash_is_still_skipped(self):
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.csv', delete=False) as fh:
+            fh.write("E,sigma\n1.0,2.0\n2.0,3.0\n")
+            path = fh.name
+        try:
+            table = topt.read_exp_table(path)
+        finally:
+            os.remove(path)
+        self.assertEqual(len(table), 2)
+
+    def test_file_with_no_header_row_keeps_all_rows(self):
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.csv', delete=False) as fh:
+            fh.write("1.0,2.0\n2.0,3.0\n")
+            path = fh.name
+        try:
+            table = topt.read_exp_table(path)
+        finally:
+            os.remove(path)
+        self.assertEqual(len(table), 2)
 
 
 if __name__ == "__main__":

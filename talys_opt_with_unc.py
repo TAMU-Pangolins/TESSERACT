@@ -416,6 +416,23 @@ def run_talys_get_rate(
 # ─────────────────────────────────────────────────────────────────────────────
 # Comparing TALYS to bin-averaged data on the same footing
 # ─────────────────────────────────────────────────────────────────────────────
+def read_exp_table(path: str) -> np.ndarray:
+    """
+    Numeric rows (E, sigma[, d_sigma]) of a data file.
+
+    '#' lines are comments. A leading non-numeric line (a column header
+    without '#') is skipped. Step 2's integrated-cross-section files have
+    only a '#'-prefixed header, so pd.read_csv(path, comment='#') -- with
+    no explicit header=None -- took the FIRST DATA ROW as the column names
+    instead, silently dropping the lowest-energy bin from every fit.
+    """
+    df = pd.read_csv(path, comment="#", header=None)
+    first = pd.to_numeric(df.iloc[0], errors="coerce")
+    if first.isna().any():
+        df = df.iloc[1:]
+    return df.apply(pd.to_numeric).to_numpy(dtype=float)
+
+
 def exp_bin_width(exp_file: str, x_exp: np.ndarray, script: dict) -> float:
     """
     Width (MeV) of the data bins: exp_bin_width in [talys], else the 'dE='
@@ -1171,12 +1188,11 @@ def main():
             "Set exp_file in the [talys] section of tesseract.in."
         )
 
-    df_exp      = pd.read_csv(exp_file, comment="#")
-    x_exp       = df_exp.iloc[:, 0].to_numpy(dtype=float)
-    y_exp       = df_exp.iloc[:, 1].to_numpy(dtype=float)
+    exp_table   = read_exp_table(exp_file)
+    x_exp       = exp_table[:, 0]
+    y_exp       = exp_table[:, 1]
     EXP_REL_ERR = float(script.get('exp_rel_err', '0.10'))
-    y_err       = (df_exp.iloc[:, 2].to_numpy(dtype=float)
-                   if df_exp.shape[1] >= 3 else EXP_REL_ERR * y_exp)
+    y_err       = (exp_table[:, 2] if exp_table.shape[1] >= 3 else EXP_REL_ERR * y_exp)
     E_FIT_MIN   = float(script.get('e_fit_min', '2.0'))
     mask        = (y_exp > 1e-10) & (x_exp >= E_FIT_MIN)
 
