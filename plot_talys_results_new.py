@@ -37,6 +37,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy.interpolate import interp1d
 
+from nucres.ratesmc_output import read_ratesmc_out
 from nucres.talys_output import fit_key, keep_latest
 
 
@@ -203,25 +204,23 @@ def _load_npz_rate(path: str) -> tuple | None:
 # ─────────────────────────────────────────────────────────────────────────────
 def load_ratesmc_rate(ratesmc_dir: str, reaction: str, run_idx: int) -> tuple | None:
     """
-    Load (T9, median_rate) from {ratesmc_dir}/RUN_{run_idx}/{reaction}.out.
+    Load (T9, median_rate) for one run from {ratesmc_dir}/RUN_{run_idx}/.
 
-    RatesMC file format (3 header lines then data):
-        line 1 : reaction name
-        line 2 : "Calculated with RatesMC ..."
-        line 3 : "Samples = N"
-        line 4 : "T9   RRate_low   Median Rate   RRate_high   f.u."
-        data   : col 0 = T9 (GK),  col 2 = Median Rate
+    Reads {reaction}.out (written by tesseract.py [ratesmc]), falling back to
+    RatesMC.out. Columns are found by header name, so RatesMC 2.11 output
+    (T9, low, Classical, Median, ...) and 2.2+ output (T9, low, Median,
+    high, f.u.) are both read correctly.
     """
-    path = os.path.join(ratesmc_dir, f"RUN_{run_idx}", f"{reaction}.out")
-    if not os.path.exists(path):
-        return None
-    try:
-        data = np.loadtxt(path, skiprows=4)
-        if data.ndim < 2 or data.shape[1] < 3:
-            return None
-        return data[:, 0], data[:, 2]   # T9, Median Rate
-    except Exception:
-        return None
+    run_dir = os.path.join(ratesmc_dir, f"RUN_{run_idx}")
+    for name in (f"{reaction}.out", "RatesMC.out"):
+        path = os.path.join(run_dir, name)
+        if os.path.exists(path):
+            try:
+                table = read_ratesmc_out(path)
+            except (OSError, ValueError):
+                return None
+            return table["T9"], table["median"]
+    return None
 
 
 # ─────────────────────────────────────────────────────────────────────────────

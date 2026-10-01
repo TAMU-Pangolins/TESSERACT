@@ -37,6 +37,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from scipy.optimize import minimize
 
+from nucres.ratesmc_output import read_ratesmc_out
 from nucres.read_qvals import atomic_mass_u
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -345,16 +346,14 @@ def read_astrorate(workdir: str) -> Optional[Tuple[np.ndarray, np.ndarray]]:
 
 
 def read_ratesmc_file(path: str) -> Optional[Tuple[np.ndarray, np.ndarray]]:
-    """Read external MC rates file (RatesMC.out); returns (T9, rate) or None."""
+    """Read a RatesMC .out file; returns (T9, median rate) or None."""
     if not os.path.exists(path):
         return None
     try:
-        df = pd.read_csv(path, sep=r"\s+", comment="#", header=None)
-        x  = df.iloc[:, 0].to_numpy(dtype=float)
-        y  = df.iloc[:, 1].to_numpy(dtype=float)
-        return None if (np.any(~np.isfinite(x)) or np.any(~np.isfinite(y))) else (x, y)
-    except Exception:
+        table = read_ratesmc_out(path)
+    except (OSError, ValueError):
         return None
+    return table["T9"], table["median"]
 
 
 def _cleanup_workdir(path: str, retries: int = 5, delay: float = 0.2) -> None:
