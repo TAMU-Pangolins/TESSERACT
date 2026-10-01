@@ -604,6 +604,9 @@ def build_ratesmc_input(args) -> None:
         projectile_parity=projectile_parity,
         target_parity=target_parity,
         drop_forbidden=getattr(args, "drop_forbidden", True),
+        # --Gamma-*-mean-eV are reduced widths here; they are converted to
+        # partial widths below, so the generator must not build sigma from them.
+        widths_are_reduced=True,
     )
     try:
         generated = synthesize_sigma_from_hfb(cfg)
@@ -878,13 +881,13 @@ def parse_args() -> argparse.Namespace:
         "--Gamma-i-mean-eV",
         type=float,
         default=1.0,
-        help="Mean entrance width for PT sampling (eV).",
+        help="Mean entrance REDUCED width gamma^2 for PT sampling (eV); converted to Gamma = 2 gamma^2 P.",
     )
     p.add_argument(
         "--Gamma-o-mean-eV",
         type=float,
         default=1.0,
-        help="Mean exit width for PT sampling (eV).",
+        help="Mean exit REDUCED width gamma^2 for PT sampling (eV); converted to Gamma = 2 gamma^2 P for particle exits.",
     )
     p.add_argument(
         "--delta-E-mev",

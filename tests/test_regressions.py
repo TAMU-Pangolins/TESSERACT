@@ -285,5 +285,27 @@ class SpinExportTest(unittest.TestCase):
         self.assertEqual([float(w) for w in written], list(spins))
 
 
+class ReducedWidthSpectrumTest(unittest.TestCase):
+    def test_reduced_width_spectrum_has_no_cross_section(self):
+        from nucres.generator import HFBSamplerConfig, synthesize_sigma_from_hfb
+
+        data_root = (
+            Path(__file__).resolve().parent.parent
+            / "data" / "densities" / "level-densities-hfb"
+        )
+        if not (data_root / "z010.tab").exists():
+            self.skipTest("HFB tables not available.")
+        cfg = HFBSamplerConfig(
+            Z=10, A=20, data_root=data_root, s1=0.0, s2=0.0,
+            E_min_mev=0.5, E_max_mev=3.0, U_offset_mev=4.73, seed=1,
+            n_density_points=200, n_sigma_points=32, widths_are_reduced=True,
+        )
+        spec = synthesize_sigma_from_hfb(cfg)
+        self.assertIsNone(spec.sigma_barns)
+        self.assertGreater(len(spec.resonances), 0)
+        with self.assertRaises(ValueError):
+            spec.compute_rate([1.0])
+
+
 if __name__ == "__main__":
     unittest.main()
