@@ -5,9 +5,11 @@ from pathlib import Path
 from unittest.mock import patch
 
 from build_ratesmc_input import (
+    _clear_upper_limits,
     _convert_reduced_to_partial_widths,
     _parse_template_metadata,
     build_ratesmc_input,
+    inject_rows,
     projectile_separation_energy_mev,
 )
 from nucres.resonance import Resonance, penetrability_P_l_mev
@@ -206,6 +208,78 @@ class BuildRatesMCInputTest(unittest.TestCase):
         p2 = penetrability_P_l_mev(1, 1, 13, 1, 25, 1.0 + q_mev - exf_mev)
         self.assertAlmostEqual(converted.Gamma_i, 2.0 * resonance.Gamma_i * p1)
         self.assertAlmostEqual(converted.Gamma_o, 2.0 * resonance.Gamma_o * p2)
+
+
+class ClearUpperLimitsTest(unittest.TestCase):
+    def test_single_section_is_cleared(self):
+        repo = Path(__file__).resolve().parent.parent
+        lines = (repo / "input" / "22Mg(a,p)25Al.txt").read_text().splitlines()
+        n_before = len(lines)
+        removed = _clear_upper_limits(lines)
+        self.assertGreater(removed, 0)
+        start = next(i for i, ln in enumerate(lines) if ln.startswith("Upper Limits"))
+        header = next(j for j in range(start, len(lines)) if lines[j].startswith("Ecm"))
+        self.assertTrue(lines[header + 1].startswith("!"))
+        self.assertTrue(lines[header + 2].startswith("*"))
+        self.assertEqual(len(lines), n_before - removed + 1)
+
+    def test_multiple_sections_are_all_cleared(self):
+        repo = Path(__file__).resolve().parent.parent
+        for fname, expected_sections in (
+            ("24Mg(a,g)28Si.txt", 4),
+            ("25Al(p,g)26Si.txt", 2),
+        ):
+            lines = (repo / "input" / fname).read_text().splitlines()
+            n_sections = sum(
+                1 for ln in lines
+                if ln.strip().lower().startswith("upper limits of resonances")
+            )
+            self.assertEqual(n_sections, expected_sections, fname)
+            _clear_upper_limits(lines)
+
+            # Walk every occurrence and confirm no real data rows remain.
+            i = 0
+            while i < len(lines):
+                if lines[i].strip().lower().startswith("upper limits of resonances"):
+                    header = next(
+                        j for j in range(i + 1, len(lines))
+                        if lines[j].strip().startswith("Ecm")
+                    )
+                    end = next(
+                        (k for k in range(header + 1, len(lines))
+                         if lines[k].strip().startswith("*")),
+                        len(lines),
+                    )
+                    body = lines[header + 1:end]
+                    bad = [ln for ln in body if ln.strip() and not ln.strip().startswith("!")]
+                    self.assertEqual(bad, [], f"{fname}: section at line {i} not cleared")
+                    i = end
+                else:
+                    i += 1
+
+    def test_duplicated_template_data_is_not_carried_into_output(self):
+        # input/14O(a,p)17F.txt's Upper Limits section used to be a byte-for-byte
+        # copy of 22Mg(a,p)25Al's -- confirm the generated output no longer
+        # contains that leftover data by default.
+        repo = Path(__file__).resolve().parent.parent
+        template = repo / "input" / "14O(a,p)17F.txt"
+        with tempfile.TemporaryDirectory() as tmpdir:
+            out = Path(tmpdir) / "out.in"
+            inject_rows(template, out, rows=["  (generated rows)"], header_line=None)
+            text = out.read_text()
+        self.assertNotIn("497.38", text)
+
+    def test_keep_upper_limits_opt_out(self):
+        repo = Path(__file__).resolve().parent.parent
+        template = repo / "input" / "14O(a,p)17F.txt"
+        with tempfile.TemporaryDirectory() as tmpdir:
+            out = Path(tmpdir) / "out.in"
+            inject_rows(
+                template, out, rows=["  (generated rows)"], header_line=None,
+                clear_upper_limits=False,
+            )
+            text = out.read_text()
+        self.assertIn("497.38", text)
 
 
 if __name__ == "__main__":

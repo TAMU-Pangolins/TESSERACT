@@ -85,6 +85,9 @@ Cross section model contribution per resonance is generated with Breit-Wigner ca
 Project components:
 
 - `build_ratesmc_input.py`: injects sampled resonances into a `RatesMC.in` template.
+  Because TESSERACT treats the sampled resonances as perfectly known, the
+  template's upper-limit resonance rows are removed (the section headers are
+  kept); pass `--keep-upper-limits` to retain them.
 - `nucres/ratesmc_export.py`: formats resonance rows and headers (`resonance_to_row`, `render_rows`).
 - `run_ratesmc_batches.sh`: executes batch Runs with structured output directories.
 - `scripts/analyze_ratesmc_outputs.py`: aggregates run outputs and computes uncertainty bands.
