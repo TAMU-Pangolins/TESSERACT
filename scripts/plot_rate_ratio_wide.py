@@ -14,6 +14,8 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 
+from nucres.ratesmc_output import read_ratesmc_out
+
 
 BLOCK_SPLIT_RE = re.compile(r"={10,}\s*\n")
 
@@ -58,16 +60,15 @@ def parse_talys_rate_records(path: Path) -> list[dict]:
 
 
 def load_reference_rate(path: Path) -> tuple[np.ndarray, np.ndarray] | None:
+    """(T9, median rate) from a RatesMC .out file of either RatesMC lineage."""
     if not path.exists():
         return None
     try:
-        data = np.loadtxt(path, skiprows=4)
-    except Exception:
+        table = read_ratesmc_out(path)
+    except (OSError, ValueError):
         return None
-    if data.ndim != 2 or data.shape[1] < 3:
-        return None
-    t9 = data[:, 0]
-    rate = data[:, 2]
+    t9 = table["T9"]
+    rate = table["median"]
     mask = np.isfinite(t9) & np.isfinite(rate) & (rate > 0.0)
     if np.count_nonzero(mask) < 4:
         return None
