@@ -186,7 +186,8 @@ def _mass_number_from_token(token: Optional[str]) -> Optional[int]:
     if token is None:
         return None
     try:
-        return int(float(token))
+        # Templates give masses in u (e.g. 26.9815 for 27Al): round, don't truncate.
+        return int(round(float(token)))
     except ValueError:
         return split_nuclide_token(token)[0]
 
