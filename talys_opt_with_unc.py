@@ -37,6 +37,8 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from scipy.optimize import minimize
 
+from nucres.read_qvals import atomic_mass_u
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Keys in [talys] that are consumed by this script but NOT written to talys.inp.
 # Everything else in [talys] is treated as a TALYS keyword → written verbatim.
@@ -46,7 +48,7 @@ _SCRIPT_KEYS = frozenset({
     'exp_rel_err', 'e_fit_min', 'prior_rel_std', 'prior_abs_floor',
     'debug_every', 'exp_file', 'output_file', 'rates_mc_file',
     'rate_xmin', 'rate_xmax', 'plot_log_y_xs', 'plot_log_y_rate',
-    'talys_output_dir',
+    'talys_output_dir', 'exp_energy_frame',
     # least_squares-only settings
     'gtol', 'lsq_diff_step', 'lsq_workers',
 })
@@ -200,6 +202,17 @@ def load_config(tesseract_path: str) -> dict:
     ejec     = _particle_symbol(int(basics['ejectile_Z']), int(basics['ejectile_A']))
     residual = _Z_TO_SYMBOL.get(int(basics['residual_Z']), '?')
 
+    # TALYS takes, and tabulates ap.tot against, the projectile LAB energy.
+    # TESSERACT's integrated cross sections are in the centre-of-mass frame,
+    # so energies are converted on the way into TALYS and back out of it.
+    m_proj = atomic_mass_u(int(basics['projectile_Z']), int(basics['projectile_A']))
+    m_targ = atomic_mass_u(int(basics['target_Z']), int(basics['target_A']))
+    frame  = script_cfg.get('exp_energy_frame', 'cm').strip().lower()
+    if frame not in ('cm', 'lab'):
+        raise ValueError(f"exp_energy_frame must be 'cm' or 'lab', got {frame!r}")
+    # Multiply an exp_file energy by this to get the TALYS (lab) energy.
+    exp_to_lab = (m_targ + m_proj) / m_targ if frame == 'cm' else 1.0
+
     return {
         'basics':      basics,
         'talys_fixed': talys_fixed,
@@ -211,6 +224,7 @@ def load_config(tesseract_path: str) -> dict:
         'ejec':        ejec,
         'residual':    residual,
         'A_res':       int(basics['residual_A']),
+        '_exp_to_lab': exp_to_lab,
     }
 
 
@@ -238,8 +252,8 @@ def write_talys_files(
     """
     energies_path = os.path.join(workdir, "energies.txt")
     with open(energies_path, "w") as fh:
-        for e in cfg['_x_exp']:
-            fh.write(f"{e}\n")
+        for e in np.asarray(cfg['_x_exp'], dtype=float) * cfg['_exp_to_lab']:
+            fh.write(f"{e:.10g}\n")
 
     inp_path = os.path.join(workdir, "talys.inp")
     lines = []
@@ -364,14 +378,22 @@ def _cleanup_workdir(path: str, retries: int = 5, delay: float = 0.2) -> None:
             time.sleep(delay)
 
 
+def _ap_tot_in_exp_frame(xy, cfg: dict):
+    """Convert ap.tot energies from TALYS's lab frame back to the exp_file frame."""
+    if xy is None:
+        return None
+    x, y = xy
+    return x / cfg['_exp_to_lab'], y
+
+
 def run_talys_get_xs(
     opt_values: np.ndarray, cfg: dict
 ) -> Optional[Tuple[np.ndarray, np.ndarray]]:
-    """Run TALYS (no astro) and return ap.tot (E, sigma) or None."""
+    """Run TALYS (no astro) and return ap.tot (E, sigma) or None, E in the exp_file frame."""
     wd = tempfile.mkdtemp(prefix="talys_xs_")
     try:
         inp = write_talys_files(wd, opt_values, cfg, astro="n", astrogs="n")
-        return read_ap_tot(wd) if run_talys(wd, inp) else None
+        return _ap_tot_in_exp_frame(read_ap_tot(wd), cfg) if run_talys(wd, inp) else None
     finally:
         _cleanup_workdir(wd)
 
@@ -385,7 +407,7 @@ def run_talys_get_rate(
         inp = write_talys_files(wd, opt_values, cfg, astro="y", astrogs="y")
         if not run_talys(wd, inp):
             return None, None
-        return read_astrorate(wd), read_ap_tot(wd)
+        return read_astrorate(wd), _ap_tot_in_exp_frame(read_ap_tot(wd), cfg)
     finally:
         _cleanup_workdir(wd)
 
