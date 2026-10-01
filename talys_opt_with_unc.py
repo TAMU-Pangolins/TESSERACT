@@ -48,7 +48,7 @@ _SCRIPT_KEYS = frozenset({
     'exp_rel_err', 'e_fit_min', 'prior_rel_std', 'prior_abs_floor',
     'debug_every', 'exp_file', 'output_file', 'rates_mc_file',
     'rate_xmin', 'rate_xmax', 'plot_log_y_xs', 'plot_log_y_rate',
-    'talys_output_dir', 'exp_energy_frame',
+    'talys_output_dir', 'exp_energy_frame', 'talys_points_per_bin', 'exp_bin_width',
     # least_squares-only settings
     'gtol', 'lsq_diff_step', 'lsq_workers',
 })
@@ -252,7 +252,8 @@ def write_talys_files(
     """
     energies_path = os.path.join(workdir, "energies.txt")
     with open(energies_path, "w") as fh:
-        for e in np.asarray(cfg['_x_exp'], dtype=float) * cfg['_exp_to_lab']:
+        energies = cfg.get('_talys_E_cm', cfg['_x_exp'])
+        for e in np.asarray(energies, dtype=float) * cfg['_exp_to_lab']:
             fh.write(f"{e:.10g}\n")
 
     inp_path = os.path.join(workdir, "talys.inp")
@@ -413,6 +414,46 @@ def run_talys_get_rate(
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Comparing TALYS to bin-averaged data on the same footing
+# ─────────────────────────────────────────────────────────────────────────────
+def exp_bin_width(exp_file: str, x_exp: np.ndarray, script: dict) -> float:
+    """
+    Width (MeV) of the data bins: exp_bin_width in [talys], else the 'dE='
+    in the integrated file's header, else '_dE_<w>' in its name, else the
+    median spacing of the bin centres.
+    """
+    if script.get('exp_bin_width'):
+        return float(script['exp_bin_width'])
+    try:
+        with open(exp_file) as fh:
+            m = re.search(r'dE\s*=\s*([0-9.eE+-]+)', fh.readline())
+        if m:
+            return float(m.group(1))
+    except OSError:
+        pass
+    m = re.search(r'_dE_([0-9.]+?)(?:_|\.csv|$)', os.path.basename(exp_file))
+    if m:
+        return float(m.group(1))
+    return float(np.median(np.diff(np.sort(x_exp))))
+
+
+def talys_bin_grid(x_centres: np.ndarray, width: float, n_per_bin: int):
+    """
+    Gauss-Legendre energies inside each bin [c - w/2, c + w/2] and weights
+    that average over the bin (they sum to 1 per bin). Interior nodes mean
+    adjacent bins never share an energy. n_per_bin = 1 is the bin centre.
+    """
+    nodes, weights = np.polynomial.legendre.leggauss(int(n_per_bin))
+    E = (np.asarray(x_centres, dtype=float)[:, None] + 0.5 * width * nodes[None, :]).ravel()
+    return E, weights / 2.0
+
+
+def talys_bin_average(y_sub: np.ndarray, weights: np.ndarray) -> np.ndarray:
+    """Bin averages from TALYS values at talys_bin_grid energies."""
+    return np.asarray(y_sub, dtype=float).reshape(-1, len(weights)) @ weights
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Objective (closure — no global mutable state)
 # ─────────────────────────────────────────────────────────────────────────────
 def make_objective(cfg: dict, x_exp: np.ndarray, y_exp: np.ndarray,
@@ -421,8 +462,14 @@ def make_objective(cfg: dict, x_exp: np.ndarray, y_exp: np.ndarray,
     """
     Build the objective for the optimiser.
 
-    Returns a callable ``objective(params) -> float`` giving the penalised
-    reduced chi-square (chi2_red + prior).  Powell and Nelder-Mead use this.
+    Returns a callable ``objective(params) -> float`` giving chi2 + prior,
+    the log-posterior up to a constant (chi2 is NOT divided by the degrees
+    of freedom here -- dividing only chi2 and not the prior would make the
+    prior dof times stronger than its configured width implies; chi2_red
+    = chi2/dof is still computed and reported for diagnostics). TALYS is
+    averaged over each data bin the same way the data itself was binned,
+    using cfg['_bin_weights'] if set (falls back to comparing bin centres
+    when absent, the previous behaviour).  Powell and Nelder-Mead use this.
 
     Attached to it:
         objective.residuals(params) -> np.ndarray
@@ -453,6 +500,11 @@ def make_objective(cfg: dict, x_exp: np.ndarray, y_exp: np.ndarray,
     n_fit = int(np.count_nonzero(mask))
     dof   = max(n_fit - len(opt_params), 1)
 
+    # TALYS is run at cfg['_talys_E_cm'] (several points per bin) and
+    # averaged over each bin with cfg['_bin_weights']; without them, TALYS
+    # is compared at the bin centres directly (the previous behaviour).
+    bin_weights = cfg.get('_bin_weights')
+
     # Prior width per parameter (None → no prior term)
     prior_sigma = (PRIOR_STD * np.maximum(np.abs(X0), PRIOR_FLOOR)
                    if PRIOR_STD > 0.0 else None)
@@ -464,7 +516,7 @@ def make_objective(cfg: dict, x_exp: np.ndarray, y_exp: np.ndarray,
     n_resid    = n_fit + (len(opt_params) if prior_sigma is not None else 0)
     FAIL_RESID = 1e3
 
-    state = {'count': 0, 'best': (np.inf, None)}
+    state = {'count': 0, 'best': (np.inf, None), 'best_parts': None}
     lock  = threading.Lock()
 
     def _evaluate(params: np.ndarray):
@@ -488,14 +540,22 @@ def make_objective(cfg: dict, x_exp: np.ndarray, y_exp: np.ndarray,
         if out is None:
             return None, BIG
         _, y_t = out
-        if len(y_t) != len(y_exp):
+        n_sub = 1 if bin_weights is None else len(bin_weights)
+        if len(y_t) != len(y_exp) * n_sub:
             return None, BIG
+        if bin_weights is not None:
+            y_t = talys_bin_average(y_t, bin_weights)
 
-        # ── Log-space reduced chi-square, as residuals ───────────────────────
-        # sum(r_data**2) = sum(log_res**2) / dof = chi2_red
+        # ── Log-space chi-square, as residuals ───────────────────────────────
+        # sum(r_data**2) = chi2; NOT divided by dof, so chi2 + prior is the
+        # log-posterior up to a constant and the prior keeps its configured
+        # weight (dividing only chi2 by dof, as before, left the prior dof
+        # times stronger than intended). chi2_red = chi2/dof is reported
+        # separately below for diagnostics.
         log_res  = (np.log(y_exp[mask] + FLOOR) - np.log(y_t[mask] + FLOOR)) / EXP_REL_ERR
-        r_data   = log_res / np.sqrt(dof)
-        chi2_red = float(np.sum(r_data ** 2))
+        r_data   = log_res
+        chi2     = float(np.sum(r_data ** 2))
+        chi2_red = chi2 / dof
 
         # ── Gaussian prior, as residuals ─────────────────────────────────────
         if prior_sigma is not None:
@@ -504,11 +564,14 @@ def make_objective(cfg: dict, x_exp: np.ndarray, y_exp: np.ndarray,
             r_prior = np.zeros(0)
         prior = float(np.sum(r_prior ** 2))
 
-        total = chi2_red + prior
+        total = chi2 + prior
 
         with lock:
             if total < state['best'][0]:
                 state['best'] = (total, params.copy())
+                state['best_parts'] = {
+                    'chi2': chi2, 'chi2_red': chi2_red, 'prior': prior, 'dof': dof,
+                }
                 if checkpoint_path:
                     ckpt = {
                         'params': params.tolist(),
@@ -528,7 +591,7 @@ def make_objective(cfg: dict, x_exp: np.ndarray, y_exp: np.ndarray,
             )
             print(
                 f"[eval {count:4d}]  {pstr}  "
-                f"chi2_red={chi2_red:.4e}  prior={prior:.4e}  total={total:.4e}  "
+                f"chi2={chi2:.4e} (red {chi2_red:.4e})  prior={prior:.4e}  total={total:.4e}  "
                 f"| best={best_val:.4e}",
                 flush=True,
             )
@@ -536,11 +599,11 @@ def make_objective(cfg: dict, x_exp: np.ndarray, y_exp: np.ndarray,
         return np.concatenate([r_data, r_prior]), total
 
     def objective(params: np.ndarray) -> float:
-        """Scalar loss chi2_red + prior (Powell / Nelder-Mead)."""
+        """Scalar loss chi2 + prior (Powell / Nelder-Mead)."""
         return _evaluate(params)[1]
 
     def residuals(params: np.ndarray) -> np.ndarray:
-        """Residual vector r with sum(r**2) = chi2_red + prior (least_squares)."""
+        """Residual vector r with sum(r**2) = chi2 + prior (least_squares)."""
         r, _ = _evaluate(params)
         return np.full(n_resid, FAIL_RESID) if r is None else r
 
@@ -554,7 +617,7 @@ def make_objective(cfg: dict, x_exp: np.ndarray, y_exp: np.ndarray,
 # ─────────────────────────────────────────────────────────────────────────────
 def run_least_squares(obj, x0: np.ndarray, cfg: dict):
     """
-    Minimise chi2_red + prior with scipy.optimize.least_squares.
+    Minimise chi2 + prior with scipy.optimize.least_squares.
 
     Why this is faster than Powell: the loss is a sum of squared residuals,
     so the solver can build a local linear model of TALYS from one Jacobian
@@ -642,7 +705,7 @@ def run_least_squares(obj, x0: np.ndarray, cfg: dict):
 
     return OptimizeResult(
         x       = ls.x,
-        fun     = float(np.sum(ls.fun ** 2)),   # = chi2_red + prior, same scale as Powell
+        fun     = float(np.sum(ls.fun ** 2)),   # = chi2 + prior, same scale as Powell
         success = ls.success,
         status  = ls.status,
         message = ls.message,
@@ -761,6 +824,7 @@ def write_optimization_output(
     x_rate: Optional[np.ndarray] = None,
     y_rate: Optional[np.ndarray] = None,
     out_file: str = "talys_optimization.out",
+    fit_info: Optional[dict] = None,
 ) -> None:
     """
     Append a best-fit summary block to the shared output file.
@@ -795,7 +859,12 @@ def write_optimization_output(
         f"Optimizer   : {cfg['script'].get('method','Powell')}  "
         f"(converged={res.success}, nfev={res.nfev})\n"
     )
-    lines.append(f"Min reduced chi-square: {res.fun:.6g}\n")
+    info = fit_info or {}
+    chi2_red = info.get('chi2_red', res.fun)
+    lines.append(f"Min reduced chi-square: {chi2_red:.6g}\n")
+    if info:
+        lines.append(f"Objective   : chi2 + prior = {res.fun:.6g} "
+                     f"(chi2 = {info['chi2']:.6g}, prior = {info['prior']:.6g}, dof = {info['dof']})\n")
     lines.append("-" * 72 + "\n")
     lines.append("Optimized parameters:\n")
     for i, op in enumerate(cfg['opt_params']):
@@ -1119,6 +1188,20 @@ def main():
     # Attach energy grid to cfg so write_talys_files can use it
     cfg['_x_exp'] = x_exp
 
+    # TALYS is averaged over the same bins as the data: N_PER_BIN
+    # Gauss-Legendre energies per bin (1 = bin centres only, the previous
+    # behaviour). Comparing TALYS's value at a bin centre to the bin-averaged
+    # data is biased for a steep cross section, growing with the bin width --
+    # exactly the effect a bin-width study is trying to measure.
+    N_PER_BIN = int(script.get('talys_points_per_bin', '3'))
+    BIN_WIDTH = exp_bin_width(exp_file, x_exp, script)
+    if N_PER_BIN > 1:
+        E_sub, w_sub = talys_bin_grid(x_exp, BIN_WIDTH, N_PER_BIN)
+        cfg['_talys_E_cm'] = E_sub
+        cfg['_bin_weights'] = w_sub
+    print(f"[talys_opt] data bins: width {BIN_WIDTH:g} MeV; TALYS at {N_PER_BIN} "
+          f"point(s) per bin; fit window E >= {E_FIT_MIN} MeV")
+
     # ── Debug mode: one verbose TALYS call at x0, then exit ──────────────────
     if args.debug_talys:
         X0_dbg = np.array([op.x0 for op in cfg['opt_params']], dtype=float)
@@ -1194,7 +1277,16 @@ def main():
     print("\nBest-fit parameters:")
     for i, op in enumerate(opt_params):
         print(f"  {op.name} = {params_best[i]:.6g}")
-    print(f"Min reduced chi-square = {res.fun:.6g}")
+    parts = obj.state.get('best_parts') or {}
+    fit_info = {
+        'chi2':     parts.get('chi2', float('nan')),
+        'chi2_red': parts.get('chi2_red', res.fun),
+        'prior':    parts.get('prior', float('nan')),
+        'dof':      parts.get('dof', 0),
+    }
+    print(f"Objective chi2 + prior = {res.fun:.6g}  "
+          f"(chi2 = {fit_info['chi2']:.6g}, prior = {fit_info['prior']:.6g})")
+    print(f"Min reduced chi-square = {fit_info['chi2_red']:.6g}  (dof = {fit_info['dof']})")
 
     # ── Best-fit XS curve ─────────────────────────────────────────────────────
     out_xs = run_talys_get_xs(params_best, cfg)
@@ -1227,7 +1319,7 @@ def main():
     write_optimization_output(cfg, res, params_best, x_t, y_t,
                                x_rate if len(x_rate) else None,
                                y_rate if len(y_rate) else None,
-                               out_file=shared_out)
+                               out_file=shared_out, fit_info=fit_info)
     save_results(cfg, x_exp, y_exp, y_err, x_t, y_t, x_rate, y_rate, params_best,
                  out_dir=run_dir)
 
