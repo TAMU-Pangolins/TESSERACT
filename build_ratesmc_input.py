@@ -628,76 +628,91 @@ def build_ratesmc_input(args) -> None:
             "No resonances generated; check binning widths (E-min, E-max, delta-E) and related inputs."
         )
 
+    # "common" holds everything that is identical across every RUN_j of this
+    # reaction (same template, same inferred Z/A/masses/HFB files); "run"
+    # holds only what actually depends on this invocation's seed. The caller
+    # (tesseract.py) merges "common" once and "run" per RUN_j into a single
+    # consolidated <reaction>_meta.json, then deletes this per-run file.
+    level_density = dict(generated.metadata)
+    run_only_keys = ("seed", "n_drawn", "n_spacing_ladders")
+    level_density_run = {k: level_density.pop(k, None) for k in run_only_keys}
+
     implicit_meta = {
         "reaction": reaction_line,
-        "compound_nucleus": {
-            "Z": Z_val,
-            "Z_source": "explicit (--Z)" if args.Z is not None else "auto-inferred from template",
-            "A": A_val,
-            "A_source": "explicit (--A)" if args.A is not None else "auto-inferred from template",
+        "common": {
+            "compound_nucleus": {
+                "Z": Z_val,
+                "Z_source": "explicit (--Z)" if args.Z is not None else "auto-inferred from template",
+                "A": A_val,
+                "A_source": "explicit (--A)" if args.A is not None else "auto-inferred from template",
+            },
+            "spins": {
+                "s1": s1_val,
+                "s1_source": "explicit (--s1)" if args.s1 is not None else "auto-inferred from template",
+                "s2": s2_val,
+                "s2_source": "explicit (--s2)" if args.s2 is not None else "auto-inferred from template",
+                "J": J_val,
+                "J_source": (
+                    "explicit (--J)" if args.J is not None
+                    else "auto-inferred from template" if metadata.J is not None
+                    else "sampled per-resonance from HFB (--sample-J)" if args.sample_J
+                    else "fallback: parity-of-A guess (0.5 odd-A / 0.0 even-A)"
+                ),
+            },
+            "masses_kg": {
+                "m1": m1_val,
+                "m1_source": (
+                    "explicit (--m1)" if args.m1 is not None
+                    else f"AME mass table (proj token={metadata.proj_A_token!r}, Z={metadata.proj_Z!r})"
+                    if proj_mass_auto is not None
+                    else "FALLBACK: proton mass used (AME lookup failed for projectile token)"
+                ),
+                "m2": m2_val,
+                "m2_source": (
+                    "explicit (--m2)" if args.m2 is not None
+                    else f"AME mass table (targ token={metadata.targ_A_token!r}, Z={metadata.Z!r})"
+                    if targ_mass_auto is not None
+                    else "FALLBACK: proton mass used (AME lookup failed for target token)"
+                ),
+            },
+            "U_offset_mev": {
+                "value": U_offset_mev,
+                "source": (
+                    "explicit (--U_offset_mev)" if args.U_offset_mev is not None
+                    else "auto-inferred from template (_infer_u_offset_mev)"
+                ),
+            },
+            "q_value": {
+                "Q_mev": Q_mev,
+                "S_proj_kev": S_proj,
+                "S_exit_kev": S_exit,
+                "source": (
+                    "parsed from template separation-energy comments"
+                    if (S_proj is not None and S_exit is not None)
+                    else "FALLBACK: Q=0.0 assumed (one or both separation energies missing from template)"
+                ),
+            },
+            "pi_sampled": args.pi,
+            "spacing_model": getattr(args, "spacing_model", "poisson"),
+            "auto_l1": args.auto_l1,
+            "upper_limits_cleared": not getattr(args, "keep_upper_limits", False),
+            "level_density": level_density,
         },
-        "spins": {
-            "s1": s1_val,
-            "s1_source": "explicit (--s1)" if args.s1 is not None else "auto-inferred from template",
-            "s2": s2_val,
-            "s2_source": "explicit (--s2)" if args.s2 is not None else "auto-inferred from template",
-            "J": J_val,
-            "J_source": (
-                "explicit (--J)" if args.J is not None
-                else "auto-inferred from template" if metadata.J is not None
-                else "sampled per-resonance from HFB (--sample-J)" if args.sample_J
-                else "fallback: parity-of-A guess (0.5 odd-A / 0.0 even-A)"
-            ),
+        "run": {
+            "seed": args.seed,
+            "n_resonances_generated": count,
+            "n_drawn": level_density_run["n_drawn"],
+            "n_spacing_ladders": level_density_run["n_spacing_ladders"],
         },
-        "masses_kg": {
-            "m1": m1_val,
-            "m1_source": (
-                "explicit (--m1)" if args.m1 is not None
-                else f"AME mass table (proj token={metadata.proj_A_token!r}, Z={metadata.proj_Z!r})"
-                if proj_mass_auto is not None
-                else "FALLBACK: proton mass used (AME lookup failed for projectile token)"
-            ),
-            "m2": m2_val,
-            "m2_source": (
-                "explicit (--m2)" if args.m2 is not None
-                else f"AME mass table (targ token={metadata.targ_A_token!r}, Z={metadata.Z!r})"
-                if targ_mass_auto is not None
-                else "FALLBACK: proton mass used (AME lookup failed for target token)"
-            ),
-        },
-        "U_offset_mev": {
-            "value": U_offset_mev,
-            "source": (
-                "explicit (--U_offset_mev)" if args.U_offset_mev is not None
-                else "auto-inferred from template (_infer_u_offset_mev)"
-            ),
-        },
-        "q_value": {
-            "Q_mev": Q_mev,
-            "S_proj_kev": S_proj,
-            "S_exit_kev": S_exit,
-            "source": (
-                "parsed from template separation-energy comments"
-                if (S_proj is not None and S_exit is not None)
-                else "FALLBACK: Q=0.0 assumed (one or both separation energies missing from template)"
-            ),
-        },
-        "pi_sampled": args.pi,
-        "spacing_model": getattr(args, "spacing_model", "poisson"),
-        "auto_l1": args.auto_l1,
-        "seed": args.seed,
-        "n_resonances_generated": count,
-        "upper_limits_cleared": not getattr(args, "keep_upper_limits", False),
-        "level_density": generated.metadata,
     }
     meta_path = output_path.with_name(output_path.stem + "_meta.json")
     with open(meta_path, "w", encoding="utf-8") as fh:
         json.dump(implicit_meta, fh, indent=2, sort_keys=True, default=str)
     print(f"Wrote implicit-value metadata to {meta_path}")
-    if implicit_meta["level_density"].get("hfb_A_mismatch") or implicit_meta["level_density"].get("hfb_Z_mismatch"):
+    if level_density.get("hfb_A_mismatch") or level_density.get("hfb_Z_mismatch"):
         print(
-            f"[warning] HFB level-density file header (Z={generated.metadata['hfb_header_Z']}, "
-            f"A={generated.metadata['hfb_header_A']}) does not match the requested compound "
+            f"[warning] HFB level-density file header (Z={level_density['hfb_header_Z']}, "
+            f"A={level_density['hfb_header_A']}) does not match the requested compound "
             f"nucleus (Z={Z_val}, A={A_val}); see {meta_path}."
         )
 

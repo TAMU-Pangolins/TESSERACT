@@ -35,6 +35,8 @@ Usage:
 """
 
 import argparse
+import fcntl
+import json
 import os
 import re
 import shutil
@@ -153,6 +155,71 @@ def _talys_npz_path(exp_file: Path, out_root: str = "talys_opt") -> Path:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Implicit-value metadata — one consolidated <reaction>_meta.json per reaction
+# ─────────────────────────────────────────────────────────────────────────────
+# Every stage script writes its own small {"common": ..., "run": ...} JSON
+# (common = identical across every RUN_j of this reaction; run = this
+# invocation's seed-dependent outcome). tesseract.py merges each one here,
+# under meta[section], then deletes the small file so exactly one
+# <reaction>_meta.json survives per reaction. [ratesmc] has no script of its
+# own to read from (the binary is invoked directly), so its common/run data
+# is built in-process and merged the same way. Locked with flock because
+# condor can run several RUN_j for the same reaction concurrently, each
+# merging into this one shared file.
+def _consolidated_meta_path(reaction: str, output_dir: str) -> Path:
+    return Path(output_dir) / reaction / f"{reaction}_meta.json"
+
+
+def _load_consolidated_meta(path: Path, reaction: str) -> dict:
+    if path.exists():
+        with open(path, encoding="utf-8") as fh:
+            return json.load(fh)
+    return {
+        "reaction": reaction,
+        "resonance": {"common": {}, "runs": {}},
+        "ratesmc": {"common": {}, "runs": {}},
+        "integration": {"common": {}, "runs": {}},
+        "optimization": {"common": {}, "fits": {}},
+    }
+
+
+def _merge_stage_data(reaction: str, output_dir: str, section: str,
+                       run_key, common: dict, run: dict) -> None:
+    consolidated_path = _consolidated_meta_path(reaction, output_dir)
+    consolidated_path.parent.mkdir(parents=True, exist_ok=True)
+    lock_path = consolidated_path.with_suffix(".json.lock")
+    with open(lock_path, "w") as lock_fh:
+        fcntl.flock(lock_fh, fcntl.LOCK_EX)
+        try:
+            meta = _load_consolidated_meta(consolidated_path, reaction)
+            meta.setdefault(section, {"common": {}, "runs": {}})
+            meta[section]["common"] = common
+            meta[section]["runs"][str(run_key)] = run
+            with open(consolidated_path, "w", encoding="utf-8") as fh:
+                json.dump(meta, fh, indent=2, sort_keys=True, default=str)
+        finally:
+            fcntl.flock(lock_fh, fcntl.LOCK_UN)
+
+
+def _merge_stage_run_meta(reaction: str, output_dir: str, section: str,
+                           run_key, per_run_path: Path) -> None:
+    """
+    Merge a stage script's small per-run JSON (written next to its real
+    output, shape {"common": ..., "run": ...}) into the consolidated
+    <reaction>_meta.json, then delete it. No-op if per_run_path doesn't
+    exist — either this run hasn't produced it yet, or it was already
+    merged (and deleted) by an earlier tesseract.py invocation.
+    """
+    if not per_run_path.exists():
+        return
+    with open(per_run_path, encoding="utf-8") as fh:
+        data = json.load(fh)
+    _merge_stage_data(reaction, output_dir, section, run_key,
+                       data.get("common", {}), data.get("run", {}))
+    per_run_path.unlink()
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Pre-flight checks (called when a section is absent)
 # ─────────────────────────────────────────────────────────────────────────────
 def _check_resonance_outputs(reaction: str, output_dir: str, runs: int,
@@ -262,48 +329,53 @@ def step1_build_ratesmc(basics: dict, resonance: dict,
         run_dir   = Path(output_dir) / reaction / f"RUN_{j}"
         output_in = run_dir / f"{reaction}.in"
 
-        if output_in.exists():
-            n_skipped += 1
-            continue                        # already done — no prompt, just skip
+        if not output_in.exists():
+            run_dir.mkdir(parents=True, exist_ok=True)
 
-        run_dir.mkdir(parents=True, exist_ok=True)
+            cmd = [
+                _PYTHON, str(_SCRIPT_DIR / "build_ratesmc_input.py"),
+                "--template",         str(template),
+                "--output",           str(output_in),
+                "--E-min-mev",        E_min,
+                "--E-max-mev",        E_max,
+                "--n-density-points", n_samples,
+                "--Gamma-i-mean-eV",  str(gamma_i),
+                "--Gamma-o-mean-eV",  str(gamma_o),
+                "--l1",               resonance.get('l1',               '0'),
+                "--l2",               resonance.get('l2',               '1'),
+                "--l3",               resonance.get('l3',               '0'),
+                "--pi",               resonance.get('pi',               '1'),
+                "--delta-E-mev",      resonance.get('delta_E_mev',      '0.05'),
+                "--spacing-model",    resonance.get('spacing_model',    'poisson'),
+                "--n-sigma-points",   resonance.get('n_sigma_points',   '4000'),
+                "--default-frac-unc", resonance.get('default_frac_unc', '0.001'),
+                "--int-flag",         resonance.get('int_flag',         '1'),
+                "--precision",        resonance.get('precision',        '3'),
+                "--n-random-samples", resonance.get('n_random_samples', '1'),
+            ]
+            if 'U_offset_mev' in resonance:
+                cmd.extend(["--U-offset-mev", resonance['U_offset_mev']])
+            if seed is not None:
+                cmd.extend(["--seed", seed])
+            if _bool(resonance.get('use_strength'), False):
+                cmd.append("--use-strength")
+            if not _bool(resonance.get('sample_J'), True):
+                cmd.append("--no-sample-J")
+            if not _bool(resonance.get('auto_l1'), True):
+                cmd.append("--no-auto-l1")
 
-        cmd = [
-            _PYTHON, str(_SCRIPT_DIR / "build_ratesmc_input.py"),
-            "--template",         str(template),
-            "--output",           str(output_in),
-            "--E-min-mev",        E_min,
-            "--E-max-mev",        E_max,
-            "--n-density-points", n_samples,
-            "--Gamma-i-mean-eV",  str(gamma_i),
-            "--Gamma-o-mean-eV",  str(gamma_o),
-            "--l1",               resonance.get('l1',               '0'),
-            "--l2",               resonance.get('l2',               '1'),
-            "--l3",               resonance.get('l3',               '0'),
-            "--pi",               resonance.get('pi',               '1'),
-            "--delta-E-mev",      resonance.get('delta_E_mev',      '0.05'),
-            "--spacing-model",    resonance.get('spacing_model',    'poisson'),
-            "--n-sigma-points",   resonance.get('n_sigma_points',   '4000'),
-            "--default-frac-unc", resonance.get('default_frac_unc', '0.001'),
-            "--int-flag",         resonance.get('int_flag',         '1'),
-            "--precision",        resonance.get('precision',        '3'),
-            "--n-random-samples", resonance.get('n_random_samples', '1'),
-        ]
-        if 'U_offset_mev' in resonance:
-            cmd.extend(["--U-offset-mev", resonance['U_offset_mev']])
-        if seed is not None:
-            cmd.extend(["--seed", seed])
-        if _bool(resonance.get('use_strength'), False):
-            cmd.append("--use-strength")
-        if not _bool(resonance.get('sample_J'), True):
-            cmd.append("--no-sample-J")
-        if not _bool(resonance.get('auto_l1'), True):
-            cmd.append("--no-auto-l1")
+            print(f"[resonance] RUN_{j} ...", flush=True)
+            result = subprocess.run(cmd)
+            if result.returncode != 0:
+                sys.exit(f"[resonance] build_ratesmc_input.py failed for RUN_{j}.")
+        else:
+            n_skipped += 1            # already done — no prompt, just skip
 
-        print(f"[resonance] RUN_{j} ...", flush=True)
-        result = subprocess.run(cmd)
-        if result.returncode != 0:
-            sys.exit(f"[resonance] build_ratesmc_input.py failed for RUN_{j}.")
+        # Merge this run's implicit-value JSON into the one consolidated
+        # <reaction>_meta.json, whether it was just generated above or was
+        # already there from an earlier invocation.
+        _merge_stage_run_meta(reaction, output_dir, "resonance", j,
+                               run_dir / f"{reaction}_meta.json")
 
     if n_skipped:
         print(f"[resonance] {n_skipped}/{runs} run(s) already existed — skipped.")
@@ -348,13 +420,22 @@ def step_run_ratesmc(basics: dict, resonance: dict, ratesmc: dict,
     output_dir = resonance.get('output_dir', 'outputs/')
     runs       = int(resonance.get('runs',   '1'))
 
+    configured  = ratesmc.get('ratesmc_bin') or os.environ.get('RATESMC_BIN')
     ratesmc_bin = _resolve_ratesmc_bin(ratesmc)
     if ratesmc_bin is None:
-        configured = ratesmc.get('ratesmc_bin') or os.environ.get('RATESMC_BIN')
         where = f" at {configured}" if configured else " (checked ratesmc_bin, $RATESMC_BIN, and $PATH)"
         print(f"[ratesmc] WARNING: RatesMC executable could not be found{where}. "
               "Skipping the [ratesmc] step.", flush=True)
+        _merge_stage_data(reaction, output_dir, "ratesmc", "_unresolved",
+                          {"binary": None, "status": f"not found{where}"}, {})
         return
+
+    binary_source = (
+        f"explicit (ratesmc_bin={ratesmc['ratesmc_bin']!r} in [ratesmc])" if ratesmc.get('ratesmc_bin')
+        else "environment variable RATESMC_BIN" if os.environ.get('RATESMC_BIN')
+        else "auto-resolved from $PATH (RatesMC / ratesmc)"
+    )
+    ratesmc_common = {"binary": str(ratesmc_bin), "binary_source": binary_source}
 
     run_range = [run_idx] if run_idx is not None else range(runs)
     print(f"[ratesmc] using executable: {ratesmc_bin}")
@@ -371,6 +452,8 @@ def step_run_ratesmc(basics: dict, resonance: dict, ratesmc: dict,
 
         if outfile.exists():
             n_skipped += 1
+            _merge_stage_data(reaction, output_dir, "ratesmc", j, ratesmc_common,
+                              {"status": "already had a .out file (not re-run)"})
             continue
 
         print(f"[ratesmc] RUN_{j} ...", flush=True)
@@ -382,14 +465,20 @@ def step_run_ratesmc(basics: dict, resonance: dict, ratesmc: dict,
             )
 
         if result.returncode != 0:
-            print(f"[ratesmc] WARNING: RatesMC exited with code {result.returncode} "
-                  f"for RUN_{j}; see {log_path}.", flush=True)
+            status = f"RatesMC exited with code {result.returncode}"
+            print(f"[ratesmc] WARNING: {status} for RUN_{j}; see {log_path}.", flush=True)
+            _merge_stage_data(reaction, output_dir, "ratesmc", j, ratesmc_common,
+                              {"status": status, "log": str(log_path)})
             continue
 
         log_text = log_path.read_text(errors="replace")
+        status = "ok"
         if re.search(r"ERROR|WARNING|FATAL", log_text):
+            status = "completed, but RatesMC.log reports ERROR/WARNING/FATAL"
             print(f"[ratesmc] WARNING: RatesMC reported issues for RUN_{j}; "
                   f"see {log_path}.", flush=True)
+        _merge_stage_data(reaction, output_dir, "ratesmc", j, ratesmc_common,
+                          {"status": status, "log": str(log_path)})
 
     if n_skipped:
         print(f"[ratesmc] {n_skipped}/{runs} run(s) already had a .out file — skipped.")
@@ -437,34 +526,39 @@ def step2_generate_xs(basics: dict, resonance: dict, integration: dict, runs: in
             for dE in dE_lst
         ]
         all_exist = unint.exists() and all(f.exists() for f in int_files)
-        if all_exist:
+        if not all_exist:
+            cmd = [
+                _PYTHON, str(_SCRIPT_DIR / "generate_cross_sections_vectorized.py"),
+                "--reaction",               reaction,
+                "--E-min-mev",              E_min,
+                "--E-max-mev",              E_max,
+                "--dE",                     dE,
+                "--n-grid-points",          integration.get('n_grid_points', '10000'),
+                "--tag",                    tag_j,
+                "--run-idx",                str(j),
+                "--resonance-output-dir",   res_output_dir,
+                "--output-dir",             int_output_dir,
+                "--unint-dir",              unint_dir,
+            ]
+            # Skip sub-steps whose files already exist
+            if unint.exists():
+                cmd.append("--skip-unintegrated")
+            existing_int = [f for f in int_files if f.exists()]
+            if len(existing_int) == len(int_files):
+                cmd.append("--skip-integrated")
+
+            print(f"[integration] run {j}/{runs-1} ...", flush=True)
+            result = subprocess.run(cmd)
+            if result.returncode != 0:
+                sys.exit(f"[integration] generate_cross_sections_vectorized.py failed for run {j}.")
+        else:
             n_skipped += 1
-            continue
 
-        cmd = [
-            _PYTHON, str(_SCRIPT_DIR / "generate_cross_sections_vectorized.py"),
-            "--reaction",               reaction,
-            "--E-min-mev",              E_min,
-            "--E-max-mev",              E_max,
-            "--dE",                     dE,
-            "--n-grid-points",          integration.get('n_grid_points', '10000'),
-            "--tag",                    tag_j,
-            "--run-idx",                str(j),
-            "--resonance-output-dir",   res_output_dir,
-            "--output-dir",             int_output_dir,
-            "--unint-dir",              unint_dir,
-        ]
-        # Skip sub-steps whose files already exist
-        if unint.exists():
-            cmd.append("--skip-unintegrated")
-        existing_int = [f for f in int_files if f.exists()]
-        if len(existing_int) == len(int_files):
-            cmd.append("--skip-integrated")
-
-        print(f"[integration] run {j}/{runs-1} ...", flush=True)
-        result = subprocess.run(cmd)
-        if result.returncode != 0:
-            sys.exit(f"[integration] generate_cross_sections_vectorized.py failed for run {j}.")
+        # generate_cross_sections_vectorized.py always writes its implicit-value
+        # JSON next to the unintegrated file (even when both sub-steps above
+        # were skipped); merge it into the consolidated meta file.
+        metadata_file = Path(str(unint).replace(".txt", "_metadata.json"))
+        _merge_stage_run_meta(reaction, res_output_dir, "integration", j, metadata_file)
 
     if n_skipped:
         print(f"[integration] {n_skipped}/{runs} run(s) already existed — skipped.")
