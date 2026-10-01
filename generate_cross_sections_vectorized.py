@@ -112,6 +112,25 @@ def calc_cross_sections(
 
 
 # ============================================================
+def bin_average(E, xs, points_per_bin):
+    """
+    Average xs(E) over consecutive bins of `points_per_bin` grid steps.
+
+    Each bin's trapezoid integral is divided by the width actually
+    integrated (not the nominal dE), so a constant xs averages to itself.
+    Returns (bin centres, bin averages); a trailing partial bin is dropped.
+    """
+    E_bins, xs_bin = [], []
+    for start in range(0, len(E) - points_per_bin, points_per_bin):
+        end      = start + points_per_bin + 1
+        E_slice  = E[start:end]
+        xs_int   = np.trapezoid(xs[start:end], E_slice)
+        xs_bin.append(xs_int / (E_slice[-1] - E_slice[0]))
+        E_bins.append(0.5 * (E_slice[0] + E_slice[-1]))
+    return np.array(E_bins), np.array(xs_bin)
+
+
+# ============================================================
 def main():
 
     parser = argparse.ArgumentParser()
@@ -298,19 +317,12 @@ def main():
             print(f"  Warning: only {points_per_bin} grid points per bin — "
                   f"integration accuracy may be low.")
 
-        xs_bin = []
-        E_bins = []
+        actual_width = points_per_bin * deltaE
+        if abs(actual_width / dE - 1.0) > 1e-3:
+            print(f"  Note: bins span {actual_width:.6g} MeV "
+                  f"({points_per_bin} grid steps), not exactly dE={dE}.")
 
-        for start in range(0, len(E_test) - points_per_bin, points_per_bin):
-            end      = start + points_per_bin + 1
-            E_slice  = E_test[start:end]
-            xs_slice = xs_unint[start:end]
-            xs_int   = np.trapezoid(xs_slice, E_slice)
-            xs_bin.append(xs_int * 1e3 / dE)
-            E_bins.append(0.5 * (E_slice[0] + E_slice[-1]))
-
-        xs_bin = np.array(xs_bin)
-        E_bins = np.array(E_bins)
+        E_bins, xs_bin = bin_average(E_test, xs_unint * 1e3, points_per_bin)
 
         outfile = os.path.join(args.output_dir, f"{target}_ap_{residual}_integrated_xs_dE_{dE}{tag_suffix}.csv")
         np.savetxt(

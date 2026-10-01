@@ -307,5 +307,24 @@ class ReducedWidthSpectrumTest(unittest.TestCase):
             spec.compute_rate([1.0])
 
 
+class BinAverageTest(unittest.TestCase):
+    def test_constant_cross_section_averages_to_itself(self):
+        from generate_cross_sections_vectorized import bin_average
+
+        E = np.linspace(0.1, 10.0, 10000)
+        dE_grid = E[1] - E[0]
+        for dE in (0.05, 0.15, 0.25):  # rounding of points/bin differs per dE
+            ppb = int(round(dE / dE_grid))
+            _, avg = bin_average(E, np.full_like(E, 2.0), ppb)
+            np.testing.assert_allclose(avg, 2.0, rtol=1e-12)
+
+    def test_linear_cross_section_averages_to_value_at_centre(self):
+        from generate_cross_sections_vectorized import bin_average
+
+        E = np.linspace(0.0, 1.0, 1001)
+        centres, avg = bin_average(E, 3.0 * E, 100)
+        np.testing.assert_allclose(avg, 3.0 * centres, rtol=1e-12)
+
+
 if __name__ == "__main__":
     unittest.main()
