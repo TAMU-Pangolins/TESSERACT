@@ -97,6 +97,8 @@ class Resonance:
         Exit partial width in eV.
     L1, L2, L3 : int or None
         Optional orbital angular momenta for downstream serialization or analysis.
+    parity : int or None
+        Optional resonance parity (+1/-1); not used by the cross-section formulas.
     """
 
     E_r: float  # eV
@@ -110,6 +112,7 @@ class Resonance:
     L1: Optional[int] = None
     L2: Optional[int] = None
     L3: Optional[int] = None
+    parity: Optional[int] = None
 
 
 def channel_radius_fm(A1, A2, r0=1.25):

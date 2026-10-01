@@ -14,6 +14,7 @@ from nucres.ratesmc_export import (
     resonant_header_line,
 )
 from nucres.read_qvals import (
+    ground_state_jpi,
     interpret_z_token,
     load_ame,
     mass_from_token,
@@ -301,6 +302,47 @@ def _infer_compound_nucleus(metadata: TemplateMetadata) -> Tuple[int, int]:
     return z_targ + z_proj, a_targ + a_proj
 
 
+def _resolve_intrinsic_parity(
+    label: str,
+    Z: Optional[int],
+    A: Optional[int],
+    override: Optional[int],
+    template_spin: Optional[float],
+) -> int:
+    """
+    Ground-state parity of the projectile or target.
+
+    An explicit override wins; otherwise the NUBASE2020 ground state is used.
+    A NUBASE spin that disagrees with the template's spin is reported, since
+    the template spin is what enters the statistical factor.
+    """
+    if override is not None:
+        return int(override)
+    if Z is None or A is None:
+        raise ValueError(
+            f"Cannot look up the {label} parity without its Z and A; "
+            f"pass --{label}-parity explicitly."
+        )
+    try:
+        J_nb, parity = ground_state_jpi(Z, A)
+    except KeyError as exc:
+        raise ValueError(
+            f"No NUBASE ground state for the {label} (Z={Z}, A={A}); "
+            f"pass --{label}-parity explicitly."
+        ) from exc
+    if parity is None:
+        raise ValueError(
+            f"NUBASE gives no definite ground-state parity for the {label} "
+            f"(Z={Z}, A={A}); pass --{label}-parity explicitly."
+        )
+    if template_spin is not None and J_nb is not None and abs(J_nb - template_spin) > 1e-6:
+        print(
+            f"WARNING: template {label} spin {template_spin} differs from "
+            f"NUBASE ground-state spin {J_nb} (Z={Z}, A={A})."
+        )
+    return int(parity)
+
+
 def _convert_reduced_to_partial_widths(
     resonances,
     metadata: TemplateMetadata,
@@ -476,6 +518,21 @@ def build_ratesmc_input(args) -> None:
         else _infer_u_offset_mev(metadata)
     )
 
+    projectile_parity = _resolve_intrinsic_parity(
+        "projectile",
+        metadata.proj_Z,
+        _mass_number_from_token(metadata.proj_A_token),
+        getattr(args, "projectile_parity", None),
+        s1_val,
+    )
+    target_parity = _resolve_intrinsic_parity(
+        "target",
+        metadata.Z,
+        _mass_number_from_token(metadata.targ_A_token),
+        getattr(args, "target_parity", None),
+        s2_val,
+    )
+
     cfg = HFBSamplerConfig(
         Z=Z_val,
         data_root=args.data_root,
@@ -498,6 +555,9 @@ def build_ratesmc_input(args) -> None:
         sample_J=args.sample_J,
         auto_l1=args.auto_l1,
         spacing_model=getattr(args, "spacing_model", "poisson"),
+        projectile_parity=projectile_parity,
+        target_parity=target_parity,
+        drop_forbidden=getattr(args, "drop_forbidden", True),
     )
     try:
         generated = synthesize_sigma_from_hfb(cfg)
@@ -565,6 +625,17 @@ def build_ratesmc_input(args) -> None:
         n_random_samples=args.n_random_samples,
     )
     count = len(rows)
+    meta = getattr(generated, "metadata", None) or {}
+    if meta.get("dropped_Jpi"):
+        dropped = ", ".join(
+            f"{J:g}{'+' if p > 0 else '-'}" for J, p in meta["dropped_Jpi"][:12]
+        )
+        more = " ..." if len(meta["dropped_Jpi"]) > 12 else ""
+        print(
+            f"Dropped {len(meta['dropped_Jpi'])} J^pi sequences the entrance channel "
+            f"cannot form ({dropped}{more}); expected levels removed: "
+            f"{meta['expected_levels_dropped']:.1f}"
+        )
     print(f"Wrote RatesMC.in with {count} resonances to {output_path}")
     if count == 0:
         print(
@@ -702,7 +773,37 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="Resonance spin used in generated spectrum (default: first J in template).",
     )
-    p.add_argument("--pi", type=int, choices=(-1, 1), default=1, help="Parity (+-1).")
+    p.add_argument(
+        "--pi",
+        type=int,
+        choices=(-1, 0, 1),
+        default=0,
+        help="Resonance parity to sample: +1 or -1 for one parity, 0 for both (default).",
+    )
+    p.add_argument(
+        "--target-parity",
+        type=int,
+        choices=(-1, 1),
+        default=None,
+        help="Target ground-state parity (default: NUBASE2020).",
+    )
+    p.add_argument(
+        "--projectile-parity",
+        type=int,
+        choices=(-1, 1),
+        default=None,
+        help="Projectile ground-state parity (default: NUBASE2020).",
+    )
+    p.add_argument(
+        "--keep-forbidden",
+        dest="drop_forbidden",
+        action="store_false",
+        default=True,
+        help=(
+            "Keep J^pi sequences the entrance channel cannot form "
+            "(default: drop them)."
+        ),
+    )
     p.add_argument(
         "--s1",
         type=float,
@@ -790,7 +891,7 @@ def parse_args() -> argparse.Namespace:
         dest="auto_l1",
         action="store_true",
         default=True,
-        help="Compute L1 from J, s1, s2, and parity (assumes intrinsic parity product +1).",
+        help="Set L1 to the smallest l allowed by J, s1, s2 and the parities.",
     )
     p.add_argument(
         "--no-auto-l1",
