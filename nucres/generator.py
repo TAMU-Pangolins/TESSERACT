@@ -270,17 +270,19 @@ def synthesize_sigma_from_hfb(config: HFBSamplerConfig) -> GeneratedSpectrum:
     def _U_of_E_mev(E_eV: np.ndarray) -> np.ndarray:
         return np.asarray(E_eV, dtype=float) * 1e-6 + float(config.U_offset_mev)
 
-    record = None
+    # Resolve the HFB level-density files once, up front, so the exact files
+    # and the isotope actually tabulated in them (record.header.Z/A) can be
+    # reported in the output metadata regardless of which branch below runs.
+    tab_p, cor_p = resolve_density_paths(config.Z, data_root=config.data_root)
+    record = load_hfb_record(
+        tab_path=str(tab_p),
+        cor_path=(str(cor_p) if cor_p is not None else None),
+        warn_if_ignored=False,
+    )
+
     if config.sample_J:
-        tab_p, cor_p = resolve_density_paths(config.Z, data_root=config.data_root)
-        record = load_hfb_record(
-            tab_path=str(tab_p),
-            cor_path=(str(cor_p) if cor_p is not None else None),
-            warn_if_ignored=False,
-        )
         E_mev, rho_per_mev = build_total_density_grid(
-            Z=config.Z,
-            data_root=config.data_root,
+            tab_path=tab_p,
             pi=config.pi,
             E_min_mev=config.E_min_mev,
             E_max_mev=config.E_max_mev,
@@ -289,8 +291,7 @@ def synthesize_sigma_from_hfb(config: HFBSamplerConfig) -> GeneratedSpectrum:
         )
     else:
         E_mev, rho_per_mev = build_density_grid(
-            Z=config.Z,
-            data_root=config.data_root,
+            tab_path=tab_p,
             A=config.A,
             J_phys=config.J,
             pi=config.pi,
@@ -457,6 +458,24 @@ def synthesize_sigma_from_hfb(config: HFBSamplerConfig) -> GeneratedSpectrum:
         "m2": config.m2,
         "Gamma_i_mean_eV": config.Gamma_i_mean_eV,
         "Gamma_o_mean_eV": config.Gamma_o_mean_eV,
+        # Implicit level-density provenance: which files were actually read,
+        # which isotope they are tabulated for (per the file's own header),
+        # and whether the requested compound nucleus (config.Z/A) matches it.
+        "hfb_Z_requested": config.Z,
+        "hfb_A_requested": config.A,
+        "hfb_tab_path": str(tab_p),
+        "hfb_cor_path": (str(cor_p) if cor_p is not None else None),
+        "hfb_corrections_applied": False,
+        "hfb_header_Z": record.header.Z,
+        "hfb_header_A": record.header.A,
+        "hfb_Z_mismatch": record.header.Z != config.Z,
+        "hfb_A_mismatch": (not config.sample_J) and (record.header.A != config.A),
+        "hfb_deformation": {
+            "beta2": record.header.beta2,
+            "beta3": record.header.beta3,
+            "beta4": record.header.beta4,
+        },
+        "sample_J": config.sample_J,
     }
 
     return GeneratedSpectrum(

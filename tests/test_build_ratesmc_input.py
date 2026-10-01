@@ -7,6 +7,8 @@ from unittest.mock import patch
 from build_ratesmc_input import (
     _clear_upper_limits,
     _convert_reduced_to_partial_widths,
+    _infer_compound_nucleus,
+    _mass_number_from_token,
     _parse_template_metadata,
     build_ratesmc_input,
     inject_rows,
@@ -33,6 +35,37 @@ Upper Limits of Resonances
 
 
 class BuildRatesMCInputTest(unittest.TestCase):
+    def test_mass_number_from_token_rounds_not_truncates(self):
+        # Templates store Aproj/Atarget as AME atomic masses in u (e.g.
+        # 23.985 for 24Mg), which are almost always just under the true
+        # integer mass number. Truncating instead of rounding silently
+        # picked A-1 for the large majority of real templates.
+        self.assertEqual(_mass_number_from_token("23.985"), 24)
+        self.assertEqual(_mass_number_from_token("1.0078"), 1)
+        self.assertEqual(_mass_number_from_token("26.9815"), 27)
+
+    def test_infer_compound_nucleus_uses_rounded_mass_numbers(self):
+        # 24Mg(p,g)25Al: target 24Mg (Z=12, Atoken=23.985) + proton
+        # (Z=1, Atoken=1.0078) must give the compound nucleus 25Al.
+        lines = [
+            "24Mg(p,g)25Al",
+            "12    ! Ztarget",
+            "1     ! Zproj",
+            "0.5   ! Jproj",
+            "0.0   ! Jtarget",
+            "1.0078 ! Aproj",
+            "23.985 ! Atarget",
+            "*" * 50,
+            "Resonant Contribution",
+            "Ecm     DEcm    wg      Dwg     J     G1        DG1        L1    G2      DG2      L2   G3  DG3  L3  Exf   Int",
+            "*" * 50,
+            "Upper Limits of Resonances",
+            "*" * 50,
+            "1000 ! Number of random samples",
+        ]
+        meta = _parse_template_metadata(lines)
+        self.assertEqual(_infer_compound_nucleus(meta), (13, 25))
+
     def test_projectile_separation_energy_uses_compound_mass(self):
         offset = projectile_separation_energy_mev(
             z_proj=2,
@@ -93,7 +126,7 @@ class BuildRatesMCInputTest(unittest.TestCase):
                 captured["U_offset_mev"] = cfg.U_offset_mev
                 captured["Z"] = cfg.Z
                 captured["A"] = cfg.A
-                return Namespace(resonances=[])
+                return Namespace(resonances=[], metadata={})
 
             with patch("build_ratesmc_input.synthesize_sigma_from_hfb", side_effect=fake_synthesize):
                 build_ratesmc_input(args)
@@ -167,7 +200,7 @@ class BuildRatesMCInputTest(unittest.TestCase):
             )
 
             with patch("build_ratesmc_input.synthesize_sigma_from_hfb") as synth_mock:
-                synth_mock.return_value = Namespace(resonances=[resonance])
+                synth_mock.return_value = Namespace(resonances=[resonance], metadata={})
                 with patch(
                     "build_ratesmc_input._convert_reduced_to_partial_widths",
                     side_effect=lambda resonances, *_, **__: resonances,
