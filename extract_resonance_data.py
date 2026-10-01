@@ -53,33 +53,91 @@ def load_nuclear_params(infile):
     return params
 
 
-def extract_data(file):
-    start_marker = 'Resonant Contribution'
-    end_marker = 'Upper Limits of Resonances'
+_REACTION_KEYS = [
+    # (comment prefix, field, cast)
+    ("Zproj", "Z_proj", lambda v: int(round(float(v)))),
+    ("Ztarget", "Z_targ", lambda v: int(round(float(v)))),
+    ("Zexitparticle", "Z_exit", lambda v: int(round(float(v)))),
+    ("Aproj", "M_proj", float),
+    ("Atarget", "M_targ", float),
+    ("Aexitparticle", "M_exit", float),
+    ("Jproj", "J_proj", float),
+    ("Jtarget", "J_targ", float),
+    ("projectile separation energy", "S_proj_mev", lambda v: float(v) * 1e-3),
+    ("exit particle separation energy", "S_exit_mev", lambda v: float(v) * 1e-3),
+    ("Radius parameter", "R0_fm", float),
+    ("Gamma-ray channel number", "gamma_channel", lambda v: int(round(float(v)))),
+]
 
-    extracted_lines = []
-    capture = False
 
-    with open(file, 'r') as f:
+def load_reaction_params(infile):
+    """
+    Reaction header of a RatesMC input as nucres.resonance_sum.ReactionParams.
+
+    Values are taken as RatesMC reads them: masses in u (not rounded),
+    separation energies converted from keV to MeV.
+    """
+    from nucres.resonance_sum import ReactionParams
+
+    values = {}
+    with open(infile, 'r') as f:
         for line in f:
-            if start_marker in line:
-                capture = True
-                skip_count = 0
+            if '!' not in line:
                 continue
-
-            if end_marker in line and capture:
+            value, comment = line.split('!', 1)
+            comment = comment.strip()
+            tokens = value.split()
+            if not tokens:
+                continue
+            for prefix, field, cast in _REACTION_KEYS:
+                if field not in values and comment.lower().startswith(prefix.lower()):
+                    try:
+                        values[field] = cast(tokens[0])
+                    except ValueError as exc:
+                        raise ValueError(
+                            f"{infile}: cannot read {prefix!r} from {tokens[0]!r} "
+                            "(nuclide names are not supported; give numbers)."
+                        ) from exc
+                    break
+            if len(values) == len(_REACTION_KEYS):
                 break
+    missing = [field for _, field, _ in _REACTION_KEYS if field not in values]
+    if missing:
+        raise ValueError(f"{infile}: missing reaction header entries {missing}")
+    return ReactionParams(**values)
 
-            if capture:
-                if skip_count < 2:
-                    skip_count += 1
-                    continue
-                extracted_lines.append(line)
 
-    if extracted_lines:
-        extracted_lines.pop()
+def extract_data(file):
+    """
+    Read the Resonant Contribution table of a RatesMC input as a DataFrame.
 
-    block = "".join(extracted_lines)
+    The section starts at a line beginning with "Resonant Contribution"
+    (so "Non-Resonant Contribution" is not mistaken for it), the table at the
+    following line beginning with "Ecm", and it ends at the next "*" divider
+    or the Upper Limits section. Commented rows ("!") are skipped.
+    """
+    with open(file, 'r') as f:
+        lines = f.read().splitlines()
+
+    start = next((i for i, ln in enumerate(lines)
+                  if ln.strip().lower().startswith('resonant contribution')), None)
+    if start is None:
+        raise ValueError(f"{file}: no 'Resonant Contribution' section.")
+    header = next((j for j in range(start + 1, len(lines))
+                   if lines[j].strip().startswith('Ecm')), None)
+    if header is None:
+        raise ValueError(f"{file}: no 'Ecm' header in the Resonant Contribution section.")
+
+    rows = []
+    for ln in lines[header + 1:]:
+        s = ln.strip()
+        if s.startswith('*') or s.lower().startswith('upper limits'):
+            break
+        if not s or s.startswith('!'):
+            continue
+        rows.append(s)
+
+    block = "\n".join([lines[header].strip()] + rows)
     df = pd.read_csv(StringIO(block), sep=r'\s+', header=0)
     return df
 
