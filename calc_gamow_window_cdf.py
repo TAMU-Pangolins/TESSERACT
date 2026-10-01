@@ -17,6 +17,7 @@ Usage:
 import argparse
 import glob
 import os
+import re
 import numpy as np
 from scipy.integrate import cumulative_trapezoid
 import matplotlib.pyplot as plt
@@ -97,6 +98,9 @@ def main():
                         help="Skip plotting the TALYS CDF")
     parser.add_argument("--no-ratesmc", action="store_true",
                         help="Skip plotting the RatesMC CDF")
+    parser.add_argument("--output", default=None,
+                        help="Output PNG (default: <reaction>_gamow_window_cdf.png, "
+                             "with <reaction> taken from the --xs filename)")
     parser.add_argument("--normalize", choices=["self", "ratesmc"], default="self",
                         help="Normalize each curve's CDF to its own total "
                              "integral (default), or to the RatesMC total "
@@ -222,7 +226,17 @@ def main():
 
     #fig.suptitle("22Mg(a,p)25Al — Gamow window CDF", fontsize=13)
     plt.tight_layout()
-    plt.savefig('22Mg_ap_25Al_gamow_window_cdf.png', dpi=300)
+    if args.output:
+        out_png = args.output
+    else:
+        stem = os.path.basename(args.xs)
+        m = re.match(r"(.+?)_xs_unintegrated", stem)
+        reaction = (m.group(1) if m else os.path.splitext(stem)[0])
+        # 22Mg(a,p)25Al -> 22Mg_ap_25Al, the repo's file-name convention
+        reaction = re.sub(r"^(.+?)\((\w+),(\w+)\)(.+)$", r"\1_\2\3_\4", reaction)
+        out_png = f"{reaction}_gamow_window_cdf.png"
+    plt.savefig(out_png, dpi=300)
+    print(f"Wrote {out_png}")
     plt.show()
 
 

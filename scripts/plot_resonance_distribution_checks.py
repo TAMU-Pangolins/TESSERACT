@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import math
+import re
 import sys
 from functools import lru_cache
 from pathlib import Path
@@ -878,6 +879,12 @@ def plot_weighted_sigma_curve(
         )
 
 
+def _dE_label(integrated_xs: Path) -> str:
+    """Return ", $\\Delta E=x$ MeV" parsed from a "..._dE_<x>..." filename, or "" if unknown."""
+    m = re.search(r"_dE_([0-9.]+?)(?:_|\.csv|$)", integrated_xs.name)
+    return rf", $\Delta E={m.group(1)}$ MeV" if m else ""
+
+
 def plot_gamow_window_integrand_panel(
     ax,
     path: Path,
@@ -908,7 +915,7 @@ def plot_gamow_window_integrand_panel(
             int_energy,
             int_sigma,
             t9=t9,
-            label=r"Generated integrated XS, $\Delta E=0.2$ MeV",
+            label="Generated integrated XS" + _dE_label(integrated_xs),
             color="C2",
             linewidth=1.5,
             linestyle="--",
