@@ -179,7 +179,6 @@ def _load_consolidated_meta(path: Path, reaction: str) -> dict:
         "resonance": {"common": {}, "runs": {}},
         "ratesmc": {"common": {}, "runs": {}},
         "integration": {"common": {}, "runs": {}},
-        "optimization": {"common": {}, "fits": {}},
     }
 
 
@@ -310,6 +309,13 @@ def step1_build_ratesmc(basics: dict, resonance: dict,
     mean_i     = resonance.get('mean_i',     '0.010')
     mean_o     = resonance.get('mean_o',     '0.0045')
 
+    seed_base = None
+    if seed is not None:
+        try:
+            seed_base = int(seed)
+        except ValueError:
+            sys.exit(f"[resonance] Invalid seed {seed!r} in [resonance]: must be an integer.")
+
     template = Path(input_dir) / f"{reaction}.txt"
     if not template.exists():
         sys.exit(f"[resonance] Template not found: {template}")
@@ -355,8 +361,12 @@ def step1_build_ratesmc(basics: dict, resonance: dict,
             ]
             if 'U_offset_mev' in resonance:
                 cmd.extend(["--U-offset-mev", resonance['U_offset_mev']])
-            if seed is not None:
-                cmd.extend(["--seed", seed])
+            if seed_base is not None:
+                # One base seed for the whole ensemble; each run gets its own
+                # stream (base + j), so runs are reproducible but independent.
+                # numpy's SeedSequence hashes the seed, so adjacent integers
+                # give uncorrelated streams.
+                cmd.extend(["--seed", str(seed_base + j)])
             if _bool(resonance.get('use_strength'), False):
                 cmd.append("--use-strength")
             if not _bool(resonance.get('sample_J'), True):
