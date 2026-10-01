@@ -15,6 +15,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from nucres.ratesmc_output import read_ratesmc_out
+from nucres.talys_output import fit_key, keep_latest
 
 
 BLOCK_SPLIT_RE = re.compile(r"={10,}\s*\n")
@@ -55,8 +56,9 @@ def parse_talys_rate_records(path: Path) -> list[dict]:
         rate = np.asarray(rate_vals, dtype=float)
         mask = np.isfinite(t9) & np.isfinite(rate) & (rate > 0.0)
         if np.count_nonzero(mask) >= 4:
-            records.append({"run_idx": run_idx, "chi2_red": chi2, "t9": t9[mask], "rate": rate[mask]})
-    return records
+            records.append({"run_idx": run_idx, "chi2_red": chi2, "t9": t9[mask],
+                            "rate": rate[mask], "fit_key": fit_key(block)})
+    return keep_latest(records)
 
 
 def load_reference_rate(path: Path) -> tuple[np.ndarray, np.ndarray] | None:

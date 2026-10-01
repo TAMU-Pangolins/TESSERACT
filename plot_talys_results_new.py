@@ -38,6 +38,7 @@ import matplotlib.pyplot as plt
 from scipy.interpolate import interp1d
 
 from nucres.ratesmc_output import read_ratesmc_out
+from nucres.talys_output import fit_key, keep_latest
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -102,7 +103,8 @@ def parse_talys_opt_out(path: str) -> list[dict]:
         if "Run index" not in block:
             continue
 
-        rec = {"params": {}, "x_rate": None, "y_rate": None, "input_file": ""}
+        rec = {"params": {}, "x_rate": None, "y_rate": None, "input_file": "",
+               "fit_key": fit_key(block)}
 
         # Input file path (used as fallback for NPZ lookup)
         mf = re.search(r"Input file\s*:\s*(.+)", block)
@@ -154,7 +156,8 @@ def parse_talys_opt_out(path: str) -> list[dict]:
 
         records.append(rec)
 
-    return records
+    # One record per fit (re-runs append further blocks for the same fit).
+    return keep_latest(records)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
