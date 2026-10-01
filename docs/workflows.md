@@ -2,7 +2,9 @@
 
 This page outlines common end-to-end flows in the project. Unlike
 [Examples](examples.md), the emphasis here is on prerequisites and where each
-step fits into the larger TESSERACT process.
+step fits into the larger TESSERACT process. The pipeline driver
+`tesseract.py` and its input file are described in
+[Configuration](configuration.md).
 
 ## A. Generate a Spectrum from HFB Densities
 

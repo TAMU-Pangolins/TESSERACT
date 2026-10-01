@@ -5,6 +5,7 @@ Welcome. This documentation covers how to use the TESSERACT tools locally.
 Use this page for a quick sanity check and orientation:
 
 - [Concepts](concepts.md) explains the core physics quantities
+- [Configuration](configuration.md) lists every `tesseract.in` key, its default and meaning
 - [Workflows](workflows.md) shows end-to-end project flows
 - [Examples](examples.md) collects short runnable snippets
 - [API Reference](api/package.md) documents the `nucres` Python package

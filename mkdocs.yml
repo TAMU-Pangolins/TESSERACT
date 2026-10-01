@@ -48,6 +48,7 @@ nav:
     - Concepts: concepts.md
     - Spacing Models: spacing-models.md
     - Data & Inputs: data-inputs.md
+    - Configuration: configuration.md
     - Workflows: workflows.md
     - Examples: examples.md
     - Documentation Deployment: deployment.md

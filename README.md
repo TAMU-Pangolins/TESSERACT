@@ -47,10 +47,18 @@ test -x "$RATESMC_BIN" && printf 'RatesMC executable is accessible\n'
 ```
 
 The `PATH` entry is the directory containing the executable named `talys`.
-`RATESMC_BIN` is the executable itself and is read by `run_ratesmc_batches.sh`.
-Keep `mass_1.mas20` and `nubase_3.mas20` beside that executable when required by
-your RatesMC installation; the batch script copies or links them into each run
-directory.
+Resonance generation sums exit widths over the discrete levels in TALYS's
+`structure/levels/final` directory, found next to `talys` on `PATH`; set
+`TALYS_LEVELS` (or `levels_dir` in `[resonance]`) if it is elsewhere.
+
+`RATESMC_BIN` is the executable itself and is read by `run_ratesmc_batches.sh`
+and by the `[ratesmc]` step of `tesseract.py` (where `ratesmc_bin` overrides it).
+RatesMC 2.3.0 from [rlongland/RatesMC](https://github.com/rlongland/RatesMC) is
+recommended; RatesMC 2.11 hangs on some templates. RatesMC needs
+`mass_1.mas20` and `nubase_3.mas20` in its working directory. Both tools put
+them into each run directory from `MASS_DIR` (`mass_dir` in `[ratesmc]` for
+`tesseract.py`), else from beside the executable or one level up (an upstream
+`build/`).
 
 Set these variables in the shell or batch-job environment that launches the
 calculation. Add the exports to your shell configuration for persistent
@@ -96,8 +104,9 @@ PY
 | Requirement | Purpose |
 | --- | --- |
 | Python dependencies | NumPy, SciPy, mpmath, Matplotlib, and pandas; installed by `uv sync`. |
-| TALYS and its nuclear data libraries | Cross-section fitting and reaction-rate calculations. |
-| RatesMC and its support files | Monte Carlo reference reaction rates. |
+| TALYS and its nuclear data libraries | Cross-section fitting and reaction-rate calculations; its discrete-level files (`structure/levels/final`) for summed exit widths. |
+| RatesMC (2.3.0 recommended) and `mass_1.mas20`, `nubase_3.mas20` | Monte Carlo reference reaction rates. |
+| NUBASE2020 | Ground-state spins and parities; included in `data/nubase_3.mas20`. |
 | RIPL-3 HFB level-density tables | Resonance generation; downloaded automatically on first use or with `download_data.py`. |
 | AME2020 mass data | Q-value utilities; included in `data/ame20.csv`. |
 | Bash | Batch execution in `run_ratesmc_batches.sh`. |
@@ -111,7 +120,7 @@ PY
 | `data/` | Bundled mass data and downloaded level-density tables. |
 | `input/` | Reaction input templates. |
 | `scripts/` | Analysis and plotting commands. |
-| `tesseract.py` | Driver for resonance generation, cross-section averaging, and TALYS fitting. |
+| `tesseract.py` | Driver for resonance generation, RatesMC, cross-section averaging, and TALYS fitting; its `tesseract.in` keys are listed in [docs/configuration.md](docs/configuration.md). |
 | `run_ratesmc_batches.sh` | RatesMC batch execution. |
 | `docs/` | User documentation and API reference. |
 | `tests/` | Numerical and interface checks. |
