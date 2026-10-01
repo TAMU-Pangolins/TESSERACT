@@ -164,5 +164,26 @@ class ResonanceModelTest(unittest.TestCase):
         np.testing.assert_allclose(numerical_area, analytic_area, rtol=3e-3)
 
 
+class PenetrabilityInterpolationTest(unittest.TestCase):
+    def test_sub_barrier_interpolation_is_accurate(self):
+        from nucres.resonance import penetrability_P_l_mev
+
+        # alpha + 22Mg, l=0: linear-in-E interpolation of P itself was off by
+        # up to ~thousands of percent here; even interpolating log(P) against
+        # E (rather than against eta(E)) is still off by several percent
+        # close to the barrier.
+        Z1, Z2, A1, A2, l = 2, 12, 4, 22, 0
+        P = make_penetrability_interp(
+            l, Z1, Z2, A1, A2, Emin_mev=0.1, Emax_mev=10.0, npts=600
+        )
+        for E in (0.11, 0.21, 0.31, 0.51, 1.0, 5.0, 9.9):
+            exact = penetrability_P_l_mev(l, Z1, Z2, A1, A2, E)
+            self.assertAlmostEqual(float(P(E)) / exact, 1.0, delta=5e-4)
+
+    def test_nonpositive_energy_gives_zero(self):
+        P = make_penetrability_interp(0, 2, 12, 4, 22, Emin_mev=0.1, Emax_mev=10.0, npts=50)
+        self.assertTrue(np.all(P(np.array([0.0, -1.0])) == 0.0))
+
+
 if __name__ == "__main__":
     unittest.main()
