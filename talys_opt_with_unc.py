@@ -3,8 +3,10 @@
 TALYS parameter optimiser — driven by tesseract.in.
 
 Optimises any set of TALYS parameters listed in the \\opt block of
-tesseract.in by minimising log-space reduced chi-square on (a,p) cross
-sections.  Three optimisers are available via  method = ...  in [talys]:
+tesseract.in by minimising a log-space chi-square plus a Gaussian prior on
+the reaction's bin-averaged cross sections. TALYS is evaluated at
+Gauss-Legendre points inside each data bin and averaged over the same bins
+as the data (talys_points_per_bin; 1 = bin centres).  Three optimisers are available via  method = ...  in [talys]:
 
     Powell         scipy.optimize.minimize, derivative-free (default)
     Nelder-Mead    scipy.optimize.minimize, derivative-free
@@ -50,6 +52,7 @@ _SCRIPT_KEYS = frozenset({
     'debug_every', 'exp_file', 'output_file', 'rates_mc_file',
     'rate_xmin', 'rate_xmax', 'plot_log_y_xs', 'plot_log_y_rate',
     'talys_output_dir', 'exp_energy_frame',
+    'talys_xs_file', 'talys_points_per_bin', 'exp_bin_width',
     # least_squares-only settings
     'gtol', 'lsq_diff_step', 'lsq_workers',
 })
@@ -132,7 +135,23 @@ _Z_TO_SYMBOL = {
     17:'Cl',18:'Ar',19:'K', 20:'Ca',21:'Sc',22:'Ti',23:'V', 24:'Cr',
     25:'Mn',26:'Fe',27:'Co',28:'Ni',29:'Cu',30:'Zn',
 }
-_LIGHT_PARTICLE = {(0,1):'n', (1,1):'p', (1,2):'d', (1,3):'t', (2,4):'a'}
+_LIGHT_PARTICLE = {(0,0):'g', (0,1):'n', (1,1):'p', (1,2):'d', (1,3):'t', (2,3):'h', (2,4):'a'}
+
+# TALYS exclusive-channel file names count the emitted n, p, d, t, h, a
+# (written with "channels y"): (a,p) -> xs010000.tot, (p,g) -> xs000000.tot.
+_EXCLUSIVE_ORDER = ('n', 'p', 'd', 't', 'h', 'a')
+
+
+def talys_xs_candidates(cfg: dict) -> List[str]:
+    """TALYS output files that may hold the fitted channel's cross section, in order."""
+    names = []
+    if cfg['script'].get('talys_xs_file'):
+        names.append(cfg['script']['talys_xs_file'])
+    proj, ejec = cfg['proj'], cfg['ejec']
+    names.append(f"{proj}{ejec}.tot")
+    counts = ''.join('1' if ejec == p else '0' for p in _EXCLUSIVE_ORDER)
+    names.append(f"xs{counts}.tot")
+    return names
 
 def _particle_symbol(Z: int, A: int) -> str:
     return _LIGHT_PARTICLE.get((Z, A), _Z_TO_SYMBOL.get(Z, '?'))
@@ -253,7 +272,8 @@ def write_talys_files(
     """
     energies_path = os.path.join(workdir, "energies.txt")
     with open(energies_path, "w") as fh:
-        for e in np.asarray(cfg['_x_exp'], dtype=float) * cfg['_exp_to_lab']:
+        energies = cfg.get('_talys_E_cm', cfg['_x_exp'])
+        for e in np.asarray(energies, dtype=float) * cfg['_exp_to_lab']:
             fh.write(f"{e:.10g}\n")
 
     inp_path = os.path.join(workdir, "talys.inp")
@@ -316,10 +336,12 @@ def run_talys(workdir: str, inp_path: str, verbose: bool = False) -> bool:
         return False
 
 
-def read_ap_tot(workdir: str) -> Optional[Tuple[np.ndarray, np.ndarray]]:
-    """Read ap.tot; returns (E, sigma) or None."""
-    path = os.path.join(workdir, "ap.tot")
-    if not os.path.exists(path):
+def read_ap_tot(workdir: str, cfg: dict = None) -> Optional[Tuple[np.ndarray, np.ndarray]]:
+    """Read the channel cross section (see talys_xs_candidates); returns (E, sigma) or None."""
+    names = talys_xs_candidates(cfg) if cfg is not None else ["ap.tot"]
+    path = next((os.path.join(workdir, n) for n in names
+                 if os.path.exists(os.path.join(workdir, n))), None)
+    if path is None:
         return None
     try:
         df = pd.read_csv(path, sep=r"\s+", comment="#", header=None)
@@ -330,9 +352,10 @@ def read_ap_tot(workdir: str) -> Optional[Tuple[np.ndarray, np.ndarray]]:
         return None
 
 
-def read_astrorate(workdir: str) -> Optional[Tuple[np.ndarray, np.ndarray]]:
-    """Read astrorate.p; returns (T9, rate) or None."""
-    path = os.path.join(workdir, "astrorate.p")
+def read_astrorate(workdir: str, cfg: dict = None) -> Optional[Tuple[np.ndarray, np.ndarray]]:
+    """Read astrorate.<ejectile> (e.g. astrorate.<ejectile>, astrorate.g); returns (T9, rate) or None."""
+    ejec = cfg['ejec'] if cfg is not None else 'p'
+    path = os.path.join(workdir, f"astrorate.{ejec}")
     if not os.path.exists(path):
         return None
     try:
@@ -388,11 +411,11 @@ def _ap_tot_in_exp_frame(xy, cfg: dict):
 def run_talys_get_xs(
     opt_values: np.ndarray, cfg: dict
 ) -> Optional[Tuple[np.ndarray, np.ndarray]]:
-    """Run TALYS (no astro) and return ap.tot (E, sigma) or None, E in the exp_file frame."""
+    """Run TALYS (no astro) and return the channel (E, sigma) or None, E in the exp_file frame."""
     wd = tempfile.mkdtemp(prefix="talys_xs_")
     try:
         inp = write_talys_files(wd, opt_values, cfg, astro="n", astrogs="n")
-        return _ap_tot_in_exp_frame(read_ap_tot(wd), cfg) if run_talys(wd, inp) else None
+        return _ap_tot_in_exp_frame(read_ap_tot(wd, cfg), cfg) if run_talys(wd, inp) else None
     finally:
         _cleanup_workdir(wd)
 
@@ -406,7 +429,7 @@ def run_talys_get_rate(
         inp = write_talys_files(wd, opt_values, cfg, astro="y", astrogs="y")
         if not run_talys(wd, inp):
             return None, None
-        return read_astrorate(wd), _ap_tot_in_exp_frame(read_ap_tot(wd), cfg)
+        return read_astrorate(wd, cfg), _ap_tot_in_exp_frame(read_ap_tot(wd, cfg), cfg)
     finally:
         _cleanup_workdir(wd)
 
@@ -414,14 +437,70 @@ def run_talys_get_rate(
 # ─────────────────────────────────────────────────────────────────────────────
 # Objective (closure — no global mutable state)
 # ─────────────────────────────────────────────────────────────────────────────
+def read_exp_table(path: str) -> np.ndarray:
+    """
+    Numeric rows (E, sigma[, d_sigma]) of a data file.
+
+    '#' lines are comments. A leading non-numeric line (a column header
+    without '#') is skipped. Step 2's files have only a '#' header, which
+    pd.read_csv(..., comment='#') used to take the FIRST DATA ROW as the
+    column names for, silently dropping the lowest-energy bin.
+    """
+    df = pd.read_csv(path, comment="#", header=None)
+    first = pd.to_numeric(df.iloc[0], errors="coerce")
+    if first.isna().any():
+        df = df.iloc[1:]
+    return df.apply(pd.to_numeric).to_numpy(dtype=float)
+
+
+def exp_bin_width(exp_file: str, x_exp: np.ndarray, script: dict) -> float:
+    """
+    Width (MeV) of the data bins: exp_bin_width in [talys], else the
+    'dE=' in the integrated file's header, else '_dE_<w>' in its name, else
+    the median spacing of the bin centres.
+    """
+    if script.get('exp_bin_width'):
+        return float(script['exp_bin_width'])
+    try:
+        with open(exp_file) as fh:
+            m = re.search(r'dE\s*=\s*([0-9.eE+-]+)', fh.readline())
+        if m:
+            return float(m.group(1))
+    except OSError:
+        pass
+    m = re.search(r'_dE_([0-9.]+?)(?:_|\.csv|$)', os.path.basename(exp_file))
+    if m:
+        return float(m.group(1))
+    return float(np.median(np.diff(np.sort(x_exp))))
+
+
+def talys_bin_grid(x_centres: np.ndarray, width: float, n_per_bin: int):
+    """
+    Gauss-Legendre energies inside each bin [c - w/2, c + w/2] and weights
+    that average over the bin (they sum to 1 per bin). Interior nodes mean
+    adjacent bins never share an energy. n_per_bin = 1 is the bin centre.
+    """
+    nodes, weights = np.polynomial.legendre.leggauss(int(n_per_bin))
+    E = (np.asarray(x_centres, dtype=float)[:, None] + 0.5 * width * nodes[None, :]).ravel()
+    return E, weights / 2.0
+
+
+def talys_bin_average(y_sub: np.ndarray, weights: np.ndarray) -> np.ndarray:
+    """Bin averages from TALYS values at talys_bin_grid energies."""
+    return np.asarray(y_sub, dtype=float).reshape(-1, len(weights)) @ weights
+
+
 def make_objective(cfg: dict, x_exp: np.ndarray, y_exp: np.ndarray,
                    y_err: np.ndarray, mask: np.ndarray,
                    checkpoint_path: str = None):
     """
     Build the objective for the optimiser.
 
-    Returns a callable ``objective(params) -> float`` giving the penalised
-    reduced chi-square (chi2_red + prior).  Powell and Nelder-Mead use this.
+    Returns a callable ``objective(params) -> float`` giving chi2 + prior,
+    with chi2 = sum((ln y_exp - ln y_TALYS)^2 / sigma_ln^2) over the fitted
+    bins (not divided by the degrees of freedom; chi2/dof is reported
+    separately) and TALYS averaged over each bin.  Powell and Nelder-Mead use
+    this.
 
     Attached to it:
         objective.residuals(params) -> np.ndarray
@@ -452,6 +531,16 @@ def make_objective(cfg: dict, x_exp: np.ndarray, y_exp: np.ndarray,
     n_fit = int(np.count_nonzero(mask))
     dof   = max(n_fit - len(opt_params), 1)
 
+    # Per-point uncertainty of ln(y): sigma_y / y from the data file's third
+    # column where it is positive, else exp_rel_err.
+    with np.errstate(divide="ignore", invalid="ignore"):
+        rel = np.asarray(y_err, dtype=float) / np.asarray(y_exp, dtype=float)
+    sigma_ln = np.where(np.isfinite(rel) & (rel > 0.0), rel, EXP_REL_ERR)[mask]
+
+    # TALYS is run at cfg['_talys_E_cm'] (n points per bin) and averaged over
+    # each bin with cfg['_bin_weights']; without them, the bin centres.
+    bin_weights = cfg.get('_bin_weights')
+
     # Prior width per parameter (None → no prior term)
     prior_sigma = (PRIOR_STD * np.maximum(np.abs(X0), PRIOR_FLOOR)
                    if PRIOR_STD > 0.0 else None)
@@ -463,7 +552,7 @@ def make_objective(cfg: dict, x_exp: np.ndarray, y_exp: np.ndarray,
     n_resid    = n_fit + (len(opt_params) if prior_sigma is not None else 0)
     FAIL_RESID = 1e3
 
-    state = {'count': 0, 'best': (np.inf, None)}
+    state = {'count': 0, 'best': (np.inf, None), 'best_parts': None}
     lock  = threading.Lock()
 
     def _evaluate(params: np.ndarray):
@@ -487,14 +576,20 @@ def make_objective(cfg: dict, x_exp: np.ndarray, y_exp: np.ndarray,
         if out is None:
             return None, BIG
         _, y_t = out
-        if len(y_t) != len(y_exp):
+        n_sub = 1 if bin_weights is None else len(bin_weights)
+        if len(y_t) != len(y_exp) * n_sub:
             return None, BIG
+        if bin_weights is not None:
+            y_t = talys_bin_average(y_t, bin_weights)
 
-        # ── Log-space reduced chi-square, as residuals ───────────────────────
-        # sum(r_data**2) = sum(log_res**2) / dof = chi2_red
-        log_res  = (np.log(y_exp[mask] + FLOOR) - np.log(y_t[mask] + FLOOR)) / EXP_REL_ERR
-        r_data   = log_res / np.sqrt(dof)
-        chi2_red = float(np.sum(r_data ** 2))
+        # ── Log-space chi-square, as residuals ───────────────────────────────
+        # sum(r_data**2) = chi2; it is NOT divided by dof, so chi2 + prior is
+        # the log-posterior (up to a constant) and the prior keeps its weight.
+        # FLOOR only guards log(0); added to every value it would bias tiny sigma.
+        r_data   = (np.log(np.maximum(y_exp[mask], FLOOR))
+                    - np.log(np.maximum(y_t[mask], FLOOR))) / sigma_ln
+        chi2     = float(np.sum(r_data ** 2))
+        chi2_red = chi2 / dof
 
         # ── Gaussian prior, as residuals ─────────────────────────────────────
         if prior_sigma is not None:
@@ -503,11 +598,13 @@ def make_objective(cfg: dict, x_exp: np.ndarray, y_exp: np.ndarray,
             r_prior = np.zeros(0)
         prior = float(np.sum(r_prior ** 2))
 
-        total = chi2_red + prior
+        total = chi2 + prior
 
         with lock:
             if total < state['best'][0]:
                 state['best'] = (total, params.copy())
+                state['best_parts'] = {'chi2': chi2, 'chi2_red': chi2_red,
+                                       'prior': prior, 'dof': dof}
                 if checkpoint_path:
                     ckpt = {
                         'params': params.tolist(),
@@ -527,7 +624,7 @@ def make_objective(cfg: dict, x_exp: np.ndarray, y_exp: np.ndarray,
             )
             print(
                 f"[eval {count:4d}]  {pstr}  "
-                f"chi2_red={chi2_red:.4e}  prior={prior:.4e}  total={total:.4e}  "
+                f"chi2={chi2:.4e} (red {chi2_red:.4e})  prior={prior:.4e}  total={total:.4e}  "
                 f"| best={best_val:.4e}",
                 flush=True,
             )
@@ -535,11 +632,11 @@ def make_objective(cfg: dict, x_exp: np.ndarray, y_exp: np.ndarray,
         return np.concatenate([r_data, r_prior]), total
 
     def objective(params: np.ndarray) -> float:
-        """Scalar loss chi2_red + prior (Powell / Nelder-Mead)."""
+        """Scalar loss chi2 + prior (Powell / Nelder-Mead)."""
         return _evaluate(params)[1]
 
     def residuals(params: np.ndarray) -> np.ndarray:
-        """Residual vector r with sum(r**2) = chi2_red + prior (least_squares)."""
+        """Residual vector r with sum(r**2) = chi2 + prior (least_squares)."""
         r, _ = _evaluate(params)
         return np.full(n_resid, FAIL_RESID) if r is None else r
 
@@ -553,7 +650,7 @@ def make_objective(cfg: dict, x_exp: np.ndarray, y_exp: np.ndarray,
 # ─────────────────────────────────────────────────────────────────────────────
 def run_least_squares(obj, x0: np.ndarray, cfg: dict):
     """
-    Minimise chi2_red + prior with scipy.optimize.least_squares.
+    Minimise chi2 + prior with scipy.optimize.least_squares.
 
     Why this is faster than Powell: the loss is a sum of squared residuals,
     so the solver can build a local linear model of TALYS from one Jacobian
@@ -641,7 +738,7 @@ def run_least_squares(obj, x0: np.ndarray, cfg: dict):
 
     return OptimizeResult(
         x       = ls.x,
-        fun     = float(np.sum(ls.fun ** 2)),   # = chi2_red + prior, same scale as Powell
+        fun     = float(np.sum(ls.fun ** 2)),   # = chi2 + prior, same scale as Powell
         success = ls.success,
         status  = ls.status,
         message = ls.message,
@@ -654,7 +751,8 @@ def run_least_squares(obj, x0: np.ndarray, cfg: dict):
 # ─────────────────────────────────────────────────────────────────────────────
 # Plotting
 # ─────────────────────────────────────────────────────────────────────────────
-def plot_best_fit_xs(cfg, x_exp, y_exp, x_t, y_t, params_best, y_err=None, out_dir="."):
+def plot_best_fit_xs(cfg, x_exp, y_exp, x_t, y_t, params_best, y_err=None, out_dir=".",
+                     y_bin=None, e_fit_min=None):
     script      = cfg['script']
     EXP_REL_ERR = float(script.get('exp_rel_err', '0.10'))
     log_y       = script.get('plot_log_y_xs', 'true').lower() == 'true'
@@ -670,6 +768,11 @@ def plot_best_fit_xs(cfg, x_exp, y_exp, x_t, y_t, params_best, y_err=None, out_d
         fmt="o", capsize=3, label="Experimental",
     )
     plt.plot(x_t, y_t, linestyle="-", label=f"TALYS best-fit\n{label}")
+    if y_bin is not None:
+        plt.plot(x_exp, y_bin, "s", mfc="none", label="TALYS bin average")
+    if e_fit_min is not None:
+        plt.axvline(e_fit_min, color="grey", linestyle=":", linewidth=1,
+                    label=f"fit window E >= {e_fit_min:g} MeV")
     plt.xlabel("Energy [MeV]")
     plt.ylabel("Cross section [mb]")
     if log_y:
@@ -713,7 +816,8 @@ def plot_reaction_rate(cfg, x_rate, y_rate, ratesmc_xy=None, out_dir="."):
 # ─────────────────────────────────────────────────────────────────────────────
 # Save / output helpers
 # ─────────────────────────────────────────────────────────────────────────────
-def save_results(cfg, x_exp, y_exp, y_err, x_xs, y_xs, x_rate, y_rate, params_best, out_dir="."):
+def save_results(cfg, x_exp, y_exp, y_err, x_xs, y_xs, x_rate, y_rate, params_best, out_dir=".",
+                 y_bin=None, fit_info=None):
     exp_file = cfg['script'].get('exp_file', 'exp')
     stem     = os.path.splitext(os.path.basename(exp_file))[0]
     path     = os.path.join(out_dir, f"talys_results_{stem}.npz")
@@ -728,6 +832,10 @@ def save_results(cfg, x_exp, y_exp, y_err, x_xs, y_xs, x_rate, y_rate, params_be
         y_best_rate = y_rate,
         params_best = params_best,
         param_names = np.array([op.name for op in cfg['opt_params']]),
+        # TALYS averaged over the data bins (NaN if not computed)
+        y_xs_binned = (np.asarray(y_bin, dtype=float) if y_bin is not None
+                       else np.full(len(x_exp), np.nan)),
+        **{k: np.asarray(v) for k, v in (fit_info or {}).items()},
     )
     print(f"\nResults saved to {path}")
 
@@ -760,6 +868,7 @@ def write_optimization_output(
     x_rate: Optional[np.ndarray] = None,
     y_rate: Optional[np.ndarray] = None,
     out_file: str = "talys_optimization.out",
+    fit_info: Optional[dict] = None,
 ) -> None:
     """
     Append a best-fit summary block to the shared output file.
@@ -794,7 +903,14 @@ def write_optimization_output(
         f"Optimizer   : {cfg['script'].get('method','Powell')}  "
         f"(converged={res.success}, nfev={res.nfev})\n"
     )
-    lines.append(f"Min reduced chi-square: {res.fun:.6g}\n")
+    info = fit_info or {}
+    chi2_red = info.get('chi2_red', res.fun)
+    lines.append(f"Min reduced chi-square: {chi2_red:.6g}\n")
+    if info:
+        lines.append(f"Objective   : chi2 + prior = {res.fun:.6g} "
+                     f"(chi2 = {info['chi2']:.6g}, prior = {info['prior']:.6g}, dof = {info['dof']})\n")
+        lines.append(f"Fit window  : E >= {info['e_fit_min']} MeV; TALYS averaged over "
+                     f"{info['talys_points_per_bin']} point(s) per {info['bin_width']:g} MeV bin\n")
     lines.append("-" * 72 + "\n")
     lines.append("Optimized parameters:\n")
     for i, op in enumerate(cfg['opt_params']):
@@ -860,7 +976,7 @@ def replot(npz_path: str, tesseract_path: str = "tesseract.in",
 # ─────────────────────────────────────────────────────────────────────────────
 # Recover missing reaction rates from already-optimised runs
 #
-# Some runs finish optimisation fine but TALYS fails to produce astrorate.p
+# Some runs finish optimisation fine but TALYS fails to produce astrorate.<ejectile>
 # on that attempt (see the try/except around run_talys_get_rate() in main()).
 # save_results() still writes the .npz unconditionally, just with empty
 # x_rate / y_best_rate arrays, so tesseract.py's existence-only skip check
@@ -917,7 +1033,7 @@ def _append_rate_recovered_note(shared_out: str, npz_path: str, n_points: int) -
             note = (
                 f"[UPDATE {timestamp}] Reaction rate for this run was recomputed "
                 f"post-hoc from the saved best-fit parameters ({n_points} T9 points), "
-                f"after the original run failed to produce astrorate.p. See "
+                f"after the original run failed to produce astrorate.<ejectile>. See "
                 f"{os.path.basename(npz_path)} for the updated rate.\n\n"
             )
             insert_at   = target.end()
@@ -963,7 +1079,7 @@ def fix_missing_rate(npz_path: str, cfg: dict, shared_out: str) -> str:
           f"{dict(zip(saved_names, params_best))} ...", flush=True)
     rate_best, _ = run_talys_get_rate(params_best, run_cfg)
     if rate_best is None:
-        print(f"[fix-rates] {npz_path}: TALYS still failed to produce astrorate.p.")
+        print(f"[fix-rates] {npz_path}: TALYS still failed to produce astrorate.<ejectile>.")
         return "still_failed"
 
     x_rate, y_rate = rate_best
@@ -1030,7 +1146,7 @@ def main():
     ap.add_argument(
         "--fix-missing-rates", action="store_true",
         help="For runs whose talys_results_*.npz already exists but has empty "
-             "x_rate/y_best_rate (TALYS failed to produce astrorate.p on the "
+             "x_rate/y_best_rate (TALYS failed to produce astrorate.<ejectile> on the "
              "original run), reuse the saved best-fit params to rerun TALYS "
              "for the rate only (no re-optimisation), patch the npz in place, "
              "and note the update in talys_optimization.out. With --run-idx or "
@@ -1101,12 +1217,11 @@ def main():
             "Set exp_file in the [talys] section of tesseract.in."
         )
 
-    df_exp      = pd.read_csv(exp_file, comment="#")
-    x_exp       = df_exp.iloc[:, 0].to_numpy(dtype=float)
-    y_exp       = df_exp.iloc[:, 1].to_numpy(dtype=float)
+    exp_table   = read_exp_table(exp_file)
+    x_exp       = exp_table[:, 0]
+    y_exp       = exp_table[:, 1]
     EXP_REL_ERR = float(script.get('exp_rel_err', '0.10'))
-    y_err       = (df_exp.iloc[:, 2].to_numpy(dtype=float)
-                   if df_exp.shape[1] >= 3 else EXP_REL_ERR * y_exp)
+    y_err       = (exp_table[:, 2] if exp_table.shape[1] >= 3 else EXP_REL_ERR * y_exp)
     E_FIT_MIN   = float(script.get('e_fit_min', '2.0'))
     mask        = (y_exp > 1e-10) & (x_exp >= E_FIT_MIN)
 
@@ -1118,19 +1233,32 @@ def main():
     # Attach energy grid to cfg so write_talys_files can use it
     cfg['_x_exp'] = x_exp
 
+    # TALYS is averaged over the same bins as the data: n Gauss-Legendre
+    # energies per bin (talys_points_per_bin; 1 = bin centres only).
+    N_PER_BIN = int(script.get('talys_points_per_bin', '3'))
+    BIN_WIDTH = exp_bin_width(exp_file, x_exp, script)
+    if N_PER_BIN > 1:
+        E_sub, w_sub = talys_bin_grid(x_exp, BIN_WIDTH, N_PER_BIN)
+        cfg['_talys_E_cm'] = E_sub
+        cfg['_bin_weights'] = w_sub
+    print(f"[talys_opt] data bins: width {BIN_WIDTH:g} MeV; TALYS at {N_PER_BIN} "
+          f"point(s) per bin; fit window E >= {E_FIT_MIN} MeV")
+
     # ── Debug mode: one verbose TALYS call at x0, then exit ──────────────────
     if args.debug_talys:
         X0_dbg = np.array([op.x0 for op in cfg['opt_params']], dtype=float)
         with tempfile.TemporaryDirectory(prefix="talys_debug_") as wd:
             inp = write_talys_files(wd, X0_dbg, cfg, astro="n", astrogs="n")
             run_talys(wd, inp, verbose=True)
-            ap_path = os.path.join(wd, "ap.tot")
-            if os.path.exists(ap_path):
-                print(f"\n[debug] ap.tot contents:\n")
-                with open(ap_path) as fh:
+            names = talys_xs_candidates(cfg)
+            found = [n for n in names if os.path.exists(os.path.join(wd, n))]
+            if found:
+                print(f"\n[debug] {found[0]} contents:\n")
+                with open(os.path.join(wd, found[0])) as fh:
                     print(fh.read())
             else:
-                print("\n[debug] ap.tot was NOT created.")
+                print(f"\n[debug] none of {names} was created "
+                      "(exclusive-channel files need 'channels y' in [talys]).")
         raise SystemExit(0)
 
     # ── Checkpoint: resume x0 from previous evicted run if available ─────────
@@ -1193,7 +1321,20 @@ def main():
     print("\nBest-fit parameters:")
     for i, op in enumerate(opt_params):
         print(f"  {op.name} = {params_best[i]:.6g}")
-    print(f"Min reduced chi-square = {res.fun:.6g}")
+    parts = obj.state.get('best_parts') or {}
+    fit_info = {
+        'objective': float(res.fun),
+        'chi2': parts.get('chi2', float('nan')),
+        'chi2_red': parts.get('chi2_red', float('nan')),
+        'prior': parts.get('prior', float('nan')),
+        'dof': parts.get('dof', 0),
+        'e_fit_min': E_FIT_MIN,
+        'talys_points_per_bin': N_PER_BIN,
+        'bin_width': BIN_WIDTH,
+    }
+    print(f"Objective chi2 + prior = {res.fun:.6g}  "
+          f"(chi2 = {fit_info['chi2']:.6g}, prior = {fit_info['prior']:.6g})")
+    print(f"Min reduced chi-square = {fit_info['chi2_red']:.6g}  (dof = {fit_info['dof']})")
 
     # ── Best-fit XS curve ─────────────────────────────────────────────────────
     out_xs = run_talys_get_xs(params_best, cfg)
@@ -1201,8 +1342,11 @@ def main():
         print("\nWARNING: TALYS failed at best-fit parameters.")
         return
     x_t, y_t = out_xs
+    y_bin = (talys_bin_average(y_t, cfg['_bin_weights'])
+             if cfg.get('_bin_weights') is not None and len(y_t) == len(x_exp) * N_PER_BIN
+             else None)
     plot_best_fit_xs(cfg, x_exp, y_exp, x_t, y_t, params_best, y_err=y_err,
-                     out_dir=run_dir)
+                     out_dir=run_dir, y_bin=y_bin, e_fit_min=E_FIT_MIN)
 
     # ── Reaction rate at best fit ─────────────────────────────────────────────
     x_rate: np.ndarray = np.array([])
@@ -1210,7 +1354,7 @@ def main():
     try:
         rate_best, _ = run_talys_get_rate(params_best, cfg)
         if rate_best is None:
-            print("\nWARNING: TALYS failed to produce astrorate.p at best fit.")
+            print("\nWARNING: TALYS failed to produce astrorate.<ejectile> at best fit.")
         else:
             x_rate, y_rate = rate_best
             rmc_path   = script.get('rates_mc_file', 'RatesMC.out')
@@ -1226,9 +1370,9 @@ def main():
     write_optimization_output(cfg, res, params_best, x_t, y_t,
                                x_rate if len(x_rate) else None,
                                y_rate if len(y_rate) else None,
-                               out_file=shared_out)
+                               out_file=shared_out, fit_info=fit_info)
     save_results(cfg, x_exp, y_exp, y_err, x_t, y_t, x_rate, y_rate, params_best,
-                 out_dir=run_dir)
+                 out_dir=run_dir, y_bin=y_bin, fit_info=fit_info)
 
     # Remove checkpoint now that results are safely saved
     if os.path.exists(checkpoint_path):

@@ -433,5 +433,128 @@ class HFBCorrectionTest(unittest.TestCase):
                 apply_hfb_corrections(read_hfb_tab(str(tab), A=28), {})
 
 
+class ReactionNamingTest(unittest.TestCase):
+    def test_file_stem(self):
+        from nucres.reaction_names import file_stem, parse_reaction
+
+        self.assertEqual(file_stem("22Mg(a,p)25Al"), "22Mg_ap_25Al")  # unchanged for (a,p)
+        self.assertEqual(file_stem("24Mg(p,g)25Al"), "24Mg_pg_25Al")
+        self.assertEqual(parse_reaction("17O(p,a)14N").ejectile, "a")
+        with self.assertRaises(ValueError):
+            parse_reaction("22Mg-a-p")
+
+    def test_compute_gamma_any_reaction(self):
+        import tesseract
+        from extract_resonance_data import load_reaction_params
+
+        repo = Path(__file__).resolve().parent.parent
+        rx = load_reaction_params(repo / "input" / "22Mg(a,p)25Al.txt")
+        g_i, g_o = tesseract.compute_gamma(rx, 0.01, 0.0045)
+        # Wigner limit for a + 22Mg (R = 1.25 (4.003^1/3 + 22^1/3) fm) is 0.615 MeV
+        self.assertAlmostEqual(g_i / 0.01 / 1e6, 0.615, delta=0.002)
+        rx_g = load_reaction_params(repo / "input" / "24Mg(p,g)25Al.txt")
+        _, g_o_gamma = tesseract.compute_gamma(rx_g, 0.01, 0.3)
+        self.assertEqual(g_o_gamma, 0.3)  # gamma exit: mean_o is the mean gamma width in eV
+
+
+class TalysFitTest(unittest.TestCase):
+    def test_bin_grid_and_average(self):
+        import talys_opt_with_unc as topt
+
+        centres = np.array([1.0, 1.1, 1.2])
+        E, w = topt.talys_bin_grid(centres, 0.1, 3)
+        self.assertEqual(len(E), 9)
+        self.assertEqual(len(np.unique(E)), 9)               # no shared edge energies
+        self.assertTrue(np.all(abs(E.reshape(3, 3) - centres[:, None]) < 0.05))
+        self.assertAlmostEqual(w.sum(), 1.0)
+        np.testing.assert_allclose(topt.talys_bin_average(3.0 * E + 1.0, w), 3.0 * centres + 1.0)
+        # convex sigma(E): the bin average exceeds the centre value
+        f = lambda x: np.exp(-30.0 / np.sqrt(x))
+        exact = np.array([quad_avg(f, c - 0.05, c + 0.05) for c in centres])
+        np.testing.assert_allclose(topt.talys_bin_average(f(E), w), exact, rtol=1e-6)
+        self.assertTrue(np.all(exact > f(centres)))
+
+    def test_bin_width_from_header(self):
+        import talys_opt_with_unc as topt
+
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d) / "22Mg_ap_25Al_integrated_xs_dE_0.2_run0.csv"
+            path.write_text("# E (MeV),sigma (mb)| dE=0.05\n1.0,2.0\n")
+            self.assertEqual(topt.exp_bin_width(str(path), np.array([1.0]), {}), 0.05)
+            path.write_text("1.0,2.0\n")
+            self.assertEqual(topt.exp_bin_width(str(path), np.array([1.0]), {}), 0.2)
+            self.assertEqual(topt.exp_bin_width(str(path), np.array([1.0]), {"exp_bin_width": "0.1"}), 0.1)
+
+    def _cfg(self, d, ejectile=(1, 1), residual=(13, 25), extra=""):
+        import talys_opt_with_unc as topt
+
+        text = f"""[basics]
+reaction = x
+projectile_Z = 2
+projectile_A = 4
+target_Z = 12
+target_A = 22
+ejectile_Z = {ejectile[0]}
+ejectile_A = {ejectile[1]}
+residual_Z = {residual[0]}
+residual_A = {residual[1]}
+[talys]
+{extra}
+\\opt
+rvadjust a 1.0 0.5 1.5
+\\opt
+"""
+        path = Path(d) / "tesseract.in"
+        path.write_text(text)
+        return topt.load_config(str(path))
+
+    def test_first_data_row_is_kept(self):
+        import talys_opt_with_unc as topt
+
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d) / "x.csv"
+            path.write_text("# E (MeV),sigma (mb)| dE=0.1\n1.5e-01,7.3e-32\n2.5e-01,1.2e-22\n")
+            np.testing.assert_allclose(topt.read_exp_table(str(path))[:, 0], [0.15, 0.25])
+            path.write_text("E,sigma,err\n1.0,2.0,0.1\n")
+            np.testing.assert_allclose(topt.read_exp_table(str(path)), [[1.0, 2.0, 0.1]])
+
+    def test_channel_file_names(self):
+        import talys_opt_with_unc as topt
+
+        with tempfile.TemporaryDirectory() as d:
+            cfg = self._cfg(d)
+            self.assertEqual(topt.talys_xs_candidates(cfg), ["ap.tot", "xs010000.tot"])
+            cfg_g = self._cfg(d, ejectile=(0, 0), residual=(14, 26))
+            self.assertEqual(topt.talys_xs_candidates(cfg_g), ["ag.tot", "xs000000.tot"])
+            (Path(d) / "xs010000.tot").write_text("# E xs\n 1.0 5.0\n 2.0 6.0\n")
+            x, y = topt.read_ap_tot(d, cfg)
+            np.testing.assert_allclose(y, [5.0, 6.0])
+
+    def test_objective_is_chi2_plus_prior_on_bin_averages(self):
+        import talys_opt_with_unc as topt
+
+        with tempfile.TemporaryDirectory() as d:
+            cfg = self._cfg(d, extra="prior_rel_std = 0.1\nexp_rel_err = 0.1")
+        x = np.array([2.0, 2.2, 2.4, 2.6])
+        E, w = topt.talys_bin_grid(x, 0.2, 3)
+        cfg["_x_exp"], cfg["_talys_E_cm"], cfg["_bin_weights"] = x, E, w
+        model = lambda p: np.exp(-30.0 / np.sqrt(E)) * p        # sigma at sub-grid points
+        y_bin_true = topt.talys_bin_average(model(1.0), w)
+        y_exp = y_bin_true * np.array([1.0, 1.0, 1.0, 1.2])
+        y_err = y_exp * np.array([0.1, 0.1, 0.1, 0.05])           # last point: 5%
+        mask = np.ones(4, dtype=bool)
+        with mock.patch.object(topt, "run_talys_get_xs", lambda p, c: (E, model(p[0]))):
+            obj = topt.make_objective(cfg, x, y_exp, y_err, mask)
+            total = obj(np.array([1.0]))
+        chi2 = (np.log(1.2) / 0.05) ** 2                          # bin-averaged model, per-point sigma
+        self.assertAlmostEqual(total, chi2, places=6)              # prior = 0 at x0
+        self.assertAlmostEqual(obj.state["best_parts"]["chi2_red"], chi2 / 3, places=6)
+
+
+def quad_avg(f, a, b):
+    from scipy.integrate import quad
+    return quad(f, a, b, epsabs=0, epsrel=1e-12)[0] / (b - a)
+
+
 if __name__ == "__main__":
     unittest.main()
