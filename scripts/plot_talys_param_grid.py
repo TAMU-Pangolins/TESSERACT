@@ -438,15 +438,23 @@ def strongest_parameter_pairs(
     params: list[str],
     *,
     count: int,
+    max_chi2: float | None = None,
 ) -> list[tuple[str, str, float]]:
+    """
+    The `count` pairs with the largest |Pearson r|, over the records that the
+    plot shows (finite chi2, and chi2 <= max_chi2 when given).
+    """
     pairs: list[tuple[str, str, float]] = []
     chi2 = table["chi2_red"]
+    shown = np.isfinite(chi2)
+    if max_chi2 is not None:
+        shown &= chi2 <= max_chi2
     for i, left in enumerate(params):
         for right in params[i + 1 :]:
             mask = (
                 np.isfinite(table[left])
                 & np.isfinite(table[right])
-                & np.isfinite(chi2)
+                & shown
             )
             if np.count_nonzero(mask) < 4:
                 continue
@@ -455,6 +463,35 @@ def strongest_parameter_pairs(
                 pairs.append((left, right, corr))
     pairs.sort(key=lambda item: abs(item[2]), reverse=True)
     return pairs[:count]
+
+
+def focused_pair_params(
+    pairs: list[tuple[str, str]],
+    params: list[str],
+    available: list[str],
+) -> tuple[list[str], list[str]]:
+    """
+    Parameters needed for the focused-pair plot: `params` plus any parameter
+    named in `pairs` that was dropped as (near-)constant. A pair the user
+    names explicitly is plotted, as --params also disables the dropping;
+    the panel says "constant" when it has no range. Names that are not
+    optimisation parameters at all are an error.
+
+    Returns (params for the plot, names that were restored).
+    """
+    named = [name for pair in pairs for name in pair]
+    unknown = sorted({name for name in named if name not in available})
+    if unknown:
+        raise SystemExit(
+            "Focused pair parameter(s) not found among the optimised parameters: "
+            + ", ".join(unknown)
+            + ". Available: " + ", ".join(available)
+        )
+    restored: list[str] = []
+    for name in named:
+        if name not in params and name not in restored:
+            restored.append(name)
+    return list(params) + restored, restored
 
 
 def plot_focused_pairs(
@@ -770,7 +807,8 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help=(
             "Plot one compact 2D histogram for a selected parameter pair. "
-            "Can be repeated. Focused-pair plots do not draw individual points."
+            "Can be repeated. Focused-pair plots do not draw individual points. "
+            "A parameter dropped as near-constant is kept when named here."
         ),
     )
     parser.add_argument(
@@ -859,6 +897,7 @@ def main() -> int:
         raise SystemExit(f"No optimization records found in {talys_out}")
 
     params = parameter_names(records)
+    available = list(params)
     if args.params:
         missing = [name for name in args.params if name not in params]
         if missing:
@@ -875,7 +914,30 @@ def main() -> int:
         if dropped:
             print("Dropped near-constant parameter(s): " + ", ".join(dropped))
 
-    if len(params) < 2:
+    focused_pairs: list[tuple[str, str]] = []
+    if args.pair:
+        focused_pairs.extend((left, right) for left, right in args.pair)
+    if args.auto_pairs > 0:
+        # Candidates are the informative parameters only, ranked over the
+        # same chi2-filtered records the plot shows.
+        table = table_from_records(records, params)
+        auto_pairs = strongest_parameter_pairs(
+            table, params, count=args.auto_pairs, max_chi2=args.max_chi2)
+        focused_pairs.extend((left, right) for left, right, _corr in auto_pairs)
+        if auto_pairs:
+            print(
+                "Auto-selected pair(s): "
+                + ", ".join(f"{left}/{right} (r={corr:+.3f})" for left, right, corr in auto_pairs)
+            )
+        else:
+            print("No parameter pair has a defined correlation"
+                  + (f" with chi2 <= {args.max_chi2:g}" if args.max_chi2 is not None else "")
+                  + "; no pairs auto-selected.")
+    if focused_pairs:
+        params, restored = focused_pair_params(focused_pairs, params, available)
+        if restored:
+            print("Keeping near-constant parameter(s) named in --pair: " + ", ".join(restored))
+    elif len(params) < 2:
         raise SystemExit("Need at least two optimized parameters for a pair grid.")
 
     output, csv_output = resolve_output_paths(args, records, talys_out)
@@ -884,23 +946,7 @@ def main() -> int:
         write_csv(csv_output, records, params)
         print(f"Wrote parsed records: {csv_output}")
 
-    focused_pairs: list[tuple[str, str]] = []
-    if args.pair:
-        focused_pairs.extend((left, right) for left, right in args.pair)
-    if args.auto_pairs > 0:
-        table = table_from_records(records, params)
-        auto_pairs = strongest_parameter_pairs(table, params, count=args.auto_pairs)
-        focused_pairs.extend((left, right) for left, right, _corr in auto_pairs)
-        if auto_pairs:
-            print(
-                "Auto-selected pair(s): "
-                + ", ".join(f"{left}/{right} (r={corr:+.3f})" for left, right, corr in auto_pairs)
-            )
-
     if focused_pairs:
-        missing = sorted({name for pair in focused_pairs for name in pair if name not in params})
-        if missing:
-            raise SystemExit("Focused pair parameter(s) not found: " + ", ".join(missing))
         if args.output is None:
             output = output.with_name("talys_param_pairs_chi2_red.png")
         plot_focused_pairs(

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-plot_talys_results.py — Visualise TALYS optimisation results.
+plot_talys_results_new.py — Visualise TALYS optimisation results.
 
 Plots the ratio of TALYS best-fit reaction rate to RatesMC rate (median +
 2-sigma band), across one or more bin widths overlaid on the same graph.
@@ -13,16 +13,16 @@ outputs directory, following the TESSERACT layout:
     {base_dir}/plots/  (default output location)
 
 Usage:
-    python plot_talys_results.py \
+    python plot_talys_results_new.py \
         --target 22Mg --projectile a --ejectile p --residual 25Al
 
     # Restrict to specific bin width(s) instead of plotting all of them:
-    python plot_talys_results.py \
+    python plot_talys_results_new.py \
         --target 22Mg --projectile a --ejectile p --residual 25Al \
         --bin-width 0.2
 
     # Multiple bin widths overlaid on the same graph:
-    python plot_talys_results.py \
+    python plot_talys_results_new.py \
         --target 22Mg --projectile a --ejectile p --residual 25Al \
         --bin-width 0.2 0.5
 """
@@ -74,6 +74,15 @@ def discover_bin_widths(talys_opt_dir: Path) -> list[str]:
 
     widths.sort(key=sort_key)
     return widths
+
+
+def ratio_plot_name(reaction_slug: str, bin_widths: list[str]) -> str:
+    """
+    File name of the ratio plot for the bin widths actually plotted:
+    22Mg_ap_25Al_bw_0.2.png, or 22Mg_ap_25Al_bw_0.2_0.5.png for several.
+    """
+    label = "_".join(str(bw) for bw in bin_widths)
+    return f"{reaction_slug}_bw_{label}.png"
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -411,8 +420,7 @@ def main():
     ax.legend(fontsize=10)
     fig.tight_layout()
 
-    bw_label = bin_widths[0] if len(envelopes) == 1 else ""
-    out_main = output_dir / f"{reaction_slug}_bw_{bw_label}.png"
+    out_main = output_dir / ratio_plot_name(reaction_slug, list(envelopes))
     fig.savefig(out_main, dpi=300, bbox_inches="tight")
     print(f"Saved: {out_main}")
     plt.show()

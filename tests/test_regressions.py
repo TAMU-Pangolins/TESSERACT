@@ -692,5 +692,45 @@ class FinalStatesTest(unittest.TestCase):
         self.assertEqual(far.exit_width(1.0, 2.0, 1, rng).Gamma_eV, 0.0)
 
 
+class PlotScriptFixesTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        import sys
+        sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
+
+    def test_auto_pairs_respect_max_chi2(self):
+        import plot_talys_param_grid as grid
+        # a/b correlate only in the high-chi2 records, a/c only in the low ones.
+        low = np.array([1.0, 2.0, 3.0, 4.0])
+        high = np.tile(low, 2)
+        chi2 = np.r_[np.full(4, 1.0), np.full(8, 9.0)]
+        a = np.r_[low, high]
+        b = np.r_[[3.0, 1.0, 4.0, 2.0], 10.0 * high]          # r(a, b) = 0 at low chi2
+        c = np.r_[2.0 * low, np.tile([3.0, 1.0, 4.0, 2.0], 2)]  # r(a, c) = 1 at low chi2
+        table = {"chi2_red": chi2, "a": a, "b": b, "c": c}
+        top_all = grid.strongest_parameter_pairs(table, ["a", "b", "c"], count=1)
+        top_low = grid.strongest_parameter_pairs(table, ["a", "b", "c"], count=1, max_chi2=2.0)
+        self.assertEqual(top_all[0][:2], ("a", "b"))
+        self.assertEqual(top_low[0][:2], ("a", "c"))
+        self.assertAlmostEqual(top_low[0][2], 1.0)
+
+    def test_pair_keeps_dropped_parameter_and_rejects_unknown(self):
+        import plot_talys_param_grid as grid
+        params, restored = grid.focused_pair_params(
+            [("a", "flat")], ["a", "b"], ["a", "b", "flat"])
+        self.assertEqual(params, ["a", "b", "flat"])
+        self.assertEqual(restored, ["flat"])
+        with self.assertRaises(SystemExit) as ctx:
+            grid.focused_pair_params([("a", "typo")], ["a", "b"], ["a", "b", "flat"])
+        self.assertIn("typo", str(ctx.exception))
+
+    def test_ratio_plot_name_lists_every_bin_width(self):
+        import plot_talys_results_new as results
+        self.assertEqual(results.ratio_plot_name("22Mg_ap_25Al", ["0.2"]),
+                         "22Mg_ap_25Al_bw_0.2.png")
+        self.assertEqual(results.ratio_plot_name("22Mg_ap_25Al", ["0.2", "0.5"]),
+                         "22Mg_ap_25Al_bw_0.2_0.5.png")
+
+
 if __name__ == "__main__":
     unittest.main()
