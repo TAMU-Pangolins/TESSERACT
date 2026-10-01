@@ -185,5 +185,28 @@ class PenetrabilityInterpolationTest(unittest.TestCase):
         self.assertTrue(np.all(P(np.array([0.0, -1.0])) == 0.0))
 
 
+class JWKBInterpolationTest(unittest.TestCase):
+    def test_sub_barrier_interpolation_is_accurate(self):
+        # Most of the JWKB tunneling path lies in the barrier's long-range
+        # Coulomb tail, so log T is dominated by the same eta(E) ~ E^-1/2
+        # curvature as the pure-Coulomb case; linear-in-E interpolation was
+        # off by tens of percent here close to threshold.
+        Z1, Z2, A1, A2, l = 2, 12, 4, 22, 0
+        logT_interp = make_jwkb_log_transmission_interp(
+            l, Z1, Z2, A1, A2, Emin_mev=0.1, Emax_mev=10.0, npts=300
+        )
+        for E in (0.11, 0.21, 0.31, 0.51, 1.0, 5.0, 9.9):
+            exact = jwkb_log_transmission_mev(E, l, Z1, Z2, A1, A2)
+            self.assertAlmostEqual(np.exp(logT_interp(E)) / np.exp(exact), 1.0, delta=2e-3)
+
+    def test_nonpositive_energy_clamps_to_low_energy_edge(self):
+        logT_interp = make_jwkb_log_transmission_interp(
+            0, 2, 12, 4, 22, Emin_mev=0.1, Emax_mev=10.0, npts=50
+        )
+        at_floor = float(logT_interp(0.1))
+        self.assertAlmostEqual(float(logT_interp(0.0)), at_floor)
+        self.assertAlmostEqual(float(logT_interp(-1.0)), at_floor)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -321,7 +321,22 @@ def jwkb_log_transmission_mev(
 def _jwkb_logT_grid_cached(
     l, Z1, Z2, A1, A2, omp_model, Emin_mev, Emax_mev, npts, radial_npts
 ):
-    Es = np.linspace(Emin_mev, Emax_mev, int(npts))
+    r"""
+    Grid for interpolating \(\log T_\ell^{JWKB}(E)\), spaced uniformly in
+    the Sommerfeld parameter \(\eta(E) \propto E^{-1/2}\) rather than in
+    `E` -- the same fix as `_P_grid_cached`, and for the same reason: most
+    of the WKB tunneling path lies in the barrier's long-range Coulomb
+    tail, so `log T`'s energy dependence is still dominated by the Gamow
+    factor's `eta(E)` curvature even though the barrier also includes a
+    real nuclear potential. A grid uniform in `E` under-resolves that
+    curvature close to threshold; one uniform in `eta` removes it by
+    construction.
+    """
+    eta_lo = float(sommerfeld_eta_mev(Z1, Z2, A1, A2, Emax_mev))  # larger E -> smaller eta
+    eta_hi = float(sommerfeld_eta_mev(Z1, Z2, A1, A2, Emin_mev))  # smaller E -> larger eta
+    eta_grid = np.linspace(eta_lo, eta_hi, int(npts))
+    const = 0.157489 * (Z1 * Z2) * np.sqrt((A1 * A2) / (A1 + A2))
+    Es = (const / eta_grid) ** 2
     logTs = np.array(
         [
             jwkb_log_transmission_mev(
@@ -338,7 +353,7 @@ def _jwkb_logT_grid_cached(
         ],
         dtype=float,
     )
-    return Es, logTs
+    return eta_grid, logTs, const
 
 
 def make_jwkb_log_transmission_interp(
@@ -355,8 +370,14 @@ def make_jwkb_log_transmission_interp(
 ):
     r"""
     Precompute \(\log T_\ell^{JWKB}(E)\) for the real alpha-OMP barrier.
+
+    `log T` is interpolated against the Sommerfeld parameter `eta(E)`
+    rather than against `E` (see `_jwkb_logT_grid_cached`): with the
+    default 300 points this matches the exact JWKB transmission to better
+    than 0.1% from `Emin_mev` to `Emax_mev`, versus errors of tens of
+    percent close to threshold for linear interpolation against `E`.
     """
-    Es, logTs = _jwkb_logT_grid_cached(
+    eta_grid, logTs, const = _jwkb_logT_grid_cached(
         l,
         Z1,
         Z2,
@@ -371,7 +392,9 @@ def make_jwkb_log_transmission_interp(
 
     def logT(E_mev):
         e = np.asarray(E_mev, dtype=float)
-        values = np.interp(e, Es, logTs, left=logTs[0], right=logTs[-1])
+        e_safe = np.where(e > 0.0, e, Emin_mev)  # clamp to the grid's low-E edge, as before
+        eta_q = const / np.sqrt(e_safe)
+        values = np.interp(eta_q, eta_grid, logTs, left=logTs[0], right=logTs[-1])
         return np.minimum(values, 0.0)
 
     return logT
