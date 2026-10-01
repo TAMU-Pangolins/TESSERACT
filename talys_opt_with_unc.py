@@ -471,11 +471,75 @@ def talys_bin_average(y_sub: np.ndarray, weights: np.ndarray) -> np.ndarray:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Checkpoints: one checkpoint.json per run directory, one entry per fit
+# ─────────────────────────────────────────────────────────────────────────────
+def _checkpoint_rmw(path: str, update) -> dict:
+    """
+    Locked read-modify-write of a checkpoint file holding {fit key: entry}.
+
+    `update(data)` mutates the dict; the file is rewritten in place under an
+    exclusive flock (so fits sharing a run directory cannot clobber each
+    other) and removed when no entries remain. A file in the old single-fit
+    format ({"params": ...}) cannot be attributed to a fit and is dropped.
+    """
+    import json as _json
+    with open(path, "a+") as fh:
+        fcntl.flock(fh, fcntl.LOCK_EX)
+        try:
+            fh.seek(0)
+            text = fh.read()
+            try:
+                data = _json.loads(text) if text.strip() else {}
+            except ValueError:
+                data = {}
+            if not isinstance(data, dict) or "params" in data:
+                if data:
+                    print(f"[checkpoint] ignoring old-format checkpoint in {path}", flush=True)
+                data = {}
+            update(data)
+            if data:
+                fh.seek(0)
+                fh.truncate()
+                _json.dump(data, fh, indent=2)
+                fh.flush()
+                os.fsync(fh.fileno())
+            else:
+                os.remove(path)
+        finally:
+            fcntl.flock(fh, fcntl.LOCK_UN)
+    return data
+
+
+def checkpoint_load(path: str, key: str, param_names: List[str]) -> Optional[dict]:
+    """This fit's checkpoint entry, or None (none saved, or the \\opt block changed)."""
+    if not os.path.exists(path):
+        return None
+    found = {}
+    _checkpoint_rmw(path, lambda data: found.update(data.get(key) or {}))
+    if not found:
+        return None
+    if found.get("param_names") != list(param_names):
+        print(f"[checkpoint] {key}: saved parameters {found.get('param_names')} "
+              f"!= current {list(param_names)}; starting from x0.", flush=True)
+        return None
+    return found
+
+
+def checkpoint_save(path: str, key: str, entry: dict) -> None:
+    _checkpoint_rmw(path, lambda data: data.__setitem__(key, entry))
+
+
+def checkpoint_clear(path: str, key: str) -> None:
+    if os.path.exists(path):
+        _checkpoint_rmw(path, lambda data: data.pop(key, None))
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Objective (closure — no global mutable state)
 # ─────────────────────────────────────────────────────────────────────────────
 def make_objective(cfg: dict, x_exp: np.ndarray, y_exp: np.ndarray,
                    y_err: np.ndarray, mask: np.ndarray,
-                   checkpoint_path: str = None):
+                   checkpoint_path: str = None, checkpoint_key: str = None):
     """
     Build the objective for the optimiser.
 
@@ -500,8 +564,9 @@ def make_objective(cfg: dict, x_exp: np.ndarray, y_exp: np.ndarray,
     The routine is thread-safe, so the least-squares Jacobian can run
     several TALYS evaluations at the same time (see lsq_workers).
 
-    If checkpoint_path is given, a JSON checkpoint is written every time a
-    new best is found so the run can resume after eviction.
+    If checkpoint_path is given, this fit's entry (checkpoint_key) in that
+    run directory's checkpoint file is updated every time a new best is
+    found, so the run can resume after eviction.
     """
     import json as _json
     import threading
@@ -516,6 +581,12 @@ def make_objective(cfg: dict, x_exp: np.ndarray, y_exp: np.ndarray,
 
     n_fit = int(np.count_nonzero(mask))
     dof   = max(n_fit - len(opt_params), 1)
+
+    # Per-point uncertainty of ln(y): sigma_y / y from the data file's third
+    # column where it is positive, else exp_rel_err.
+    with np.errstate(divide="ignore", invalid="ignore"):
+        rel = np.asarray(y_err, dtype=float) / np.asarray(y_exp, dtype=float)
+    sigma_ln = np.where(np.isfinite(rel) & (rel > 0.0), rel, EXP_REL_ERR)[mask]
 
     # TALYS is run at cfg['_talys_E_cm'] (several points per bin) and
     # averaged over each bin with cfg['_bin_weights']; without them, TALYS
@@ -569,7 +640,7 @@ def make_objective(cfg: dict, x_exp: np.ndarray, y_exp: np.ndarray,
         # weight (dividing only chi2 by dof, as before, left the prior dof
         # times stronger than intended). chi2_red = chi2/dof is reported
         # separately below for diagnostics.
-        log_res  = (np.log(y_exp[mask] + FLOOR) - np.log(y_t[mask] + FLOOR)) / EXP_REL_ERR
+        log_res  = (np.log(y_exp[mask] + FLOOR) - np.log(y_t[mask] + FLOOR)) / sigma_ln
         r_data   = log_res
         chi2     = float(np.sum(r_data ** 2))
         chi2_red = chi2 / dof
@@ -590,16 +661,13 @@ def make_objective(cfg: dict, x_exp: np.ndarray, y_exp: np.ndarray,
                     'chi2': chi2, 'chi2_red': chi2_red, 'prior': prior, 'dof': dof,
                 }
                 if checkpoint_path:
-                    ckpt = {
+                    checkpoint_save(checkpoint_path, checkpoint_key or "fit", {
                         'params': params.tolist(),
+                        'param_names': [op.name for op in opt_params],
                         'loss':   total,
                         'nfev':   state['count'],
                         'timestamp': datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                    }
-                    tmp = checkpoint_path + ".tmp"
-                    with open(tmp, 'w') as fh:
-                        _json.dump(ckpt, fh, indent=2)
-                    os.replace(tmp, checkpoint_path)  # atomic on POSIX
+                    })
             best_val = state['best'][0]
 
         if DEBUG_EVERY and (count % DEBUG_EVERY == 0):
@@ -1233,23 +1301,24 @@ def main():
                 print("\n[debug] ap.tot was NOT created.")
         raise SystemExit(0)
 
-    # ── Checkpoint: resume x0 from previous evicted run if available ─────────
-    import json as _json
+    # ── Checkpoint: resume x0 from this fit's entry if it was evicted ────────
+    # One checkpoint.json per run directory, one entry per fit (keyed by the
+    # data file), so fits for different bin widths never resume from each other.
     checkpoint_path = os.path.join(run_dir, "checkpoint.json")
+    checkpoint_key  = stem_cfg
     X0 = np.array([op.x0 for op in opt_params], dtype=float)
-    if os.path.exists(checkpoint_path):
-        try:
-            with open(checkpoint_path) as fh:
-                ckpt = _json.load(fh)
-            X0 = np.array(ckpt['params'], dtype=float)
-            print(
-                f"[checkpoint] Resuming from {checkpoint_path}\n"
-                f"  loss={ckpt['loss']:.6g}  nfev={ckpt['nfev']}  "
-                f"saved={ckpt['timestamp']}",
-                flush=True,
-            )
-        except Exception as exc:
-            print(f"[checkpoint] WARNING: could not load checkpoint ({exc}), starting from x0.", flush=True)
+    try:
+        ckpt = checkpoint_load(checkpoint_path, checkpoint_key, [op.name for op in opt_params])
+    except Exception as exc:
+        ckpt = None
+        print(f"[checkpoint] WARNING: could not load checkpoint ({exc}), starting from x0.", flush=True)
+    if ckpt:
+        X0 = np.array(ckpt['params'], dtype=float)
+        print(
+            f"[checkpoint] Resuming {checkpoint_key} from {checkpoint_path}\n"
+            f"  loss={ckpt['loss']:.6g}  nfev={ckpt['nfev']}  saved={ckpt['timestamp']}",
+            flush=True,
+        )
 
     # ── Optimisation setup ────────────────────────────────────────────────────
     method  = script.get('method',  'Powell')
@@ -1267,7 +1336,7 @@ def main():
         })
 
     obj = make_objective(cfg, x_exp, y_exp, y_err, mask,
-                         checkpoint_path=checkpoint_path)
+                         checkpoint_path=checkpoint_path, checkpoint_key=checkpoint_key)
 
     print(f"\nOptimising {len(opt_params)} parameter(s):")
     for op in opt_params:
@@ -1339,9 +1408,8 @@ def main():
     save_results(cfg, x_exp, y_exp, y_err, x_t, y_t, x_rate, y_rate, params_best,
                  out_dir=run_dir)
 
-    # Remove checkpoint now that results are safely saved
-    if os.path.exists(checkpoint_path):
-        os.remove(checkpoint_path)
+    # This fit is done: drop its checkpoint entry (the file goes when empty)
+    checkpoint_clear(checkpoint_path, checkpoint_key)
 
 
 if __name__ == "__main__":

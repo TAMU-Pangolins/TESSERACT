@@ -67,5 +67,32 @@ class HFBSynthesisTest(unittest.TestCase):
         )
 
 
+class ReducedWidthSpectrumTest(unittest.TestCase):
+    def test_reduced_width_spectrum_has_no_cross_section(self):
+        cfg = HFBSamplerConfig(
+            Z=9,
+            data_root=DATA_ROOT,
+            A=18,
+            J=1.0,
+            pi=1,
+            Gamma_i_mean_eV=0.5,
+            Gamma_o_mean_eV=0.5,
+            delta_E_mev=0.05,
+            E_min_mev=0.2,
+            E_max_mev=0.6,
+            n_density_points=201,
+            n_sigma_points=256,
+            U_offset_mev=8.0,
+            seed=42,
+            widths_are_reduced=True,
+        )
+        spectrum = synthesize_sigma_from_hfb(cfg)
+        self.assertIsNone(spectrum.sigma_barns)
+        self.assertGreater(len(spectrum.resonances), 0)
+        self.assertTrue(spectrum.metadata["widths_are_reduced"])
+        with self.assertRaises(ValueError):
+            spectrum.compute_rate([0.1])
+
+
 if __name__ == "__main__":
     unittest.main()

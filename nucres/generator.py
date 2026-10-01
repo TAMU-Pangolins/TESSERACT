@@ -42,7 +42,8 @@ class HFBSamplerConfig:
     m1, m2 : float
         Projectile and target masses in kg.
     Gamma_i_mean_eV, Gamma_o_mean_eV : float
-        Mean partial widths in eV used as Porter-Thomas scale parameters.
+        Porter-Thomas scale parameters in eV: mean partial widths, or mean
+        reduced widths when `widths_are_reduced` is true.
     delta_E_mev : float
         Bin width in MeV for Poisson sampling of level counts.
     E_min_mev, E_max_mev : float
@@ -65,6 +66,11 @@ class HFBSamplerConfig:
         independent placement used historically. `"wigner"` generates a
         Wigner-surmise renewal ladder independently for every fixed
         :math:`J^\pi` sequence in unfolded HFB-density space.
+    widths_are_reduced : bool
+        If true, the sampled `Gamma_i`/`Gamma_o` are reduced widths that the
+        caller converts to partial widths (as `build_ratesmc_input.py` does).
+        No cross section is then computed, since summing Breit-Wigner terms
+        over reduced widths would be meaningless; `sigma_barns` is None.
     """
 
     Z: int
@@ -88,6 +94,7 @@ class HFBSamplerConfig:
     sample_J: bool = True
     auto_l1: bool = True
     spacing_model: str = "poisson"
+    widths_are_reduced: bool = False
 
 
 @dataclass
@@ -99,8 +106,9 @@ class GeneratedSpectrum:
     ----------
     energy_MeV : numpy.ndarray
         Output energy grid in MeV.
-    sigma_barns : numpy.ndarray
-        Total cross section on `energy_MeV`, in barns.
+    sigma_barns : numpy.ndarray or None
+        Total cross section on `energy_MeV`, in barns; None when the sampled
+        widths are reduced widths (`widths_are_reduced`).
     resonances : list of Resonance
         Sampled resonance population used to build the spectrum.
     rho_energy_MeV : numpy.ndarray
@@ -113,7 +121,7 @@ class GeneratedSpectrum:
     """
 
     energy_MeV: np.ndarray
-    sigma_barns: np.ndarray
+    sigma_barns: Optional[np.ndarray]
     resonances: List[Resonance]
     rho_energy_MeV: np.ndarray
     rho_levels_per_MeV: np.ndarray
@@ -160,6 +168,12 @@ class GeneratedSpectrum:
         ReactionRateResult
             Tabulated reaction-rate result.
         """
+        if self.sigma_barns is None:
+            raise ValueError(
+                "This spectrum was sampled with reduced widths "
+                "(widths_are_reduced=True), so it has no cross section. Convert "
+                "the widths to partial widths first, or sample with partial widths."
+            )
         m1_eff = m1 if m1 is not None else self.metadata.get("m1", MASS_PROTON)
         m2_eff = m2 if m2 is not None else self.metadata.get("m2", MASS_PROTON)
         return na_sigma_v_from_sigma(
@@ -423,7 +437,8 @@ def synthesize_sigma_from_hfb(config: HFBSamplerConfig) -> GeneratedSpectrum:
                 L1=L1_val,
             )
             resonances.append(resonance)
-            sigma_tot += sigma_bw_constant(E_plot_eV, resonance)
+            if not config.widths_are_reduced:
+                sigma_tot += sigma_bw_constant(E_plot_eV, resonance)
 
         if spacing_model == "poisson":
             assert counts is not None
@@ -458,6 +473,7 @@ def synthesize_sigma_from_hfb(config: HFBSamplerConfig) -> GeneratedSpectrum:
         "m2": config.m2,
         "Gamma_i_mean_eV": config.Gamma_i_mean_eV,
         "Gamma_o_mean_eV": config.Gamma_o_mean_eV,
+        "widths_are_reduced": config.widths_are_reduced,
         # Implicit level-density provenance: which files were actually read,
         # which isotope they are tabulated for (per the file's own header),
         # and whether the requested compound nucleus (config.Z/A) matches it.
@@ -480,7 +496,7 @@ def synthesize_sigma_from_hfb(config: HFBSamplerConfig) -> GeneratedSpectrum:
 
     return GeneratedSpectrum(
         energy_MeV=E_plot_MeV,
-        sigma_barns=sigma_tot,
+        sigma_barns=None if config.widths_are_reduced else sigma_tot,
         resonances=resonances,
         rho_energy_MeV=E_mev,
         rho_levels_per_MeV=rho_per_mev,

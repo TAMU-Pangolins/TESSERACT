@@ -87,6 +87,63 @@ class ChiSquarePriorScalingTest(unittest.TestCase):
         self.assertGreater(abs(total - chi2 / dof), 1e-3)
 
 
+class PerPointErrorColumnTest(unittest.TestCase):
+    """
+    The data file's third (uncertainty) column must set each point's
+    sigma(ln y), not just the scalar exp_rel_err -- a point with a larger
+    reported uncertainty should be downweighted relative to one with a
+    smaller uncertainty, even when both differ from TALYS by the same
+    relative amount.
+    """
+
+    def _cfg(self, **script_overrides):
+        script = {'exp_rel_err': '0.10', 'prior_rel_std': '0.0',
+                  'prior_abs_floor': '0.01', 'debug_every': '0'}
+        script.update(script_overrides)
+        return {'opt_params': [_OptParam()], 'script': script}
+
+    def test_chi2_uses_per_point_sigma_not_scalar_exp_rel_err(self):
+        x_exp = np.array([1.0, 2.0])
+        y_exp = np.array([10.0, 10.0])
+        y_err = np.array([1.0, 5.0])          # 10% and 50% relative error
+        mask = np.ones(len(x_exp), dtype=bool)
+        cfg = self._cfg()
+        y_t = y_exp * 1.1                      # both points 10% off TALYS
+
+        with patch.object(topt, 'run_talys_get_xs', return_value=(x_exp, y_t)):
+            obj = topt.make_objective(cfg, x_exp, y_exp, y_err, mask)
+            total = obj(np.array([1.0]))
+
+        sigma_ln = y_err / y_exp               # [0.10, 0.50]
+        log_res = (np.log(y_exp) - np.log(y_t)) / sigma_ln
+        expected = float(np.sum(log_res ** 2))
+        self.assertAlmostEqual(total, expected, places=6)
+
+        # Using the scalar exp_rel_err for every point would give a
+        # different (here, larger) chi2 -- confirming the per-point column
+        # actually changes the result instead of being silently ignored.
+        scalar_log_res = (np.log(y_exp) - np.log(y_t)) / 0.10
+        scalar_chi2 = float(np.sum(scalar_log_res ** 2))
+        self.assertGreater(abs(total - scalar_chi2), 1e-6)
+
+    def test_nonpositive_error_column_falls_back_to_exp_rel_err(self):
+        x_exp = np.array([1.0, 2.0])
+        y_exp = np.array([10.0, 10.0])
+        y_err = np.array([1.0, -1.0])           # second point: no usable error
+        mask = np.ones(len(x_exp), dtype=bool)
+        cfg = self._cfg(exp_rel_err='0.20')
+        y_t = y_exp * 1.1
+
+        with patch.object(topt, 'run_talys_get_xs', return_value=(x_exp, y_t)):
+            obj = topt.make_objective(cfg, x_exp, y_exp, y_err, mask)
+            total = obj(np.array([1.0]))
+
+        sigma_ln = np.array([1.0 / 10.0, 0.20])  # point 1 from the column, point 2 the fallback
+        log_res = (np.log(y_exp) - np.log(y_t)) / sigma_ln
+        expected = float(np.sum(log_res ** 2))
+        self.assertAlmostEqual(total, expected, places=6)
+
+
 class BinAveragedComparisonTest(unittest.TestCase):
     """TALYS must be averaged over each bin before comparison, not read at the centre."""
 
@@ -172,6 +229,50 @@ class ExpTableHeaderParsingTest(unittest.TestCase):
         finally:
             os.remove(path)
         self.assertEqual(len(table), 2)
+
+
+class CheckpointTest(unittest.TestCase):
+    def test_entries_per_fit_in_one_file(self):
+        import json
+
+        names = ["rvadjust_a"]
+        with tempfile.TemporaryDirectory() as d:
+            path = str(Path(d) / "checkpoint.json")
+            entry = lambda x: {"params": [x], "param_names": names, "loss": 1.0, "nfev": 3, "timestamp": "t"}
+            topt.checkpoint_save(path, "fit_dE_0.2", entry(1.1))
+            topt.checkpoint_save(path, "fit_dE_0.5", entry(1.2))
+            self.assertEqual(topt.checkpoint_load(path, "fit_dE_0.2", names)["params"], [1.1])
+            self.assertEqual(topt.checkpoint_load(path, "fit_dE_0.5", names)["params"], [1.2])
+            self.assertIsNone(topt.checkpoint_load(path, "fit_dE_0.5", ["other"]))  # \opt changed
+            topt.checkpoint_clear(path, "fit_dE_0.2")
+            self.assertIsNone(topt.checkpoint_load(path, "fit_dE_0.2", names))
+            self.assertEqual(sorted(json.loads(Path(path).read_text())), ["fit_dE_0.5"])
+            topt.checkpoint_clear(path, "fit_dE_0.5")
+            self.assertFalse(Path(path).exists())                 # removed when empty
+
+    def test_old_single_fit_checkpoint_is_not_resumed(self):
+        import json
+
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d) / "checkpoint.json"
+            path.write_text(json.dumps({"params": [1.4], "loss": 2.0, "nfev": 5, "timestamp": "t"}))
+            self.assertIsNone(topt.checkpoint_load(str(path), "fit_dE_0.2", ["rvadjust_a"]))
+
+    def test_failed_fit_does_not_poison_the_next_fit(self):
+        """A fit whose entry is never saved (e.g. the run crashed before a
+        best was found) must not leave anything another fit in the same
+        run directory could accidentally resume from."""
+        names = ["rvadjust_a"]
+        with tempfile.TemporaryDirectory() as d:
+            path = str(Path(d) / "checkpoint.json")
+            topt.checkpoint_save(path, "fit_dE_0.2",
+                                 {"params": [9.9], "param_names": names,
+                                  "loss": 1.0, "nfev": 1, "timestamp": "t"})
+            # fit_dE_0.5 never wrote an entry (e.g. its best-fit TALYS run
+            # failed before any checkpoint was saved).
+            self.assertIsNone(topt.checkpoint_load(path, "fit_dE_0.5", names))
+            # fit_dE_0.2's own entry is unaffected.
+            self.assertEqual(topt.checkpoint_load(path, "fit_dE_0.2", names)["params"], [9.9])
 
 
 if __name__ == "__main__":
