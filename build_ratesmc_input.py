@@ -57,6 +57,44 @@ def _find_resonant_block(lines: List[str]) -> Tuple[int, int, int]:
     return header_idx, data_start, data_end
 
 
+def _clear_upper_limits(lines: List[str]) -> int:
+    """
+    Remove the data rows of the "Upper Limits of Resonances" section in place.
+
+    TESSERACT assumes every resonance is known, so the template's upper-limit
+    resonances (which RatesMC would otherwise add to the rate) are removed.
+    The section markers and column header are kept so RatesMC's parser still
+    finds the section; if no comment row remains, a commented-out zero row is
+    left in the same form the empty templates use. Returns the number of rows
+    removed.
+    """
+    start = next(
+        (i for i, ln in enumerate(lines)
+         if ln.strip().lower().startswith("upper limits of resonances")),
+        None,
+    )
+    if start is None:
+        return 0
+    header = next(
+        (j for j in range(start + 1, len(lines)) if lines[j].strip().startswith("Ecm")),
+        None,
+    )
+    if header is None:
+        return 0
+    end = next(
+        (k for k in range(header + 1, len(lines)) if lines[k].strip().startswith("*")),
+        len(lines),
+    )
+    body = lines[header + 1:end]
+    kept = [ln for ln in body if ln.strip().startswith("!") or not ln.strip()]
+    removed = len(body) - len(kept)
+    if not any(ln.strip().startswith("!") for ln in kept):
+        n_cols = len(lines[header].split())
+        kept = ["!" + " ".join(["0.0"] * n_cols)]
+    lines[header + 1:end] = kept
+    return removed
+
+
 def _template_has_corr_frac(lines: List[str]) -> bool:
     header_idx, _, _ = _find_resonant_block(lines)
     return "corr/frac" in lines[header_idx].lower()
@@ -83,13 +121,21 @@ def inject_rows(
     rows: List[str],
     header_line: Optional[str] = None,
     n_random_samples: Optional[int] = None,
+    clear_upper_limits: bool = True,
 ) -> None:
     """
     Replace the resonant contribution rows in the template with the provided rows and write to out_path.
+
+    With `clear_upper_limits` (default), the template's upper-limit resonances
+    are removed as well, so the output contains only the supplied resonances.
     """
     text = template.read_text(encoding="utf-8").splitlines()
     if n_random_samples is not None:
         _override_random_samples(text, n_random_samples)
+    if clear_upper_limits:
+        n_removed = _clear_upper_limits(text)
+        if n_removed:
+            print(f"Removed {n_removed} upper-limit resonance rows from the template.")
     header_idx, data_start, data_end = _find_resonant_block(text)
     if header_line:
         text[header_idx] = header_line
@@ -623,6 +669,7 @@ def build_ratesmc_input(args) -> None:
         rows,
         header_line=header_line,
         n_random_samples=args.n_random_samples,
+        clear_upper_limits=not getattr(args, "keep_upper_limits", False),
     )
     count = len(rows)
     meta = getattr(generated, "metadata", None) or {}
@@ -740,6 +787,15 @@ def parse_args() -> argparse.Namespace:
         type=int,
         default=3,
         help="Decimal digits for non-Ecm columns (mantissa).",
+    )
+    p.add_argument(
+        "--keep-upper-limits",
+        action="store_true",
+        default=False,
+        help=(
+            "Keep the template's upper-limit resonances in the output "
+            "(default: remove them, since TESSERACT assumes all resonances are known)."
+        ),
     )
     p.add_argument(
         "--n-random-samples",

@@ -147,5 +147,79 @@ class PerRunSeedTest(unittest.TestCase):
         self.assertEqual(seeds, ["100", "101", "102"])
 
 
+class ParitySelectionTest(unittest.TestCase):
+    def test_alpha_on_0plus_target_forbids_unnatural_parity(self):
+        from nucres.generator import _allowed_L_values
+
+        for J in range(6):
+            natural = (-1) ** J
+            self.assertEqual(_allowed_L_values(J, 0.0, 0.0, natural, 1), [J])
+            self.assertEqual(_allowed_L_values(J, 0.0, 0.0, -natural, 1), [])
+
+    def test_negative_parity_target(self):
+        from nucres.generator import _allowed_L_values
+
+        # 15N (1/2-) + alpha: a 1/2+ resonance needs l = 1, a 1/2- one l = 0.
+        self.assertEqual(_allowed_L_values(0.5, 0.0, 0.5, +1, -1), [1])
+        self.assertEqual(_allowed_L_values(0.5, 0.0, 0.5, -1, -1), [0])
+
+    def test_generator_samples_both_parities_and_drops_forbidden(self):
+        from nucres.generator import HFBSamplerConfig, synthesize_sigma_from_hfb
+
+        data_root = (
+            Path(__file__).resolve().parent.parent
+            / "data" / "densities" / "level-densities-hfb"
+        )
+        if not (data_root / "z010.tab").exists():
+            self.skipTest("HFB tables not available.")
+        # 16O(a,g)20Ne: compound 20Ne, alpha + 0+ target.
+        cfg = HFBSamplerConfig(
+            Z=10, A=20, data_root=data_root, s1=0.0, s2=0.0,
+            E_min_mev=0.5, E_max_mev=6.0, U_offset_mev=4.73, seed=1,
+            n_density_points=400, n_sigma_points=64,
+        )
+        spec = synthesize_sigma_from_hfb(cfg)
+        parities = {r.parity for r in spec.resonances}
+        self.assertEqual(parities, {+1, -1})
+        for r in spec.resonances:
+            self.assertEqual(r.parity, (-1) ** int(r.J))
+            self.assertEqual(r.L1, int(r.J))
+        self.assertIn((1.0, +1), spec.metadata["dropped_Jpi"])
+        self.assertGreater(spec.metadata["expected_levels_dropped"], 0.0)
+
+
+class NubaseLookupTest(unittest.TestCase):
+    def test_ground_state_jpi(self):
+        from nucres.read_qvals import ground_state_jpi
+
+        self.assertEqual(ground_state_jpi(2, 4), (0.0, 1))
+        self.assertEqual(ground_state_jpi(7, 15), (0.5, -1))
+        self.assertEqual(ground_state_jpi(13, 27), (2.5, 1))
+
+
+class TemplateHandlingTest(unittest.TestCase):
+    def test_mass_number_is_rounded_not_truncated(self):
+        from build_ratesmc_input import _mass_number_from_token
+
+        self.assertEqual(_mass_number_from_token("26.9815"), 27)
+        self.assertEqual(_mass_number_from_token("4.0026"), 4)
+        self.assertEqual(_mass_number_from_token("22"), 22)
+
+    def test_upper_limit_rows_are_cleared(self):
+        from build_ratesmc_input import _clear_upper_limits
+
+        repo = Path(__file__).resolve().parent.parent
+        lines = (repo / "input" / "22Mg(a,p)25Al.txt").read_text().splitlines()
+        n_before = len(lines)
+        removed = _clear_upper_limits(lines)
+        self.assertEqual(removed, 19)
+        start = next(i for i, ln in enumerate(lines) if ln.startswith("Upper Limits"))
+        header = next(j for j in range(start, len(lines)) if lines[j].startswith("Ecm"))
+        self.assertTrue(lines[header + 1].startswith("!"))
+        self.assertTrue(lines[header + 2].startswith("*"))
+        self.assertEqual(len(lines), n_before - 19 + 1)
+        self.assertTrue(any(ln.startswith("Interference") for ln in lines))
+
+
 if __name__ == "__main__":
     unittest.main()
