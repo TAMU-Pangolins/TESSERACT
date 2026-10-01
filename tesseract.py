@@ -301,9 +301,17 @@ def step1_build_ratesmc(basics: dict, resonance: dict,
             # give uncorrelated streams.
             cmd.extend(["--seed", str(seed_base + j)])
         for key, flag in (('target_parity', '--target-parity'),
-                          ('projectile_parity', '--projectile-parity')):
+                          ('projectile_parity', '--projectile-parity'),
+                          ('Gamma_i_dof', '--Gamma-i-dof'),
+                          ('Gamma_o_dof', '--Gamma-o-dof'),
+                          ('final_spin', '--final-spin'),
+                          ('final_parity', '--final-parity')):
             if key in resonance:
                 cmd.extend([flag, resonance[key]])
+        if _bool(resonance.get('hfb_corrections'), False):
+            cmd.append("--hfb-corrections")
+        if not _bool(resonance.get('auto_l2'), True):
+            cmd.append("--no-auto-l2")
         if not _bool(resonance.get('drop_forbidden'), True):
             cmd.append("--keep-forbidden")
         if _bool(resonance.get('use_strength'), False):

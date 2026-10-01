@@ -65,6 +65,27 @@ class HFBSamplerConfig:
     drop_forbidden : bool
         If true (default), J^pi sequences that the entrance channel cannot
         form are removed before sampling, so they contribute no resonances.
+    Gamma_i_dof, Gamma_o_dof : float
+        Degrees of freedom nu of the chi^2/nu fluctuation of the entrance and
+        exit widths (mean preserved). nu = 1 is Porter-Thomas for a single
+        channel; a total gamma width summed over many transitions fluctuates
+        less (larger nu); nu = inf disables the fluctuation.
+    exit_kind : {"particle", "gamma"} or None
+        Exit channel type, used to choose L2 per resonance. None leaves L2
+        unset (the caller's fixed default is used).
+    ejectile_spin, ejectile_parity : float, int
+        Spin and parity of the emitted particle (ignored for gamma exits).
+    final_spin, final_parity : float or None, int or None
+        J^pi of the final state populated in the residual nucleus. If unknown
+        (None), L2 is left unset.
+    drop_exit_forbidden : bool
+        If true (default), resonances that cannot decay to the final state
+        (no allowed l, or a gamma transition 0 -> 0) are dropped: they would
+        contribute nothing to this reaction.
+    use_hfb_corrections : bool
+        Renormalise the HFB densities with the RIPL-3 `.cor` (ctable, ptable)
+        entry of the compound nucleus, as TALYS does for its HFB tables.
+        Isotopes without an entry use the raw table.
     widths_are_reduced : bool
         If true, the sampled `Gamma_i`/`Gamma_o` are reduced widths that the
         caller converts to partial widths (as `build_ratesmc_input.py` does).
@@ -102,6 +123,15 @@ class HFBSamplerConfig:
     spacing_model: str = "poisson"
     drop_forbidden: bool = True
     widths_are_reduced: bool = False
+    Gamma_i_dof: float = 1.0
+    Gamma_o_dof: float = 1.0
+    exit_kind: Optional[str] = None
+    ejectile_spin: float = 0.5
+    ejectile_parity: int = 1
+    final_spin: Optional[float] = None
+    final_parity: Optional[int] = None
+    drop_exit_forbidden: bool = True
+    use_hfb_corrections: bool = False
 
 
 @dataclass
@@ -244,6 +274,45 @@ def _pick_L1(
     return int(allowed[0])
 
 
+def _exit_L_values(
+    J: float,
+    pi_res: int,
+    exit_kind: str,
+    final_spin: float,
+    final_parity: int,
+    ejectile_spin: float = 0.5,
+    ejectile_parity: int = 1,
+) -> List[int]:
+    """
+    Allowed exit-channel angular momenta for a J^pi_res resonance decaying
+    to a final state J_f^pi_f.
+
+    Particle exits: orbital l with |J - S| <= l <= J + S for a channel spin
+    S = |s_e - J_f| .. s_e + J_f, and pi_res = pi_e * pi_f * (-1)^l.
+    Gamma exits: multipolarities L = max(1, |J - J_f|) .. J + J_f (no
+    monopole, so 0 -> 0 has none); each L is E or M according to the parity
+    change, so every L in that range is allowed.
+    """
+    if exit_kind == "gamma":
+        L_min = max(1, int(round(abs(J - final_spin))))
+        L_max = int(round(J + final_spin))
+        return list(range(L_min, L_max + 1))
+    if exit_kind == "particle":
+        return _allowed_L_values(
+            J, ejectile_spin, final_spin, pi_res, ejectile_parity * final_parity
+        )
+    raise ValueError(f"exit_kind must be 'particle' or 'gamma'; got {exit_kind!r}")
+
+
+def _pick_L2(J: float, pi_res: int, config: "HFBSamplerConfig") -> Optional[int]:
+    """Lowest allowed exit L (see _exit_L_values); None if none is allowed."""
+    allowed = _exit_L_values(
+        J, pi_res, config.exit_kind, config.final_spin, config.final_parity,
+        config.ejectile_spin, config.ejectile_parity,
+    )
+    return int(allowed[0]) if allowed else None
+
+
 def _selected_parities(pi: int) -> tuple[int, ...]:
     pi = int(pi)
     if pi == 0:
@@ -308,6 +377,7 @@ def synthesize_sigma_from_hfb(config: HFBSamplerConfig) -> GeneratedSpectrum:
         tab_path=str(tab_p),
         cor_path=(str(cor_p) if cor_p is not None else None),
         A=config.A,
+        use_corrections=config.use_hfb_corrections,
         warn_if_ignored=False,
     )
 
@@ -440,9 +510,17 @@ def synthesize_sigma_from_hfb(config: HFBSamplerConfig) -> GeneratedSpectrum:
     sigma_tot = np.zeros_like(E_plot_MeV)
     resonances: List[Resonance] = []
 
-    def pt_width(mean_eV: float) -> float:
-        return float(mean_eV * rng.chisquare(df=1))
+    def pt_width(mean_eV: float, dof: float) -> float:
+        if not np.isfinite(dof):
+            return float(mean_eV)
+        return float(mean_eV * rng.chisquare(df=dof) / dof)
 
+    choose_L2 = (
+        config.exit_kind is not None
+        and config.final_spin is not None
+        and (config.exit_kind == "gamma" or config.final_parity is not None)
+    )
+    n_exit_forbidden = 0
     for Er, c in levels:
         J_val, parity = channels[c]
         L1_val = (
@@ -450,6 +528,10 @@ def synthesize_sigma_from_hfb(config: HFBSamplerConfig) -> GeneratedSpectrum:
             if config.auto_l1
             else None
         )
+        L2_val = _pick_L2(J_val, parity, config) if choose_L2 else None
+        if choose_L2 and L2_val is None and config.drop_exit_forbidden:
+            n_exit_forbidden += 1
+            continue
         resonance = Resonance(
             E_r=float(Er * 1e6),
             J=J_val,
@@ -457,9 +539,10 @@ def synthesize_sigma_from_hfb(config: HFBSamplerConfig) -> GeneratedSpectrum:
             s2=config.s2,
             m1=config.m1,
             m2=config.m2,
-            Gamma_i=pt_width(config.Gamma_i_mean_eV),
-            Gamma_o=pt_width(config.Gamma_o_mean_eV),
+            Gamma_i=pt_width(config.Gamma_i_mean_eV, config.Gamma_i_dof),
+            Gamma_o=pt_width(config.Gamma_o_mean_eV, config.Gamma_o_dof),
             L1=L1_val,
+            L2=L2_val,
             parity=parity,
         )
         resonances.append(resonance)
@@ -482,6 +565,10 @@ def synthesize_sigma_from_hfb(config: HFBSamplerConfig) -> GeneratedSpectrum:
         "Gamma_i_mean_eV": config.Gamma_i_mean_eV,
         "Gamma_o_mean_eV": config.Gamma_o_mean_eV,
         "widths_are_reduced": config.widths_are_reduced,
+        "Gamma_i_dof": config.Gamma_i_dof,
+        "Gamma_o_dof": config.Gamma_o_dof,
+        "n_exit_forbidden": n_exit_forbidden,
+        "use_hfb_corrections": config.use_hfb_corrections,
     }
 
     return GeneratedSpectrum(

@@ -43,6 +43,19 @@ def resolve_density_paths(
     return tab, (cor if cor.exists() else None)
 
 
+def _corrected(rec, cor_path):
+    """Apply the RIPL-3 (ctable, ptable) normalisation if the .cor file has this isotope."""
+    cor = read_hfb_cor(cor_path) if cor_path else {}
+    try:
+        return apply_hfb_corrections(rec, cor)
+    except KeyError:
+        print(
+            f"[info] No level-density correction for Z={rec.header.Z}, A={rec.header.A}"
+            f"{' in ' + str(cor_path) if cor_path else ''}; using the uncorrected HFB table."
+        )
+        return rec
+
+
 def load_rho_function(
     tab_path, cor_path=None, *, A=None, use_corrections=False, warn_if_ignored=True
 ):
@@ -59,7 +72,8 @@ def load_rho_function(
         Mass number of the isotope to read. Required when the `.tab` file
         holds several isotopes (the usual RIPL-3 layout).
     use_corrections : bool, default=False
-        Apply `.cor` adjustments when both this flag and `cor_path` are present.
+        Renormalise with the RIPL-3 `.cor` (ctable, ptable) entry for this
+        isotope: rho(U) = exp(ctable sqrt(U - ptable)) rho_HFB(U - ptable).
     warn_if_ignored : bool, default=True
         Emit an informational message when a corrections file is available but not used.
 
@@ -69,9 +83,8 @@ def load_rho_function(
         Interpolator `rho(U, Jcol, pi)` in levels/MeV.
     """
     rec = read_hfb_tab(tab_path, A=A)
-    if use_corrections and cor_path:
-        cor = read_hfb_cor(cor_path)
-        rec = apply_hfb_corrections(rec, cor)
+    if use_corrections:
+        rec = _corrected(rec, cor_path)
     elif cor_path and warn_if_ignored:
         # Soft notice; flip use_corrections=True later to re-enable.
         print(
@@ -96,7 +109,8 @@ def load_hfb_record(
         Mass number of the isotope to read. Required when the `.tab` file
         holds several isotopes (the usual RIPL-3 layout).
     use_corrections : bool, default=False
-        Apply `.cor` adjustments when both this flag and `cor_path` are present.
+        Renormalise with the RIPL-3 `.cor` (ctable, ptable) entry for this
+        isotope: rho(U) = exp(ctable sqrt(U - ptable)) rho_HFB(U - ptable).
     warn_if_ignored : bool, default=True
         Emit an informational message when a corrections file is available but not used.
 
@@ -106,9 +120,8 @@ def load_hfb_record(
         Parsed HFB record as returned by `read_hfb_tab` / `apply_hfb_corrections`.
     """
     rec = read_hfb_tab(tab_path, A=A)
-    if use_corrections and cor_path:
-        cor = read_hfb_cor(cor_path)
-        rec = apply_hfb_corrections(rec, cor)
+    if use_corrections:
+        rec = _corrected(rec, cor_path)
     elif cor_path and warn_if_ignored:
         print(
             f"[info] Ignoring corrections file for now: {cor_path} (set use_corrections=True to apply)"
