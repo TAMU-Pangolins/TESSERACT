@@ -114,7 +114,7 @@ BASE_COLUMN_SPECS = [
     ("DEcm", 6, "float"),
     ("wg", 11, "sci"),
     ("Dwg", 5, "sci"),
-    ("Jr", 3, "int"),
+    ("Jr", 3, "spin"),
     ("G1", 11, "sci"),
     ("DG1", 5, "sci"),
     ("L1", 3, "int"),
@@ -233,6 +233,10 @@ def resonance_to_row(res: Resonance, opts: RatesMCExportOptions) -> RatesMCRow:
 def _format_value(value: float, decimals: int, kind: str) -> str:
     if kind == "int":
         text = str(int(round(value)))
+    elif kind == "spin":
+        # Spins are integer or half-integer; never round 3/2 to 2.
+        two_j = round(2 * float(value))
+        text = str(two_j // 2) if two_j % 2 == 0 else f"{two_j / 2:.1f}"
     else:
         scientific = kind == "sci"
         if abs(value) < 1e-300:
