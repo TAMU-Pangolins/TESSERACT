@@ -15,6 +15,7 @@ import numpy as np
 
 from diagnostic_plot import _sommerfeld_eta
 from plot_talys_xs_overlay import (
+    bin_width_label,
     gamow_peak_and_width,
     load_xy,
     parse_optimized_xs_from_out,
@@ -144,7 +145,7 @@ def plot_s_factor(
             linewidth=1.2,
             marker="o",
             markersize=3.8,
-            label=r"Integrated $S(E)$ ($\Delta E = 0.2$ MeV)",
+            label=r"Integrated $S(E)$" + bin_width_label(metadata),
             zorder=4,
         )
 

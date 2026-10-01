@@ -17,6 +17,7 @@ Usage:
 import argparse
 import glob
 import os
+import re
 import numpy as np
 from scipy.integrate import cumulative_trapezoid
 import matplotlib.pyplot as plt
@@ -82,6 +83,34 @@ def load_ratesmc_xs(txt_path):
     return data[:, 0], data[:, 1]   # MeV, mb
 
 
+def talys_on_fine_grid(E_talys, xs_talys, E_fine):
+    """
+    Interpolate the TALYS cross section, tabulated only at the experimental
+    bin energies, in log(sigma) onto the part of E_fine inside its range.
+    The steep sub-Coulomb sigma(E) makes trapezoids on the coarse grid bias
+    the percentile energies.
+    """
+    good = xs_talys > 0
+    E_t, xs_t = E_talys[good], xs_talys[good]
+    if E_t.size < 2:
+        return E_talys, xs_talys
+    inside = (E_fine >= E_t[0]) & (E_fine <= E_t[-1])
+    E_out = E_fine[inside]
+    return E_out, np.exp(np.interp(E_out, E_t, np.log(xs_t)))
+
+
+def fraction_outside(E_ref, ig_ref, e_lo, e_hi):
+    """Fractions of the reference integral below e_lo and above e_hi."""
+    total = np.trapezoid(ig_ref, E_ref)
+    if total <= 0:
+        return 0.0, 0.0
+    below = E_ref <= e_lo
+    above = E_ref >= e_hi
+    f_lo = np.trapezoid(ig_ref[below], E_ref[below]) / total if below.sum() > 1 else 0.0
+    f_hi = np.trapezoid(ig_ref[above], E_ref[above]) / total if above.sum() > 1 else 0.0
+    return f_lo, f_hi
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--npz",   required=True,
@@ -97,6 +126,9 @@ def main():
                         help="Skip plotting the TALYS CDF")
     parser.add_argument("--no-ratesmc", action="store_true",
                         help="Skip plotting the RatesMC CDF")
+    parser.add_argument("--output", default=None,
+                        help="Output PNG (default: <reaction>_gamow_window_cdf.png, "
+                             "with <reaction> taken from the --xs filename)")
     parser.add_argument("--normalize", choices=["self", "ratesmc"], default="self",
                         help="Normalize each curve's CDF to its own total "
                              "integral (default), or to the RatesMC total "
@@ -107,6 +139,11 @@ def main():
     npz_matches = sorted(glob.glob(args.npz))
     if not npz_matches:
         raise FileNotFoundError(f"No NPZ file found matching: {args.npz}")
+    if len(npz_matches) > 1:
+        raise SystemExit(
+            f"--npz matched {len(npz_matches)} files; pass exactly one:\n  "
+            + "\n  ".join(npz_matches)
+        )
     npz_path = npz_matches[0]
     print(f"TALYS NPZ : {npz_path}")
     print(f"RatesMC XS: {args.xs}")
@@ -121,11 +158,23 @@ def main():
     E_talys, xs_talys = E_talys[order_t], xs_talys[order_t]
     E_rmc,   xs_rmc   = E_rmc[order_r],   xs_rmc[order_r]
 
+    # TALYS is only known between its first and last tabulated energies;
+    # what TESSERACT's integrand has outside that range is reported per T9.
+    e_talys_lo, e_talys_hi = float(E_talys[0]), float(E_talys[-1])
+
     # Apply energy limit
     mask_t = E_talys <= args.e_max
     mask_r = E_rmc   <= args.e_max
     E_talys, xs_talys = E_talys[mask_t], xs_talys[mask_t]
     E_rmc,   xs_rmc   = E_rmc[mask_r],   xs_rmc[mask_r]
+
+    if E_talys.size < 2 and not args.no_talys:
+        print(f"WARNING: fewer than two TALYS energies at or below --e-max "
+              f"{args.e_max} MeV (TALYS spans {e_talys_lo:.3f}-{e_talys_hi:.3f} MeV); "
+              "skipping the TALYS CDF.")
+        args.no_talys = True
+    elif not args.no_talys:
+        E_talys, xs_talys = talys_on_fine_grid(E_talys, xs_talys, E_rmc)
 
     # ── Color map — one color per T9 ────────────────────────────────────────
     t9_vals = sorted(args.t9)
@@ -151,6 +200,14 @@ def main():
         mask_ref = np.isfinite(ig_rmc_ref) & (ig_rmc_ref >= 0)
         ratesmc_total = cumulative_trapezoid(
             ig_rmc_ref[mask_ref], E_rmc[mask_ref], initial=0.0)[-1]
+        if not args.no_talys:
+            f_lo, f_hi = fraction_outside(E_rmc[mask_ref], ig_rmc_ref[mask_ref],
+                                          e_talys_lo, e_talys_hi)
+            if f_lo > 0.01 or f_hi > 0.01:
+                print(f"WARNING: T9={T9} GK: {100 * f_lo:.1f}% of the RatesMC "
+                      f"integrand lies below the first TALYS energy "
+                      f"({e_talys_lo:.3f} MeV) and {100 * f_hi:.1f}% above the last "
+                      f"({e_talys_hi:.3f} MeV); the TALYS CDF misses it.")
 
         # Compute the CDF and its E5%/E50%/E95% energies for each source
         # present at this T9.
@@ -222,7 +279,17 @@ def main():
 
     #fig.suptitle("22Mg(a,p)25Al — Gamow window CDF", fontsize=13)
     plt.tight_layout()
-    plt.savefig('22Mg_ap_25Al_gamow_window_cdf.png', dpi=300)
+    if args.output:
+        out_png = args.output
+    else:
+        stem = os.path.basename(args.xs)
+        m = re.match(r"(.+?)_xs_unintegrated", stem)
+        reaction = (m.group(1) if m else os.path.splitext(stem)[0])
+        # 22Mg(a,p)25Al -> 22Mg_ap_25Al, the repo's file-name convention
+        reaction = re.sub(r"^(.+?)\((\w+),(\w+)\)(.+)$", r"\1_\2\3_\4", reaction)
+        out_png = f"{reaction}_gamow_window_cdf.png"
+    plt.savefig(out_png, dpi=300)
+    print(f"Wrote {out_png}")
     plt.show()
 
 

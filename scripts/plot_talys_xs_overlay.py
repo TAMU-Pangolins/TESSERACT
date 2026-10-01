@@ -161,6 +161,12 @@ def parse_optimized_xs_from_out(path: Path, *, run_idx: int | None = None) -> tu
     return x, y, metadata
 
 
+def bin_width_label(metadata: dict) -> str:
+    """Return " ($\\Delta E = x$ MeV)" from the run's "Bin width" entry, or "" if unknown."""
+    m = re.search(r"([0-9]*\.?[0-9]+)\s*MeV", str(metadata.get("bin_width", "")))
+    return rf" ($\Delta E = {m.group(1)}$ MeV)" if m else ""
+
+
 def plot_overlay(
     *,
     output: Path,
@@ -196,7 +202,7 @@ def plot_overlay(
             linewidth=1.2,
             marker="o",
             markersize=3.8,
-            label=r"Integrated cross section ($\Delta E = 0.2$ MeV)",
+            label="Integrated cross section" + bin_width_label(metadata),
             zorder=4,
         )
 
