@@ -34,7 +34,7 @@ class ApplyHfbCorrectionsTest(unittest.TestCase):
     def test_raises_for_isotope_with_no_entry(self):
         if not (TAB_PATH.exists() and COR_PATH.exists()):
             self.skipTest("HFB tables not available.")
-        rec = read_hfb_tab(str(TAB_PATH))  # single-isotope file: z=9, a=17
+        rec = read_hfb_tab(str(TAB_PATH), A=17)  # z009.tab holds several isotopes; select 17F
         cor = {(9, 999): (0.1, 0.1)}  # no entry for the actual (Z, A)
         with self.assertRaises(KeyError):
             apply_hfb_corrections(rec, cor)
@@ -42,7 +42,7 @@ class ApplyHfbCorrectionsTest(unittest.TestCase):
     def test_renormalises_density_for_real_isotope(self):
         if not (TAB_PATH.exists() and COR_PATH.exists()):
             self.skipTest("HFB tables not available.")
-        rec = read_hfb_tab(str(TAB_PATH))
+        rec = read_hfb_tab(str(TAB_PATH), A=17)
         cor = read_hfb_cor(str(COR_PATH))
         self.assertIn((rec.header.Z, rec.header.A), cor)
         corrected = apply_hfb_corrections(rec, cor)
@@ -58,7 +58,7 @@ class CorrectedHelperTest(unittest.TestCase):
     def test_falls_back_when_isotope_has_no_entry(self):
         if not TAB_PATH.exists():
             self.skipTest("HFB tables not available.")
-        rec = read_hfb_tab(str(TAB_PATH))
+        rec = read_hfb_tab(str(TAB_PATH), A=17)
         # No .cor file at all: should return the record unchanged, not raise.
         out = _corrected(rec, None)
         self.assertIs(out, rec)
@@ -91,6 +91,32 @@ class BuildDensityGridCorrectionsTest(unittest.TestCase):
             _, rho_raw = build_density_grid(**kwargs, use_corrections=False)
             _, rho_same = build_density_grid(**kwargs, use_corrections=True)
             np.testing.assert_array_equal(rho_same, rho_raw)
+
+
+class ReadHfbTabIsotopeSelectionTest(unittest.TestCase):
+    """z009.tab holds isotopes A=16..21 (and more); confirms the requested
+    isotope is read, not silently the first/lightest one in the file."""
+
+    def test_selects_requested_isotope_not_the_first_in_file(self):
+        if not TAB_PATH.exists():
+            self.skipTest("HFB tables not available.")
+        rec17 = read_hfb_tab(str(TAB_PATH), A=17)
+        rec20 = read_hfb_tab(str(TAB_PATH), A=20)
+        self.assertEqual(rec17.header.A, 17)
+        self.assertEqual(rec20.header.A, 20)
+        self.assertFalse(np.array_equal(rec17.positive.Rho_level, rec20.positive.Rho_level))
+
+    def test_raises_without_a_for_multi_isotope_file(self):
+        if not TAB_PATH.exists():
+            self.skipTest("HFB tables not available.")
+        with self.assertRaises(ValueError):
+            read_hfb_tab(str(TAB_PATH))
+
+    def test_raises_for_an_isotope_not_in_the_file(self):
+        if not TAB_PATH.exists():
+            self.skipTest("HFB tables not available.")
+        with self.assertRaises(ValueError):
+            read_hfb_tab(str(TAB_PATH), A=999)
 
 
 if __name__ == "__main__":

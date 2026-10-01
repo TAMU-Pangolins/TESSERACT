@@ -296,6 +296,7 @@ def synthesize_sigma_from_hfb(config: HFBSamplerConfig) -> GeneratedSpectrum:
     record = load_hfb_record(
         tab_path=str(tab_p),
         cor_path=(str(cor_p) if cor_p is not None else None),
+        A=config.A,
         use_corrections=config.use_hfb_corrections,
         warn_if_ignored=False,
     )
@@ -307,6 +308,7 @@ def synthesize_sigma_from_hfb(config: HFBSamplerConfig) -> GeneratedSpectrum:
     if config.sample_J:
         E_mev, rho_per_mev = build_total_density_grid(
             tab_path=tab_p,
+            A=config.A,
             pi=config.pi,
             E_min_mev=config.E_min_mev,
             E_max_mev=config.E_max_mev,
@@ -497,7 +499,11 @@ def synthesize_sigma_from_hfb(config: HFBSamplerConfig) -> GeneratedSpectrum:
         "hfb_header_Z": record.header.Z,
         "hfb_header_A": record.header.A,
         "hfb_Z_mismatch": record.header.Z != config.Z,
-        "hfb_A_mismatch": (not config.sample_J) and (record.header.A != config.A),
+        # read_hfb_tab now raises if config.A isn't actually in the .tab file
+        # (in both branches above), so by the time we get here this is
+        # always False in practice; kept for transparency and as a guard
+        # against a future caller that catches that error and proceeds anyway.
+        "hfb_A_mismatch": record.header.A != config.A,
         "hfb_deformation": {
             "beta2": record.header.beta2,
             "beta3": record.header.beta3,
