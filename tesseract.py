@@ -288,7 +288,11 @@ def step1_build_ratesmc(basics: dict, resonance: dict,
         if 'U_offset_mev' in resonance:
             cmd.extend(["--U-offset-mev", resonance['U_offset_mev']])
         if seed is not None:
-            cmd.extend(["--seed", seed])
+            # One base seed for the whole ensemble; each run gets its own
+            # stream (base + j), so runs are reproducible but independent.
+            # numpy's SeedSequence hashes the seed, so adjacent integers
+            # give uncorrelated streams.
+            cmd.extend(["--seed", str(int(seed) + j)])
         if _bool(resonance.get('use_strength'), False):
             cmd.append("--use-strength")
         if not _bool(resonance.get('sample_J'), True):
