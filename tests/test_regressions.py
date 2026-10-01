@@ -556,5 +556,71 @@ def quad_avg(f, a, b):
     return quad(f, a, b, epsabs=0, epsrel=1e-12)[0] / (b - a)
 
 
+def _opt_block(input_file, run, dE, chi2, param):
+    return (
+        "=" * 72 + "\n"
+        f"Date/Time   : 2026-10-01 00:00:00\nInput file  : {input_file}\n"
+        f"Reaction    : 22Mg(α,p)25Al\nBin width   : dE = {dE} MeV\nRun index   : {run}\n"
+        + "-" * 72 + "\nOptimizer   : Powell  (converged=True, nfev=10)\n"
+        f"Min reduced chi-square: {chi2}\n" + "-" * 72 + "\nOptimized parameters:\n"
+        f"  rvadjust_a = {param:+.6g}\n" + "-" * 72 + "\nCross sections  E[MeV]  sigma[mb]:\n"
+        "  2.0e+00  1.0e-03\n" + "-" * 72 + "\nReaction rates  T9[GK]  rate[cm3/s/mol]:\n"
+        + "".join(f"  {t:.6e}  {1e-5 * t ** 3:.6e}\n" for t in (0.5, 1.0, 1.5, 2.0, 3.0))
+        + "=" * 72 + "\n\n"
+    )
+
+
+class FitRecordDedupTest(unittest.TestCase):
+    def test_reruns_are_counted_once(self):
+        import sys
+        sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
+        import plot_talys_param_grid as grid
+        import plot_rate_ratio_wide as ratio
+        import plot_talys_results_new as results
+
+        a = "out/22Mg_ap_25Al_integrated_xs_dE_0.2_run0.csv"
+        b = "out/22Mg_ap_25Al_integrated_xs_dE_0.5_run0.csv"
+        text = (_opt_block(a, 0, 0.2, 5.0, 1.1) + _opt_block(b, 0, 0.5, 4.0, 1.2)
+                + _opt_block(a, 0, 0.2, 3.0, 1.3))      # re-run of fit a
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d) / "talys_optimization.out"
+            path.write_text(text)
+            g = grid.parse_talys_optimization(path)
+            self.assertEqual(len(g), 2)
+            self.assertEqual([r["params"]["rvadjust_a"] for r in g], [1.3, 1.2])  # newest kept
+            self.assertEqual(len(ratio.parse_talys_rate_records(path)), 2)
+            self.assertEqual(len(results.parse_talys_opt_out(str(path))), 2)
+
+
+class CheckpointTest(unittest.TestCase):
+    def test_entries_per_fit_in_one_file(self):
+        import json
+        import talys_opt_with_unc as topt
+
+        names = ["rvadjust_a"]
+        with tempfile.TemporaryDirectory() as d:
+            path = str(Path(d) / "checkpoint.json")
+            entry = lambda x: {"params": [x], "param_names": names, "loss": 1.0, "nfev": 3, "timestamp": "t"}
+            topt.checkpoint_save(path, "fit_dE_0.2", entry(1.1))
+            topt.checkpoint_save(path, "fit_dE_0.5", entry(1.2))
+            self.assertEqual(topt.checkpoint_load(path, "fit_dE_0.2", names)["params"], [1.1])
+            self.assertEqual(topt.checkpoint_load(path, "fit_dE_0.5", names)["params"], [1.2])
+            self.assertIsNone(topt.checkpoint_load(path, "fit_dE_0.5", ["other"]))  # \\opt changed
+            topt.checkpoint_clear(path, "fit_dE_0.2")
+            self.assertIsNone(topt.checkpoint_load(path, "fit_dE_0.2", names))
+            self.assertEqual(sorted(json.loads(Path(path).read_text())), ["fit_dE_0.5"])
+            topt.checkpoint_clear(path, "fit_dE_0.5")
+            self.assertFalse(Path(path).exists())                 # removed when empty
+
+    def test_old_single_fit_checkpoint_is_not_resumed(self):
+        import json
+        import talys_opt_with_unc as topt
+
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d) / "checkpoint.json"
+            path.write_text(json.dumps({"params": [1.4], "loss": 2.0, "nfev": 5, "timestamp": "t"}))
+            self.assertIsNone(topt.checkpoint_load(str(path), "fit_dE_0.2", ["rvadjust_a"]))
+
+
 if __name__ == "__main__":
     unittest.main()
