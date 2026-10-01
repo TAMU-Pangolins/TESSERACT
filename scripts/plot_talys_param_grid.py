@@ -22,6 +22,8 @@ import matplotlib.pyplot as plt
 from matplotlib.cm import ScalarMappable
 import numpy as np
 
+from nucres.talys_output import fit_key, keep_latest
+
 
 BLOCK_SPLIT_RE = re.compile(r"={10,}\s*\n")
 PARAM_RE = re.compile(r"^\s*([A-Za-z]\w*)\s*=\s*([+-]?[\d.eE+-]+)\s*$")
@@ -134,6 +136,7 @@ def parse_talys_optimization(path: Path) -> list[dict]:
             "reaction": "",
             "bin_width": "",
             "params": {},
+            "fit_key": fit_key(block),
         }
 
         match = re.search(r"Run index\s*:\s*(\d+)", block)
@@ -173,7 +176,8 @@ def parse_talys_optimization(path: Path) -> list[dict]:
         if rec["params"] and np.isfinite(rec["chi2_red"]):
             records.append(rec)
 
-    return records
+    # One record per fit (re-runs append further blocks for the same fit).
+    return keep_latest(records)
 
 
 def parameter_names(records: list[dict]) -> list[str]:

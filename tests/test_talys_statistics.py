@@ -275,5 +275,48 @@ class CheckpointTest(unittest.TestCase):
             self.assertEqual(topt.checkpoint_load(path, "fit_dE_0.2", names)["params"], [9.9])
 
 
+def _opt_block(input_file, run, dE, chi2, param):
+    return (
+        "=" * 72 + "\n"
+        f"Date/Time   : 2026-10-01 00:00:00\nInput file  : {input_file}\n"
+        f"Reaction    : 22Mg(α,p)25Al\nBin width   : dE = {dE} MeV\nRun index   : {run}\n"
+        + "-" * 72 + "\nOptimizer   : Powell  (converged=True, nfev=10)\n"
+        f"Min reduced chi-square: {chi2}\n" + "-" * 72 + "\nOptimized parameters:\n"
+        f"  rvadjust_a = {param:+.6g}\n" + "-" * 72 + "\nCross sections  E[MeV]  sigma[mb]:\n"
+        "  2.0e+00  1.0e-03\n" + "-" * 72 + "\nReaction rates  T9[GK]  rate[cm3/s/mol]:\n"
+        + "".join(f"  {t:.6e}  {1e-5 * t ** 3:.6e}\n" for t in (0.5, 1.0, 1.5, 2.0, 3.0))
+        + "=" * 72 + "\n\n"
+    )
+
+
+class FitRecordDedupTest(unittest.TestCase):
+    """
+    talys_optimization.out is append-only: a re-run or a resumed job appends
+    a further block for the same fit instead of replacing the old one. The
+    ratio, parameter-grid, and results-plotting scripts must count that fit
+    once (its newest block), not once per appended block.
+    """
+
+    def test_reruns_are_counted_once(self):
+        import sys
+        sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
+        import plot_talys_param_grid as grid
+        import plot_rate_ratio_wide as ratio
+        import plot_talys_results_new as results
+
+        a = "out/22Mg_ap_25Al_integrated_xs_dE_0.2_run0.csv"
+        b = "out/22Mg_ap_25Al_integrated_xs_dE_0.5_run0.csv"
+        text = (_opt_block(a, 0, 0.2, 5.0, 1.1) + _opt_block(b, 0, 0.5, 4.0, 1.2)
+                + _opt_block(a, 0, 0.2, 3.0, 1.3))      # re-run of fit a
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d) / "talys_optimization.out"
+            path.write_text(text)
+            g = grid.parse_talys_optimization(path)
+            self.assertEqual(len(g), 2)
+            self.assertEqual([r["params"]["rvadjust_a"] for r in g], [1.3, 1.2])  # newest kept
+            self.assertEqual(len(ratio.parse_talys_rate_records(path)), 2)
+            self.assertEqual(len(results.parse_talys_opt_out(str(path))), 2)
+
+
 if __name__ == "__main__":
     unittest.main()
