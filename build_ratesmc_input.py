@@ -59,40 +59,49 @@ def _find_resonant_block(lines: List[str]) -> Tuple[int, int, int]:
 
 def _clear_upper_limits(lines: List[str]) -> int:
     """
-    Remove the data rows of the "Upper Limits of Resonances" section in place.
+    Remove the data rows of every "Upper Limits of Resonances" section in
+    place. A template may contain more than one such section (e.g. one per
+    exit channel); all of them are cleared, not just the first.
 
     TESSERACT assumes every resonance is known, so the template's upper-limit
     resonances (which RatesMC would otherwise add to the rate) are removed.
     The section markers and column header are kept so RatesMC's parser still
     finds the section; if no comment row remains, a commented-out zero row is
-    left in the same form the empty templates use. Returns the number of rows
-    removed.
+    left in the same form the empty templates use. Returns the total number
+    of rows removed across all sections.
     """
-    start = next(
-        (i for i, ln in enumerate(lines)
-         if ln.strip().lower().startswith("upper limits of resonances")),
-        None,
-    )
-    if start is None:
-        return 0
-    header = next(
-        (j for j in range(start + 1, len(lines)) if lines[j].strip().startswith("Ecm")),
-        None,
-    )
-    if header is None:
-        return 0
-    end = next(
-        (k for k in range(header + 1, len(lines)) if lines[k].strip().startswith("*")),
-        len(lines),
-    )
-    body = lines[header + 1:end]
-    kept = [ln for ln in body if ln.strip().startswith("!") or not ln.strip()]
-    removed = len(body) - len(kept)
-    if not any(ln.strip().startswith("!") for ln in kept):
-        n_cols = len(lines[header].split())
-        kept = ["!" + " ".join(["0.0"] * n_cols)]
-    lines[header + 1:end] = kept
-    return removed
+    total_removed = 0
+    search_from = 0
+    while True:
+        start = next(
+            (i for i in range(search_from, len(lines))
+             if lines[i].strip().lower().startswith("upper limits of resonances")),
+            None,
+        )
+        if start is None:
+            break
+        header = next(
+            (j for j in range(start + 1, len(lines)) if lines[j].strip().startswith("Ecm")),
+            None,
+        )
+        if header is None:
+            # Malformed section; skip past it and keep looking for others.
+            search_from = start + 1
+            continue
+        end = next(
+            (k for k in range(header + 1, len(lines)) if lines[k].strip().startswith("*")),
+            len(lines),
+        )
+        body = lines[header + 1:end]
+        kept = [ln for ln in body if ln.strip().startswith("!") or not ln.strip()]
+        removed = len(body) - len(kept)
+        if not any(ln.strip().startswith("!") for ln in kept):
+            n_cols = len(lines[header].split())
+            kept = ["!" + " ".join(["0.0"] * n_cols)]
+        lines[header + 1:end] = kept
+        total_removed += removed
+        search_from = header + 1 + len(kept)
+    return total_removed
 
 
 def _template_has_corr_frac(lines: List[str]) -> bool:
