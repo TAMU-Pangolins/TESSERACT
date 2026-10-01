@@ -25,7 +25,7 @@ Rules:
 Output naming with multiple runs (runs = N):
   [resonance]   outputs/{reaction}/RUN_{j}/{reaction}.in          j = 0..N-1
   [ratesmc]     outputs/{reaction}/RUN_{j}/{reaction}.out         j = 0..N-1
-  [integration] {target}_ap_{residual}_integrated_xs_dE_{dE}      one per (j, dE)
+  [integration] {target}_{proj}{ejec}_{residual}_integrated_xs_dE_{dE}  one per (j, dE)
                   _{tag}_run{j}.csv
   [talys]       talys_results_{exp_file_stem}.npz                 one per file
 
@@ -47,7 +47,8 @@ from pathlib import Path
 _SCRIPT_DIR = Path(__file__).resolve().parent
 _PYTHON     = None   # set in main() after reading python_exec from [basics]
 
-from nucres.physics import HBAR, MASS_PROTON, reduced_mass
+from extract_resonance_data import load_reaction_params
+from nucres.reaction_names import file_stem
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -132,16 +133,14 @@ def _integrated_output_paths(reaction: str, dE_list: list, tag: str, runs: int,
     Return all integrated XS file paths that [integration] will produce.
     One file per (run index, bin width).
     """
-    rxn = re.match(r'([^(]+)\(a,p\)(.+)', reaction)
-    target   = rxn.group(1) if rxn else reaction
-    residual = rxn.group(2) if rxn else ""
+    stem  = file_stem(reaction)
     paths = []
     for j in range(runs):
         tag_j      = f"{tag}_run{j}"
         tag_suffix = f"_{tag_j.lstrip('_')}" if tag_j.lstrip('_') else ""
         for dE in dE_list:
             paths.append(
-                Path(output_dir) / f"{target}_ap_{residual}_integrated_xs_dE_{dE}{tag_suffix}.csv"
+                Path(output_dir) / f"{stem}_integrated_xs_dE_{dE}{tag_suffix}.csv"
             )
     return paths
 
@@ -193,25 +192,34 @@ def _check_integration_outputs(exp_file_str: str) -> None:
 # ─────────────────────────────────────────────────────────────────────────────
 # Physics helper
 # ─────────────────────────────────────────────────────────────────────────────
-def compute_gamma(A_tar: int, mean_i: float, mean_o: float):
-    A_alpha  = 4
-    A_proton = 1
-    m_alpha  = A_alpha  * MASS_PROTON
-    m_target = A_tar    * MASS_PROTON
+HBARC_MEV_FM = 197.3269804
+AMU_MEV = 931.49410242
 
-    mu_i   = reduced_mass(m_target, m_alpha)
-    R_sq_i = (1.25e-15)**2 * (A_tar**(1/3) + A_alpha**(1/3))**2
-    wig_i  = 3 * HBAR**2 / (2 * mu_i * R_sq_i) * 6.242e18
-    gamma_i = wig_i * mean_i
 
-    A_res  = A_tar + A_alpha - A_proton          # residual nucleus (e.g. 25Al for 22Mg(a,p))
-    m_res  = A_res * MASS_PROTON
-    mu_o   = reduced_mass(m_res, A_proton * MASS_PROTON)
-    R_sq_o = (1.25e-15)**2 * (A_res**(1/3) + A_proton**(1/3))**2
-    wig_o  = 3 * HBAR**2 / (2 * mu_o * R_sq_o) * 6.242e18
-    gamma_o = wig_o * mean_o
+def _wigner_limit_ev(m1_u: float, m2_u: float, r0_fm: float) -> float:
+    """Wigner limit 3 hbar^2 / (2 mu R^2) in eV, R = r0 (m1^1/3 + m2^1/3)."""
+    mu = m1_u * m2_u / (m1_u + m2_u) * AMU_MEV
+    R = r0_fm * (m1_u ** (1 / 3) + m2_u ** (1 / 3))
+    return 3.0 * HBARC_MEV_FM ** 2 / (2.0 * mu * R ** 2) * 1e6
 
-    return gamma_i, gamma_o, m_target, m_alpha
+
+def compute_gamma(rxn, mean_i: float, mean_o: float):
+    """
+    Mean entrance and exit reduced widths (eV) passed to build_ratesmc_input.py.
+
+    rxn is the template's ReactionParams (masses in u, R0), so the channel
+    radius and reduced mass are the ones RatesMC uses.
+      gamma_i = mean_i * (Wigner limit of projectile + target)
+      gamma_o = mean_o * (Wigner limit of ejectile + residual) for particle exits;
+                for gamma exits mean_o is taken as the mean gamma width in eV.
+    """
+    gamma_i = mean_i * _wigner_limit_ev(rxn.M_proj, rxn.M_targ, rxn.R0_fm)
+    if rxn.Z_exit == 0 and rxn.M_exit == 0.0:
+        gamma_o = mean_o
+    else:
+        M_res = rxn.M_proj + rxn.M_targ - rxn.M_exit
+        gamma_o = mean_o * _wigner_limit_ev(rxn.M_exit, M_res, rxn.R0_fm)
+    return gamma_i, gamma_o
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -235,19 +243,24 @@ def step1_build_ratesmc(basics: dict, resonance: dict,
     mean_i     = resonance.get('mean_i',     '0.010')
     mean_o     = resonance.get('mean_o',     '0.0045')
 
+    seed_base = None
+    if seed is not None:
+        try:
+            seed_base = int(seed)
+        except ValueError:
+            sys.exit(f"[resonance] Invalid seed {seed!r} in [resonance]: must be an integer.")
+
     template = Path(input_dir) / f"{reaction}.txt"
     if not template.exists():
         sys.exit(f"[resonance] Template not found: {template}")
 
-    match = re.match(r'(\d+)', reaction)
-    if not match:
-        sys.exit(f"[resonance] Cannot parse mass number from reaction: {reaction}")
-    A_tar = int(match.group(1))
-
-    gamma_i, gamma_o, m_target, m_alpha = compute_gamma(
-        A_tar, float(mean_i), float(mean_o)
-    )
-    print(f"[resonance] gamma_i = {gamma_i:.4e} eV  |  gamma_o = {gamma_o:.4e} eV")
+    try:
+        rxn = load_reaction_params(template)
+    except ValueError as exc:
+        sys.exit(f"[resonance] {exc}")
+    gamma_i, gamma_o = compute_gamma(rxn, float(mean_i), float(mean_o))
+    exit_note = "mean gamma width" if (rxn.Z_exit == 0 and rxn.M_exit == 0.0) else "reduced width"
+    print(f"[resonance] gamma_i = {gamma_i:.4e} eV  |  gamma_o = {gamma_o:.4e} eV ({exit_note})")
     run_range = [run_idx] if run_idx is not None else range(runs)
     print(f"[resonance] processing run(s): {list(run_range)}")
 
@@ -268,15 +281,13 @@ def step1_build_ratesmc(basics: dict, resonance: dict,
             "--output",           str(output_in),
             "--E-min-mev",        E_min,
             "--E-max-mev",        E_max,
-            "--m1",               str(m_target),
-            "--m2",               str(m_alpha),
             "--n-density-points", n_samples,
             "--Gamma-i-mean-eV",  str(gamma_i),
             "--Gamma-o-mean-eV",  str(gamma_o),
             "--l1",               resonance.get('l1',               '0'),
             "--l2",               resonance.get('l2',               '1'),
             "--l3",               resonance.get('l3',               '0'),
-            "--pi",               resonance.get('pi',               '1'),
+            "--pi",               resonance.get('pi',               '0'),
             "--delta-E-mev",      resonance.get('delta_E_mev',      '0.05'),
             "--spacing-model",    resonance.get('spacing_model',    'poisson'),
             "--n-sigma-points",   resonance.get('n_sigma_points',   '4000'),
@@ -287,8 +298,26 @@ def step1_build_ratesmc(basics: dict, resonance: dict,
         ]
         if 'U_offset_mev' in resonance:
             cmd.extend(["--U-offset-mev", resonance['U_offset_mev']])
-        if seed is not None:
-            cmd.extend(["--seed", seed])
+        if seed_base is not None:
+            # One base seed for the whole ensemble; each run gets its own
+            # stream (base + j), so runs are reproducible but independent.
+            # numpy's SeedSequence hashes the seed, so adjacent integers
+            # give uncorrelated streams.
+            cmd.extend(["--seed", str(seed_base + j)])
+        for key, flag in (('target_parity', '--target-parity'),
+                          ('projectile_parity', '--projectile-parity'),
+                          ('Gamma_i_dof', '--Gamma-i-dof'),
+                          ('Gamma_o_dof', '--Gamma-o-dof'),
+                          ('final_spin', '--final-spin'),
+                          ('final_parity', '--final-parity')):
+            if key in resonance:
+                cmd.extend([flag, resonance[key]])
+        if _bool(resonance.get('hfb_corrections'), False):
+            cmd.append("--hfb-corrections")
+        if not _bool(resonance.get('auto_l2'), True):
+            cmd.append("--no-auto-l2")
+        if not _bool(resonance.get('drop_forbidden'), True):
+            cmd.append("--keep-forbidden")
         if _bool(resonance.get('use_strength'), False):
             cmd.append("--use-strength")
         if not _bool(resonance.get('sample_J'), True):
@@ -326,15 +355,59 @@ def _resolve_ratesmc_bin(ratesmc: dict):
     return None
 
 
+_RATESMC_MASS_TABLES = ("mass_1.mas20", "nubase_3.mas20")
+
+
+def _find_ratesmc_mass_tables(ratesmc_bin: Path, ratesmc: dict):
+    """
+    Locate AME/NUBASE tables for RatesMC, which reads them from its working
+    directory. Checks mass_dir in [ratesmc], then the executable's directory
+    and its parent (an upstream checkout keeps them beside the source, one
+    level above build/). Returns the list of paths, or None.
+    """
+    dirs = []
+    if ratesmc.get('mass_dir'):
+        dirs.append(Path(os.path.expanduser(ratesmc['mass_dir'])))
+    real_bin = ratesmc_bin.resolve()
+    dirs += [real_bin.parent, real_bin.parent.parent]
+    for d in dirs:
+        paths = [d / name for name in _RATESMC_MASS_TABLES]
+        if all(p.exists() for p in paths):
+            return paths
+    return None
+
+
+def _ratesmc_rate_rows(out_path: Path) -> int:
+    """Number of temperature rows (numeric first column, >= 4 columns) in a RatesMC .out file."""
+    if not out_path.exists():
+        return 0
+    n = 0
+    for line in out_path.read_text(errors="replace").splitlines():
+        parts = line.split()
+        if len(parts) < 4:
+            continue
+        try:
+            float(parts[0])
+        except ValueError:
+            continue
+        n += 1
+    return n
+
+
 def step_run_ratesmc(basics: dict, resonance: dict, ratesmc: dict,
                      run_idx: int = None) -> None:
     """
-    Execute the compiled RatesMC binary on each RUN_j/{reaction}.in produced by
-    [resonance], matching how RatesMC is actually invoked in practice: run from
-    its own install directory (where it finds its mass-table data files) with
-    the input file's absolute path passed as an argument, producing
-    {reaction}.out beside that input file. Skips a run silently if its .out
-    already exists.
+    Execute RatesMC on each RUN_j/{reaction}.in produced by [resonance].
+
+    Every RatesMC release reads its input from ./RatesMC.in and writes
+    ./RatesMC.out, and none accepts an input path: 2.11 treats argv[1] as the
+    *output* filename (into a 30-character buffer) and the 2.2+/C++ rewrite
+    refuses any argument. So RatesMC is run with no arguments inside RUN_j on
+    a copy of the input named RatesMC.in, with the AME/NUBASE tables linked
+    in, and RatesMC.out is copied to {reaction}.out. Success is judged by
+    RatesMC.out containing rate rows, not by the exit code, because the
+    rewrite returns 1 even after a successful run. Skips a run silently if
+    its {reaction}.out already exists.
 
     If the RatesMC executable can't be resolved, this step prints a warning
     and returns without error — nothing downstream ([integration]/[talys])
@@ -351,6 +424,13 @@ def step_run_ratesmc(basics: dict, resonance: dict, ratesmc: dict,
         print(f"[ratesmc] WARNING: RatesMC executable could not be found{where}. "
               "Skipping the [ratesmc] step.", flush=True)
         return
+    ratesmc_bin = ratesmc_bin.resolve()
+
+    mass_tables = _find_ratesmc_mass_tables(ratesmc_bin, ratesmc)
+    if mass_tables is None:
+        print("[ratesmc] WARNING: mass_1.mas20 / nubase_3.mas20 not found beside the "
+              "executable (set mass_dir in [ratesmc]); RatesMC 2.2+ needs them.",
+              flush=True)
 
     run_range = [run_idx] if run_idx is not None else range(runs)
     print(f"[ratesmc] using executable: {ratesmc_bin}")
@@ -370,22 +450,34 @@ def step_run_ratesmc(basics: dict, resonance: dict, ratesmc: dict,
             continue
 
         print(f"[ratesmc] RUN_{j} ...", flush=True)
-        log_path = run_dir / "RatesMC.log"
-        with open(log_path, "w") as log:
+        shutil.copyfile(infile, run_dir / "RatesMC.in")
+        for table in mass_tables or []:
+            link = run_dir / table.name
+            if not link.exists():
+                link.symlink_to(table)
+        rates_out = run_dir / "RatesMC.out"
+        if rates_out.exists():
+            rates_out.unlink()      # never mistake a stale file for this run's output
+
+        # RatesMC writes its own RatesMC.log, so keep console output separate.
+        stdout_path = run_dir / "RatesMC.stdout"
+        with open(stdout_path, "w") as log:
             result = subprocess.run(
-                [str(ratesmc_bin), str(infile.resolve())],
-                cwd=ratesmc_bin.parent, stdout=log, stderr=subprocess.STDOUT,
+                [str(ratesmc_bin)],
+                cwd=run_dir, stdout=log, stderr=subprocess.STDOUT,
             )
 
-        if result.returncode != 0:
-            print(f"[ratesmc] WARNING: RatesMC exited with code {result.returncode} "
-                  f"for RUN_{j}; see {log_path}.", flush=True)
+        n_rows = _ratesmc_rate_rows(rates_out)
+        if n_rows == 0:
+            print(f"[ratesmc] WARNING: RatesMC produced no rates for RUN_{j} "
+                  f"(exit code {result.returncode}); see {stdout_path}.", flush=True)
             continue
+        shutil.copyfile(rates_out, outfile)
 
-        log_text = log_path.read_text(errors="replace")
+        log_text = stdout_path.read_text(errors="replace")
         if re.search(r"ERROR|WARNING|FATAL", log_text):
             print(f"[ratesmc] WARNING: RatesMC reported issues for RUN_{j}; "
-                  f"see {log_path}.", flush=True)
+                  f"see {stdout_path}.", flush=True)
 
     if n_skipped:
         print(f"[ratesmc] {n_skipped}/{runs} run(s) already had a .out file — skipped.")
@@ -402,7 +494,7 @@ def step2_generate_xs(basics: dict, resonance: dict, integration: dict, runs: in
 
     Output filenames encode the run index via --tag:
       unintegrated : {reaction}_xs_unintegrated_parallel_{base_tag}_run{j}.txt
-      integrated   : {target}_ap_{residual}_integrated_xs_dE_{dE}_{base_tag}_run{j}.csv
+      integrated   : {target}_{proj}{ejec}_{residual}_integrated_xs_dE_{dE}_{base_tag}_run{j}.csv
 
     Skips a (run, file) silently if the outputs already exist.
     """
@@ -417,9 +509,7 @@ def step2_generate_xs(basics: dict, resonance: dict, integration: dict, runs: in
                                      str(Path(int_output_dir).parent))
     dE_lst        = [x.strip() for x in dE.split(',')]
 
-    rxn = re.match(r'([^(]+)\(a,p\)(.+)', reaction)
-    target   = rxn.group(1) if rxn else reaction
-    residual = rxn.group(2) if rxn else ""
+    stem = file_stem(reaction)
 
     run_range = [run_idx] if run_idx is not None else range(runs)
     n_skipped = 0
@@ -431,7 +521,7 @@ def step2_generate_xs(basics: dict, resonance: dict, integration: dict, runs: in
         # All expected outputs for this run
         unint = Path(unint_dir) / f"{reaction}_xs_unintegrated_parallel{tag_suffix}.txt"
         int_files = [
-            Path(int_output_dir) / f"{target}_ap_{residual}_integrated_xs_dE_{dE}{tag_suffix}.csv"
+            Path(int_output_dir) / f"{stem}_integrated_xs_dE_{dE}{tag_suffix}.csv"
             for dE in dE_lst
         ]
         all_exist = unint.exists() and all(f.exists() for f in int_files)

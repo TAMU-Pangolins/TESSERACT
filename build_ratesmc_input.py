@@ -14,6 +14,7 @@ from nucres.ratesmc_export import (
     resonant_header_line,
 )
 from nucres.read_qvals import (
+    ground_state_jpi,
     interpret_z_token,
     load_ame,
     mass_from_token,
@@ -56,6 +57,53 @@ def _find_resonant_block(lines: List[str]) -> Tuple[int, int, int]:
     return header_idx, data_start, data_end
 
 
+def _clear_upper_limits(lines: List[str]) -> int:
+    """
+    Remove the data rows of every "Upper Limits of Resonances" section in
+    place. A template may contain more than one such section (e.g. one per
+    exit channel); all of them are cleared, not just the first.
+
+    TESSERACT assumes every resonance is known, so the template's upper-limit
+    resonances (which RatesMC would otherwise add to the rate) are removed.
+    The section markers and column header are kept so RatesMC's parser still
+    finds the section; if no comment row remains, a commented-out zero row is
+    left in the same form the empty templates use. Returns the total number
+    of rows removed across all sections.
+    """
+    total_removed = 0
+    search_from = 0
+    while True:
+        start = next(
+            (i for i in range(search_from, len(lines))
+             if lines[i].strip().lower().startswith("upper limits of resonances")),
+            None,
+        )
+        if start is None:
+            break
+        header = next(
+            (j for j in range(start + 1, len(lines)) if lines[j].strip().startswith("Ecm")),
+            None,
+        )
+        if header is None:
+            # Malformed section; skip past it and keep looking for others.
+            search_from = start + 1
+            continue
+        end = next(
+            (k for k in range(header + 1, len(lines)) if lines[k].strip().startswith("*")),
+            len(lines),
+        )
+        body = lines[header + 1:end]
+        kept = [ln for ln in body if ln.strip().startswith("!") or not ln.strip()]
+        removed = len(body) - len(kept)
+        if not any(ln.strip().startswith("!") for ln in kept):
+            n_cols = len(lines[header].split())
+            kept = ["!" + " ".join(["0.0"] * n_cols)]
+        lines[header + 1:end] = kept
+        total_removed += removed
+        search_from = header + 1 + len(kept)
+    return total_removed
+
+
 def _template_has_corr_frac(lines: List[str]) -> bool:
     header_idx, _, _ = _find_resonant_block(lines)
     return "corr/frac" in lines[header_idx].lower()
@@ -82,13 +130,21 @@ def inject_rows(
     rows: List[str],
     header_line: Optional[str] = None,
     n_random_samples: Optional[int] = None,
+    clear_upper_limits: bool = True,
 ) -> None:
     """
     Replace the resonant contribution rows in the template with the provided rows and write to out_path.
+
+    With `clear_upper_limits` (default), the template's upper-limit resonances
+    are removed as well, so the output contains only the supplied resonances.
     """
     text = template.read_text(encoding="utf-8").splitlines()
     if n_random_samples is not None:
         _override_random_samples(text, n_random_samples)
+    if clear_upper_limits:
+        n_removed = _clear_upper_limits(text)
+        if n_removed:
+            print(f"Removed {n_removed} upper-limit resonance rows from the template.")
     header_idx, data_start, data_end = _find_resonant_block(text)
     if header_line:
         text[header_idx] = header_line
@@ -186,7 +242,8 @@ def _mass_number_from_token(token: Optional[str]) -> Optional[int]:
     if token is None:
         return None
     try:
-        return int(float(token))
+        # Templates give masses in u (e.g. 26.9815 for 27Al): round, don't truncate.
+        return int(round(float(token)))
     except ValueError:
         return split_nuclide_token(token)[0]
 
@@ -298,6 +355,108 @@ def _infer_compound_nucleus(metadata: TemplateMetadata) -> Tuple[int, int]:
             "Missing: " + ", ".join(missing)
         )
     return z_targ + z_proj, a_targ + a_proj
+
+
+def _resolve_intrinsic_parity(
+    label: str,
+    Z: Optional[int],
+    A: Optional[int],
+    override: Optional[int],
+    template_spin: Optional[float],
+) -> int:
+    """
+    Ground-state parity of the projectile or target.
+
+    An explicit override wins; otherwise the NUBASE2020 ground state is used.
+    A NUBASE spin that disagrees with the template's spin is reported, since
+    the template spin is what enters the statistical factor.
+    """
+    if override is not None:
+        return int(override)
+    if Z is None or A is None:
+        raise ValueError(
+            f"Cannot look up the {label} parity without its Z and A; "
+            f"pass --{label}-parity explicitly."
+        )
+    try:
+        J_nb, parity = ground_state_jpi(Z, A)
+    except KeyError as exc:
+        raise ValueError(
+            f"No NUBASE ground state for the {label} (Z={Z}, A={A}); "
+            f"pass --{label}-parity explicitly."
+        ) from exc
+    if parity is None:
+        raise ValueError(
+            f"NUBASE gives no definite ground-state parity for the {label} "
+            f"(Z={Z}, A={A}); pass --{label}-parity explicitly."
+        )
+    if template_spin is not None and J_nb is not None and abs(J_nb - template_spin) > 1e-6:
+        print(
+            f"WARNING: template {label} spin {template_spin} differs from "
+            f"NUBASE ground-state spin {J_nb} (Z={Z}, A={A})."
+        )
+    return int(parity)
+
+
+def _exit_channel_settings(metadata: TemplateMetadata, args) -> dict:
+    """
+    Exit-channel information for choosing L2 per resonance and the default
+    exit-width fluctuation.
+
+    The ejectile's J^pi and the final state's J^pi come from NUBASE2020
+    (the residual ground state, or the compound ground state for gamma
+    exits) unless --final-spin/--final-parity are given; they must be given
+    when --exf-kev populates an excited final state.
+    """
+    exit_symbol = _reaction_exit_symbol(metadata.reaction)
+    if exit_symbol in ("g", "gamma"):
+        kind = "gamma"
+    elif exit_symbol in _PARTICLE_EXIT_CHANNELS:
+        kind = "particle"
+    else:
+        return {"exit_kind": None}
+
+    settings = {"exit_kind": kind}
+    dof = getattr(args, "Gamma_o_dof", None)
+    settings["Gamma_o_dof"] = float(dof) if dof is not None else (10.0 if kind == "gamma" else 1.0)
+    if not getattr(args, "auto_l2", True):
+        settings["exit_kind"] = None
+        return settings
+
+    if kind == "particle":
+        _, ejectile, residual = _parse_reaction_channels(metadata.reaction)
+        try:
+            s_e, pi_e = ground_state_jpi(*ejectile)
+        except (KeyError, TypeError):
+            s_e, pi_e = None, None
+        if s_e is None or pi_e is None:
+            raise ValueError(f"No NUBASE J^pi for the ejectile {ejectile}.")
+        settings.update(ejectile_spin=float(s_e), ejectile_parity=int(pi_e))
+        final_nucleus = residual
+    else:
+        final_nucleus = _infer_compound_nucleus(metadata)
+
+    J_f = getattr(args, "final_spin", None)
+    pi_f = getattr(args, "final_parity", None)
+    if J_f is None or pi_f is None:
+        if (getattr(args, "exf_kev", 0.0) or 0.0) > 0.0:
+            raise ValueError(
+                "--exf-kev populates an excited final state; give its J^pi "
+                "with --final-spin and --final-parity (or use --no-auto-l2)."
+            )
+        try:
+            J_nb, pi_nb = ground_state_jpi(*final_nucleus)
+        except (KeyError, TypeError):
+            J_nb, pi_nb = None, None
+        J_f = J_nb if J_f is None else J_f
+        pi_f = pi_nb if pi_f is None else pi_f
+    if J_f is None or (kind == "particle" and pi_f is None):
+        raise ValueError(
+            f"No NUBASE ground-state J^pi for the final nucleus {final_nucleus}; "
+            "give --final-spin/--final-parity (or use --no-auto-l2)."
+        )
+    settings.update(final_spin=float(J_f), final_parity=(int(pi_f) if pi_f is not None else None))
+    return settings
 
 
 def _convert_reduced_to_partial_widths(
@@ -475,6 +634,22 @@ def build_ratesmc_input(args) -> None:
         else _infer_u_offset_mev(metadata)
     )
 
+    projectile_parity = _resolve_intrinsic_parity(
+        "projectile",
+        metadata.proj_Z,
+        _mass_number_from_token(metadata.proj_A_token),
+        getattr(args, "projectile_parity", None),
+        s1_val,
+    )
+    target_parity = _resolve_intrinsic_parity(
+        "target",
+        metadata.Z,
+        _mass_number_from_token(metadata.targ_A_token),
+        getattr(args, "target_parity", None),
+        s2_val,
+    )
+
+    exit_settings = _exit_channel_settings(metadata, args)
     cfg = HFBSamplerConfig(
         Z=Z_val,
         data_root=args.data_root,
@@ -497,6 +672,15 @@ def build_ratesmc_input(args) -> None:
         sample_J=args.sample_J,
         auto_l1=args.auto_l1,
         spacing_model=getattr(args, "spacing_model", "poisson"),
+        projectile_parity=projectile_parity,
+        target_parity=target_parity,
+        drop_forbidden=getattr(args, "drop_forbidden", True),
+        # --Gamma-*-mean-eV are reduced widths here; they are converted to
+        # partial widths below, so the generator must not build sigma from them.
+        widths_are_reduced=True,
+        use_hfb_corrections=getattr(args, "hfb_corrections", False),
+        Gamma_i_dof=float(getattr(args, "Gamma_i_dof", 1.0)),
+        **exit_settings,
     )
     try:
         generated = synthesize_sigma_from_hfb(cfg)
@@ -562,8 +746,25 @@ def build_ratesmc_input(args) -> None:
         rows,
         header_line=header_line,
         n_random_samples=args.n_random_samples,
+        clear_upper_limits=not getattr(args, "keep_upper_limits", False),
     )
     count = len(rows)
+    meta = getattr(generated, "metadata", None) or {}
+    if meta.get("n_exit_forbidden"):
+        print(
+            f"Dropped {meta['n_exit_forbidden']} resonances that cannot decay to the "
+            "final state (no allowed exit l / gamma multipolarity)."
+        )
+    if meta.get("dropped_Jpi"):
+        dropped = ", ".join(
+            f"{J:g}{'+' if p > 0 else '-'}" for J, p in meta["dropped_Jpi"][:12]
+        )
+        more = " ..." if len(meta["dropped_Jpi"]) > 12 else ""
+        print(
+            f"Dropped {len(meta['dropped_Jpi'])} J^pi sequences the entrance channel "
+            f"cannot form ({dropped}{more}); expected levels removed: "
+            f"{meta['expected_levels_dropped']:.1f}"
+        )
     print(f"Wrote RatesMC.in with {count} resonances to {output_path}")
     if count == 0:
         print(
@@ -625,7 +826,10 @@ def parse_args() -> argparse.Namespace:
         "--l2",
         type=int,
         default=1,
-        help="Exit channel orbital angular momentum / multipolarity L2.",
+        help=(
+            "Exit channel orbital angular momentum / multipolarity L2, used only "
+            "with --no-auto-l2 or when the final-state J^pi is unknown."
+        ),
     )
     p.add_argument(
         "--l3",
@@ -670,6 +874,15 @@ def parse_args() -> argparse.Namespace:
         help="Decimal digits for non-Ecm columns (mantissa).",
     )
     p.add_argument(
+        "--keep-upper-limits",
+        action="store_true",
+        default=False,
+        help=(
+            "Keep the template's upper-limit resonances in the output "
+            "(default: remove them, since TESSERACT assumes all resonances are known)."
+        ),
+    )
+    p.add_argument(
         "--n-random-samples",
         type=int,
         default=1,
@@ -701,7 +914,37 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="Resonance spin used in generated spectrum (default: first J in template).",
     )
-    p.add_argument("--pi", type=int, choices=(-1, 1), default=1, help="Parity (+-1).")
+    p.add_argument(
+        "--pi",
+        type=int,
+        choices=(-1, 0, 1),
+        default=0,
+        help="Resonance parity to sample: +1 or -1 for one parity, 0 for both (default).",
+    )
+    p.add_argument(
+        "--target-parity",
+        type=int,
+        choices=(-1, 1),
+        default=None,
+        help="Target ground-state parity (default: NUBASE2020).",
+    )
+    p.add_argument(
+        "--projectile-parity",
+        type=int,
+        choices=(-1, 1),
+        default=None,
+        help="Projectile ground-state parity (default: NUBASE2020).",
+    )
+    p.add_argument(
+        "--keep-forbidden",
+        dest="drop_forbidden",
+        action="store_false",
+        default=True,
+        help=(
+            "Keep J^pi sequences the entrance channel cannot form "
+            "(default: drop them)."
+        ),
+    )
     p.add_argument(
         "--s1",
         type=float,
@@ -720,13 +963,58 @@ def parse_args() -> argparse.Namespace:
         "--Gamma-i-mean-eV",
         type=float,
         default=1.0,
-        help="Mean entrance width for PT sampling (eV).",
+        help="Mean entrance REDUCED width gamma^2 for PT sampling (eV); converted to Gamma = 2 gamma^2 P.",
     )
     p.add_argument(
         "--Gamma-o-mean-eV",
         type=float,
         default=1.0,
-        help="Mean exit width for PT sampling (eV).",
+        help="Mean exit REDUCED width gamma^2 for PT sampling (eV); converted to Gamma = 2 gamma^2 P for particle exits.",
+    )
+    p.add_argument(
+        "--hfb-corrections",
+        action="store_true",
+        default=False,
+        help=(
+            "Renormalise the HFB level densities with the RIPL-3 .cor "
+            "(ctable, ptable) entry of the compound nucleus."
+        ),
+    )
+    p.add_argument(
+        "--Gamma-i-dof",
+        type=float,
+        default=1.0,
+        help="Degrees of freedom of the chi^2 fluctuation of the entrance width (default 1, Porter-Thomas).",
+    )
+    p.add_argument(
+        "--Gamma-o-dof",
+        type=float,
+        default=None,
+        help=(
+            "Degrees of freedom of the chi^2 fluctuation of the exit width "
+            "(default: 10 for gamma exits, a total over several transitions; "
+            "1 for particle exits). Use inf for no fluctuation."
+        ),
+    )
+    p.add_argument(
+        "--final-spin",
+        type=float,
+        default=None,
+        help="Spin of the final state (default: NUBASE ground state of the residual).",
+    )
+    p.add_argument(
+        "--final-parity",
+        type=int,
+        choices=(-1, 1),
+        default=None,
+        help="Parity of the final state (default: NUBASE ground state of the residual).",
+    )
+    p.add_argument(
+        "--no-auto-l2",
+        dest="auto_l2",
+        action="store_false",
+        default=True,
+        help="Use the fixed --l2 for every resonance instead of the lowest allowed exit l.",
     )
     p.add_argument(
         "--delta-E-mev",
@@ -789,7 +1077,7 @@ def parse_args() -> argparse.Namespace:
         dest="auto_l1",
         action="store_true",
         default=True,
-        help="Compute L1 from J, s1, s2, and parity (assumes intrinsic parity product +1).",
+        help="Set L1 to the smallest l allowed by J, s1, s2 and the parities.",
     )
     p.add_argument(
         "--no-auto-l1",

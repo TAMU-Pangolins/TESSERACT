@@ -5,37 +5,21 @@ from typing import Iterable, List, Tuple
 import matplotlib.pyplot as plt
 import pandas as pd
 
-
-def read_ratesmc_out(path: Path, reaction: str, run: str) -> List[Tuple[str, str, float, float]]:
-    rows: List[Tuple[str, str, float, float]] = []
-    with path.open() as handle:
-        # Skip until the table header begins
-        for line in handle:
-            if line.strip().startswith("T9"):
-                break
-        # Read table rows: T9 low median high fu
-        for line in handle:
-            s = line.strip()
-            if not s:
-                continue
-            parts = s.split()
-            if len(parts) < 5:
-                continue
-            t9, _low, med, _high, _fu = map(float, parts[:5])
-            rows.append((reaction, run, t9, med))
-    return rows
+from nucres.ratesmc_output import find_ratesmc_outputs, read_ratesmc_out as read_ratesmc_table
 
 
-def iter_ratesmc(paths: Iterable[Path]) -> pd.DataFrame:
-    rows: List[Tuple[str, str, float, float]] = []
-    for path in paths:
-        # .../<reaction>/<Run_###>/RatesMC.out
-        reaction = path.parent.parent.name
-        run = path.parent.name
-        rows.extend(read_ratesmc_out(path, reaction, run))
-    if not rows:
+def iter_ratesmc(entries: Iterable[Tuple[str, str, Path]]) -> pd.DataFrame:
+    """Median rate per (reaction, run, T9), with columns located by header name."""
+    frames = []
+    for reaction, run, path in entries:
+        table = read_ratesmc_table(path)
+        frames.append(pd.DataFrame({
+            "reaction": reaction, "run": run,
+            "T9": table["T9"], "rate_median": table["median"],
+        }))
+    if not frames:
         return pd.DataFrame(columns=["reaction", "run", "T9", "rate_median"])
-    return pd.DataFrame(rows, columns=["reaction", "run", "T9", "rate_median"])
+    return pd.concat(frames, ignore_index=True)
 
 
 def read_astrorate(path: Path) -> pd.DataFrame:
@@ -67,25 +51,27 @@ def parse_quantiles(value: str) -> Tuple[float, float, float]:
 
 def main() -> int:
     ap = argparse.ArgumentParser(description="Overlay RatesMC median quantile band with TALYS astrorate curve.")
-    ap.add_argument("--ratesmc-reaction-dir", required=True, help="Path to reaction directory containing Run_*/RatesMC.out")
+    ap.add_argument("--ratesmc-reaction-dir", required=True,
+                    help="Reaction directory containing RUN_<j>/<reaction>.out "
+                         "(tesseract.py) or Run_<NN>/RatesMC.out (run_ratesmc_batches.sh)")
     ap.add_argument("--talys-astrorate", required=True, help="Path to TALYS astrorate file (e.g. astrorate.g)")
     ap.add_argument("--quantiles", type=parse_quantiles, default=(0.16, 0.5, 0.84), help="Band/line quantiles")
     ap.add_argument("--output", default="overlay.png", help="Output image filename")
     args = ap.parse_args()
 
     reaction_dir = Path(args.ratesmc_reaction_dir).expanduser()
-    ratesmc_paths = sorted(reaction_dir.glob("Run_*/RatesMC.out"))
-    data = iter_ratesmc(ratesmc_paths)
+    entries = [(reaction_dir.name, run, path) for run, path in find_ratesmc_outputs(reaction_dir)]
+    data = iter_ratesmc(entries)
     if data.empty:
-        raise SystemExit(f"No RatesMC.out files found under: {reaction_dir}/Run_*/RatesMC.out")
+        raise SystemExit(f"No RatesMC rate tables found in run directories under: {reaction_dir}")
 
     q_low, q_mid, q_high = args.quantiles
-    stats = (
-        data.groupby(["reaction", "T9"])["rate_median"]
-        .quantile([q_low, q_mid, q_high])
-        .unstack()
-    )
-    stats.columns = ["q_low", "q_mid", "q_high"]
+    grouped = data.groupby(["reaction", "T9"])["rate_median"]
+    stats = pd.DataFrame({
+        "q_low": grouped.quantile(q_low),
+        "q_mid": grouped.quantile(q_mid),
+        "q_high": grouped.quantile(q_high),
+    })
 
     reaction_name = reaction_dir.name
     series = stats.loc[reaction_name].sort_index()

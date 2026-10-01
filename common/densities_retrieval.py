@@ -130,24 +130,86 @@ def _parse_header_flexible(lines: list[str]):
     # Nothing found
     return None, 0
 
-def read_hfb_tab(path: str, strict: bool = True):
+def _isotope_block_starts(raw: List[str]) -> Dict[Tuple[int, int], int]:
+    """
+    Map (A, parity) -> index of the banner line for every isotope block.
+
+    RIPL-3 zXXX.tab files hold every tabulated isotope of one element, each as
+    a positive-parity block followed by a negative-parity block, introduced by
+    a banner such as "Z= 14 A= 28: Positive-Parity Spin-dependent ...".
+    """
+    starts: Dict[Tuple[int, int], int] = {}
+    for i, ln in enumerate(raw):
+        m = _BANNER_ZA.search(ln)
+        if not m:
+            continue
+        low = ln.lower()
+        if "positive" in low:
+            parity = +1
+        elif "negative" in low:
+            parity = -1
+        else:
+            continue
+        starts.setdefault((int(m.group(2)), parity), i)
+    return starts
+
+
+def _collect_rows(raw: List[str], start: int, stop: int, n: int = 60) -> Tuple[List[str], int]:
+    """Return up to `n` data rows from raw[start:stop] and the index after the last one."""
+    rows = []
+    i = start
+    while i < stop and len(rows) < n:
+        if _line_is_data_row(raw[i]):
+            rows.append(raw[i])
+        i += 1
+    return rows, i
+
+
+def read_hfb_tab(path: str, A: Optional[int] = None, strict: bool = True):
+    """
+    Read the HFB level-density tables for one isotope from a zXXX.tab file.
+
+    `A` selects the isotope. It may be omitted only when the file contains a
+    single isotope; otherwise a ValueError is raised rather than silently
+    returning the first (lightest) isotope in the file.
+    """
     with open(path, "r", encoding="utf-8", errors="ignore") as f:
         raw = [ln.rstrip("\n") for ln in f]
 
-    hdr_dict, start_idx = _parse_header_flexible(raw)
-    # Collect 60 numeric lines for +parity
-    pos_lines = []
-    i = start_idx
-    while i < len(raw) and len(pos_lines) < 60:
-        if _line_is_data_row(raw[i]):
-            pos_lines.append(raw[i])
-        i += 1
-    # Collect 60 numeric lines for -parity
-    neg_lines = []
-    while i < len(raw) and len(neg_lines) < 60:
-        if _line_is_data_row(raw[i]):
-            neg_lines.append(raw[i])
-        i += 1
+    starts = _isotope_block_starts(raw)
+    if starts:
+        available = sorted({a for (a, _) in starts})
+        if A is None:
+            if len(available) != 1:
+                raise ValueError(
+                    f"{path} contains {len(available)} isotopes "
+                    f"(A={available[0]}..{available[-1]}); pass A= to select one."
+                )
+            A = available[0]
+        A = int(A)
+        if (A, +1) not in starts or (A, -1) not in starts:
+            raise ValueError(
+                f"A={A} not found in {path}; available A values: {available}"
+            )
+        banners = sorted(starts.values())
+
+        def _block_end(begin: int) -> int:
+            later = [b for b in banners if b > begin]
+            return later[0] if later else len(raw)
+
+        pos_start = starts[(A, +1)]
+        neg_start = starts[(A, -1)]
+        pos_lines, _ = _collect_rows(raw, pos_start, _block_end(pos_start))
+        neg_lines, _ = _collect_rows(raw, neg_start, _block_end(neg_start))
+        Z_banner = int(_BANNER_ZA.search(raw[pos_start]).group(1))
+        hdr_dict = dict(Z=Z_banner, A=A)
+    else:
+        # Non-RIPL layout without banners: fall back to the first two blocks.
+        if A is not None:
+            raise ValueError(f"No isotope banners found in {path}; cannot select A={A}.")
+        hdr_dict, start_idx = _parse_header_flexible(raw)
+        pos_lines, after_pos = _collect_rows(raw, start_idx, len(raw))
+        neg_lines, _ = _collect_rows(raw, after_pos, len(raw))
 
     if len(pos_lines) != 60 or len(neg_lines) != 60:
         if strict:
@@ -188,79 +250,73 @@ def J_index(J_phys: float, A: int) -> int:
 
 # ---------------------------- corrections ----------------------------
 
-def read_hfb_cor(path: str) -> Dict[Tuple[int, float], Dict[str, np.ndarray]]:
+def read_hfb_cor(path: str) -> Dict[Tuple[int, int], Tuple[float, float]]:
     """
-    Read a zXXX.cor corrections file.
-    Returns a dict keyed by (parity, U) with arrays to overwrite: T, Ncumul, Rho_level, Rho_state, rho_J.
-    Rows are split into positive/negative blocks by detecting a U-sequence reset.
+    Read a RIPL-3 HFB zXXX.cor file of level-density normalisations.
+
+    Each line is "Z A n_low n_high ctable ptable [nuclide]": the HFB density
+    is renormalised to the discrete levels (and s-wave spacing where known)
+    as
+
+        rho(U, J, pi) = exp(ctable * sqrt(U - ptable)) * rho_HFB(U - ptable, J, pi)
+
+    (TALYS ldmodel 5/6). Returns {(Z, A): (ctable, ptable)}; a missing file
+    gives an empty dict.
     """
-    cor: Dict[Tuple[int, float], Dict[str, np.ndarray]] = {}
+    cor: Dict[Tuple[int, int], Tuple[float, float]] = {}
     try:
         with open(path, "r", encoding="utf-8", errors="ignore") as f:
-            lines = [ln.strip() for ln in f.readlines() if ln.strip()]
+            lines = f.readlines()
     except FileNotFoundError:
         return cor
-
-    def try_parse_row(ln: str):
-        parts = ln.split()
-        if len(parts) >= 55:
-            try:
-                U = float(parts[0]); T = float(parts[1])
-                Nc, RhoL, RhoS = map(float, parts[2:5])
-                rhoJ = np.array([float(x) for x in parts[5:55]], dtype=float)
-                return U, T, Nc, RhoL, RhoS, rhoJ
-            except Exception:
-                return None
-        return None
-
-    rows = []
     for ln in lines:
-        r = try_parse_row(ln)
-        if r is not None:
-            rows.append(r)
-
-    if not rows:
-        return cor
-
-    # Detect where the sequence restarts (switch from + to - parity)
-    Uvals = np.array([r[0] for r in rows], dtype=float)
-    reset_idx = None
-    for i in range(1, len(Uvals)):
-        if Uvals[i] < Uvals[i-1] - 1e-6:
-            reset_idx = i
-            break
-
-    if reset_idx is None:
-        # Couldn’t detect split; treat all as positive
-        for U, T, Nc, RhoL, RhoS, rhoJ in rows:
-            cor[(+1, U)] = {"T": T, "Ncumul": Nc, "Rho_level": RhoL, "Rho_state": RhoS, "rho_J": rhoJ}
-        return cor
-
-    pos_rows = rows[:reset_idx]
-    neg_rows = rows[reset_idx:]
-    for U, T, Nc, RhoL, RhoS, rhoJ in pos_rows:
-        cor[(+1, U)] = {"T": T, "Ncumul": Nc, "Rho_level": RhoL, "Rho_state": RhoS, "rho_J": rhoJ}
-    for U, T, Nc, RhoL, RhoS, rhoJ in neg_rows:
-        cor[(-1, U)] = {"T": T, "Ncumul": Nc, "Rho_level": RhoL, "Rho_state": RhoS, "rho_J": rhoJ}
+        parts = ln.split()
+        if len(parts) < 6:
+            continue
+        try:
+            Z, A = int(parts[0]), int(parts[1])
+            c, delta = float(parts[4]), float(parts[5])
+        except ValueError:
+            continue
+        cor[(Z, A)] = (c, delta)
     return cor
 
-def apply_hfb_corrections(record: HFBRecord, cor: Dict[Tuple[int, float], Dict[str, np.ndarray]], tol: float = 1e-6) -> HFBRecord:
+
+def _correct_block(block: HFBBlock, c: float, delta: float) -> HFBBlock:
+    U = block.U
+    shifted = U - delta
+    factor = np.where(shifted > 0.0, np.exp(c * np.sqrt(np.clip(shifted, 0.0, None))), 0.0)
+
+    def rescale(y: np.ndarray) -> np.ndarray:
+        # rho_HFB at U - delta (zero below the tabulated range), times exp(c sqrt(U - delta))
+        return factor * np.interp(shifted, U, y, left=0.0, right=y[-1])
+
+    return HFBBlock(
+        parity=block.parity,
+        U=U.copy(),
+        T=block.T.copy(),
+        Ncumul=block.Ncumul.copy(),  # not renormalised; unused by the samplers
+        Rho_level=rescale(block.Rho_level),
+        Rho_state=rescale(block.Rho_state),
+        rho_J=np.column_stack([rescale(block.rho_J[:, k]) for k in range(block.rho_J.shape[1])]),
+    )
+
+
+def apply_hfb_corrections(record: HFBRecord, cor: Dict[Tuple[int, int], Tuple[float, float]]) -> HFBRecord:
     """
-    Overwrite rows in 'record' with values from 'cor' where U matches within 'tol'.
+    Apply the (ctable, ptable) normalisation for the record's isotope (see
+    read_hfb_cor). Returns a new record; raises KeyError if the isotope has
+    no entry.
     """
-    for block in (record.positive, record.negative):
-        pi = block.parity
-        for (pi_row, Ucorr), data in cor.items():
-            if pi_row != pi:
-                continue
-            idx = int(np.argmin(np.abs(block.U - Ucorr)))
-            if abs(block.U[idx] - Ucorr) <= tol:
-                block.T[idx] = float(data["T"])
-                block.Ncumul[idx] = float(data["Ncumul"])
-                block.Rho_level[idx] = float(data["Rho_level"])
-                block.Rho_state[idx] = float(data["Rho_state"])
-                block.rho_J[idx, :] = np.asarray(data["rho_J"], dtype=float)
-    return record
+    key = (record.header.Z, record.header.A)
+    if key not in cor:
+        raise KeyError(f"No level-density correction for Z={key[0]}, A={key[1]}.")
+    c, delta = cor[key]
+    return HFBRecord(
+        header=record.header,
+        positive=_correct_block(record.positive, c, delta),
+        negative=_correct_block(record.negative, c, delta),
+    )
 
 # ---------------------------- utilities ----------------------------
 

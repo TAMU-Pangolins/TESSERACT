@@ -97,6 +97,8 @@ class Resonance:
         Exit partial width in eV.
     L1, L2, L3 : int or None
         Optional orbital angular momenta for downstream serialization or analysis.
+    parity : int or None
+        Optional resonance parity (+1/-1); not used by the cross-section formulas.
     """
 
     E_r: float  # eV
@@ -110,6 +112,7 @@ class Resonance:
     L1: Optional[int] = None
     L2: Optional[int] = None
     L3: Optional[int] = None
+    parity: Optional[int] = None
 
 
 def channel_radius_fm(A1, A2, r0=1.25):
@@ -308,7 +311,8 @@ def jwkb_log_transmission_mev(
 def _jwkb_logT_grid_cached(
     l, Z1, Z2, A1, A2, omp_model, Emin_mev, Emax_mev, npts, radial_npts
 ):
-    Es = np.linspace(Emin_mev, Emax_mev, int(npts))
+    # Log-spaced: log T curves most strongly at low energy.
+    Es = np.geomspace(max(Emin_mev, 1e-9), Emax_mev, int(npts))
     logTs = np.array(
         [
             jwkb_log_transmission_mev(
@@ -366,7 +370,8 @@ def make_jwkb_log_transmission_interp(
 
 @lru_cache(maxsize=128)
 def _P_grid_cached(l, Z1, Z2, A1, A2, r0, Emin_mev, Emax_mev, npts):
-    Es = np.linspace(Emin_mev, Emax_mev, int(npts))
+    # Log-spaced: log P curves most strongly at low energy.
+    Es = np.geomspace(max(Emin_mev, 1e-9), Emax_mev, int(npts))
     Ps = np.array(
         [penetrability_P_l_mev(l, Z1, Z2, A1, A2, float(e), r0) for e in Es],
         dtype=float,
@@ -378,8 +383,9 @@ def make_penetrability_interp(
     l, Z1, Z2, A1, A2, r0=1.25, Emin_mev=1e-6, Emax_mev=5.0, npts=600
 ):
     r"""
-    Precompute \(P_\ell(E)\) on a grid \([E_{\min}, E_{\max}]\) in MeV and
-    return a fast interpolator \(P(E)\).
+    Precompute \(P_\ell(E)\) on a log-spaced grid \([E_{\min}, E_{\max}]\)
+    in MeV and return a fast interpolator \(P(E)\) that is linear in
+    \(\log P\).
 
     Parameters
     ----------
@@ -409,10 +415,16 @@ def make_penetrability_interp(
     Es, Ps = _P_grid_cached(
         l, Z1, Z2, A1, A2, float(r0), float(Emin_mev), float(Emax_mev), int(npts)
     )
+    # Below the Coulomb barrier P_l falls roughly as exp(-2*pi*eta), with
+    # eta ~ 1/sqrt(E), so it spans many decades across the grid and is convex;
+    # linear interpolation in P overestimates it between grid points (by tens
+    # of percent for sub-Coulomb alphas). log P is smooth, so interpolate that.
+    logPs = np.log(np.maximum(Ps, JWKB_T_FLOOR))
 
     def P(E_mev):
         e = np.asarray(E_mev, dtype=float)
-        return np.interp(e, Es, Ps, left=Ps[0], right=Ps[-1])
+        logP = np.interp(e, Es, logPs, left=logPs[0], right=logPs[-1])
+        return np.where(e > 0.0, np.exp(logP), 0.0)
 
     return P
 

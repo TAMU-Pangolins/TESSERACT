@@ -216,7 +216,7 @@ that genuinely shrink the work:
 | RatesMC and its support files | Monte Carlo reference reaction rates. |
 | RIPL-3 HFB level-density tables | Resonance generation; downloaded automatically on first use or with `download_data.py`. |
 | AME2020 mass data | Q-value utilities; included in `data/ame20.csv`. |
-| Bash and ripgrep (`rg`) | Execution and log checks in `run_ratesmc_batches.sh`. |
+| Bash | Batch execution in `run_ratesmc_batches.sh`. |
 
 ## Project structure
 

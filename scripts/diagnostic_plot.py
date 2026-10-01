@@ -237,14 +237,21 @@ def main() -> None:
         theta2[i] = g1 / (2.0 * p_er * wigner_limit)
         gamma2[i] = theta2[i] * wigner_limit
 
-    emin = float(np.nanmin(ecm_mev)) if args.emin is None else args.emin
+    # S(E) needs E > 0 (k and exp(2 pi eta) diverge at E = 0), and only
+    # resonances above threshold are Breit-Wigner terms: for Er < 0 the G1
+    # column holds theta^2, not a width.
+    positive_er = ecm_mev[ecm_mev > 0.0]
+    emin = (float(np.nanmin(positive_er)) if positive_er.size else 1e-3) \
+        if args.emin is None else args.emin
     emax = float(np.nanmax(ecm_mev)) if args.emax is None else args.emax
+    if emin <= 0.0:
+        raise SystemExit(f"--emin must be positive for S(E); got {emin}.")
     e_grid = np.linspace(emin, emax, int(args.npts))
 
     sigma = np.zeros_like(e_grid)
     used = 0
-    for Er_mev, J_i, g2, l, g2_red in zip(ecm_mev, J, g2_vals, l_vals, gamma2):
-        if not np.isfinite(g2_red) or g2 <= 0.0:
+    for Er_mev, J_i, g1, g2, l in zip(ecm_mev, J, g1_vals, g2_vals, l_vals):
+        if Er_mev <= 0.0 or g1 <= 0.0 or g2 <= 0.0:
             continue
         r = Resonance(
             E_r=float(Er_mev) * 1e6,
@@ -253,11 +260,14 @@ def main() -> None:
             s2=float(s2),
             m1=float(m1),
             m2=float(m2),
-            Gamma_i=0.0,
+            Gamma_i=float(g1),
             Gamma_o=float(g2),
         )
+        # G1 is RatesMC's entrance partial width at E_r; it is scaled to
+        # other energies by P_l(E)/P_l(E_r).
         sigma += sigma_bw_energy_dep(
-            e_grid * 1e6, r, z1, z2, a1, a2, int(l), gamma2=float(g2_red), r0=meta.r0_fm
+            e_grid * 1e6, r, z1, z2, a1, a2, int(l),
+            Gamma_i_Er_eV=float(g1), r0=meta.r0_fm,
         )
         used += 1
 
@@ -279,7 +289,7 @@ def main() -> None:
         cmap="viridis",
         s=18,
     )
-    axes[1].set_ylabel(r"$\\theta^2$")
+    axes[1].set_ylabel(r"$\theta^2$")
     axes[1].set_yscale("log")
     axes[1].grid(True, alpha=0.3)
     cbar1 = fig.colorbar(sc1, ax=axes[1], label="L1")

@@ -8,38 +8,38 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-
-def iter_ratesmc_out(paths: Iterable[Path]) -> pd.DataFrame:
-    rows = []
-    for path in paths:
-        reaction = path.parts[-3]
-        run = path.parts[-2]
-        rows.extend(read_ratesmc_out(path, reaction, run))
-    if not rows:
-        return pd.DataFrame(
-            columns=["reaction", "run", "T9", "low", "median", "high", "fu"]
-        )
-    return pd.DataFrame(
-        rows, columns=["reaction", "run", "T9", "low", "median", "high", "fu"]
-    )
+from nucres.ratesmc_output import (
+    find_ratesmc_outputs,
+    iter_reaction_dirs,
+    read_ratesmc_out as read_ratesmc_table,
+)
 
 
-def read_ratesmc_out(path: Path, reaction: str, run: str) -> Iterable[Tuple]:
-    rows = []
-    with path.open() as handle:
-        for line in handle:
-            if line.strip().startswith("T9"):
-                break
-        for line in handle:
-            stripped = line.strip()
-            if not stripped:
-                continue
-            parts = stripped.split()
-            if len(parts) < 5:
-                continue
-            t9, low, med, high, fu = map(float, parts[:5])
-            rows.append((reaction, run, t9, low, med, high, fu))
-    return rows
+COLUMNS = ["reaction", "run", "T9", "low", "median", "high", "fu"]
+
+
+def iter_ratesmc_out(entries: Iterable[Tuple[str, str, Path]]) -> pd.DataFrame:
+    """Rows of (reaction, run, T9, low, median, high, fu) from RatesMC tables.
+
+    Columns are located by header name, so RatesMC 2.11 and 2.2+ outputs are
+    both read correctly; fu is NaN for 2.11 files, which have no f.u. column.
+    """
+    frames = []
+    for reaction, run, path in entries:
+        table = read_ratesmc_table(path)
+        n = len(table["T9"])
+        frames.append(pd.DataFrame({
+            "reaction": reaction,
+            "run": run,
+            "T9": table["T9"],
+            "low": table["low"],
+            "median": table["median"],
+            "high": table["high"],
+            "fu": table.get("fu", np.full(n, np.nan)),
+        }))
+    if not frames:
+        return pd.DataFrame(columns=COLUMNS)
+    return pd.concat(frames, ignore_index=True)[COLUMNS]
 
 
 def parse_quantiles(value: str) -> Tuple[float, float, float]:
@@ -58,12 +58,20 @@ def main() -> int:
     parser.add_argument(
         "--root",
         default="outputs",
-        help="Root directory containing reaction/Run_* folders (default: outputs).",
+        help=(
+            "Root directory containing <reaction>/RUN_<j>/<reaction>.out "
+            "(tesseract.py) or <reaction>/Run_<NN>/RatesMC.out "
+            "(run_ratesmc_batches.sh) (default: outputs)."
+        ),
     )
     parser.add_argument(
         "--pattern",
-        default="*/Run_*/RatesMC.out",
-        help="Glob pattern relative to root (default: */Run_*/RatesMC.out).",
+        default=None,
+        help=(
+            "Optional glob relative to root overriding the run-directory "
+            "search, e.g. '*/Run_*/RatesMC.out'; the reaction and run are "
+            "taken from the file's grandparent and parent directory names."
+        ),
     )
     parser.add_argument(
         "--reaction",
@@ -95,18 +103,37 @@ def main() -> int:
     args = parser.parse_args()
 
     root = Path(args.root)
-    paths = sorted(root.glob(args.pattern))
-    if args.reaction:
-        paths = [p for p in paths if p.parts[-3] == args.reaction]
+    if args.pattern:
+        entries = [
+            (p.parts[-3], p.parts[-2], p) for p in sorted(root.glob(args.pattern))
+        ]
+        if args.reaction:
+            entries = [e for e in entries if e[0] == args.reaction]
+    else:
+        entries = [
+            (rdir.name, run, path)
+            for rdir in iter_reaction_dirs(root, args.reaction)
+            for run, path in find_ratesmc_outputs(rdir)
+        ]
 
-    data = iter_ratesmc_out(paths)
+    data = iter_ratesmc_out(entries)
     if data.empty:
-        raise SystemExit("No RatesMC.out files found for the given inputs.")
+        raise SystemExit(f"No RatesMC rate tables found under {root}.")
+    if data[args.rate_column].isna().all():
+        raise SystemExit(
+            f"Column {args.rate_column!r} is not in these RatesMC outputs "
+            "(RatesMC 2.11 writes no f.u. column)."
+        )
 
     q_low, q_mid, q_high = args.quantiles
     grouped = data.groupby(["reaction", "T9"])[args.rate_column]
-    stats = grouped.quantile([q_low, q_mid, q_high]).unstack()
-    stats.columns = ["q_low", "q_mid", "q_high"]
+    # Quantiles one at a time so each label matches the requested level even
+    # when the levels are not given in increasing order.
+    stats = pd.DataFrame({
+        "q_low": grouped.quantile(q_low),
+        "q_mid": grouped.quantile(q_mid),
+        "q_high": grouped.quantile(q_high),
+    })
 
     if args.summary_csv:
         stats.reset_index().to_csv(args.summary_csv, index=False)

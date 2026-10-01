@@ -61,7 +61,18 @@ Implemented in `nucres/generator.py` using `HFBSamplerConfig` and `synthesize_si
 
 Core method:
 
-- Interpolate the HFB level density \(\rho(E)\) on the configured energy range.
+- Interpolate the spin- and parity-resolved HFB level density
+  \(\rho_{J\pi}(E)\) of the compound nucleus (both parities by default,
+  `pi = 0`; `pi = +1` or `-1` restricts to one) on the configured energy range.
+- Drop every \(J^\pi\) sequence the entrance channel cannot form: a
+  resonance needs an orbital angular momentum \(\ell\) with
+  \(|J - S| \le \ell \le J + S\) for a channel spin \(S\) and
+  \(\pi = \pi_p \pi_t (-1)^\ell\). The projectile and target ground-state
+  parities come from NUBASE2020 (`data/nubase_3.mas20`) unless
+  `projectile_parity` / `target_parity` are set in `[resonance]`. For
+  \(\alpha\) on a \(0^+\) target this keeps only natural-parity states
+  \(0^+, 1^-, 2^+, \ldots\) with \(\ell = J\). Set
+  `drop_forbidden = false` to keep them.
 - Partition energy interval into bins of width `delta_E_mev`.
 - Select the resonance spacing model. The backward-compatible default samples
   resonance counts per bin from Poisson statistics:
@@ -85,6 +96,9 @@ Cross section model contribution per resonance is generated with Breit-Wigner ca
 Project components:
 
 - `build_ratesmc_input.py`: injects sampled resonances into a `RatesMC.in` template.
+  Because TESSERACT treats the sampled resonances as perfectly known, the
+  template's upper-limit resonance rows are removed (the section headers are
+  kept); pass `--keep-upper-limits` to retain them.
 - `nucres/ratesmc_export.py`: formats resonance rows and headers (`resonance_to_row`, `render_rows`).
 - `run_ratesmc_batches.sh`: executes batch Runs with structured output directories.
 - `scripts/analyze_ratesmc_outputs.py`: aggregates run outputs and computes uncertainty bands.
