@@ -6,7 +6,7 @@ from typing import Any, Dict, List, Optional
 
 import numpy as np
 
-from common.densities_retrieval import spin_grid
+from common.densities_retrieval import read_hfb_cor, spin_grid
 
 from .hfb_adapter import (
     build_density_grid,
@@ -71,6 +71,10 @@ class HFBSamplerConfig:
         caller converts to partial widths (as `build_ratesmc_input.py` does).
         No cross section is then computed, since summing Breit-Wigner terms
         over reduced widths would be meaningless; `sigma_barns` is None.
+    use_hfb_corrections : bool
+        If true, renormalise the HFB level density with the RIPL-3 `.cor`
+        (ctable, ptable) entry for this isotope, when the `.cor` file has
+        one; isotopes without an entry keep the raw table.
     """
 
     Z: int
@@ -95,6 +99,7 @@ class HFBSamplerConfig:
     auto_l1: bool = True
     spacing_model: str = "poisson"
     widths_are_reduced: bool = False
+    use_hfb_corrections: bool = False
 
 
 @dataclass
@@ -291,7 +296,12 @@ def synthesize_sigma_from_hfb(config: HFBSamplerConfig) -> GeneratedSpectrum:
     record = load_hfb_record(
         tab_path=str(tab_p),
         cor_path=(str(cor_p) if cor_p is not None else None),
+        use_corrections=config.use_hfb_corrections,
         warn_if_ignored=False,
+    )
+    hfb_corrections_applied = bool(
+        config.use_hfb_corrections and cor_p is not None
+        and (record.header.Z, record.header.A) in read_hfb_cor(str(cor_p))
     )
 
     if config.sample_J:
@@ -302,6 +312,7 @@ def synthesize_sigma_from_hfb(config: HFBSamplerConfig) -> GeneratedSpectrum:
             E_max_mev=config.E_max_mev,
             n_points=config.n_density_points,
             U_of_E_mev=_U_of_E_mev,
+            use_corrections=config.use_hfb_corrections,
         )
     else:
         E_mev, rho_per_mev = build_density_grid(
@@ -313,6 +324,7 @@ def synthesize_sigma_from_hfb(config: HFBSamplerConfig) -> GeneratedSpectrum:
             E_max_mev=config.E_max_mev,
             n_points=config.n_density_points,
             U_of_E_mev=_U_of_E_mev,
+            use_corrections=config.use_hfb_corrections,
         )
 
     total_levels = float(np.trapezoid(rho_per_mev, E_mev))
@@ -481,7 +493,7 @@ def synthesize_sigma_from_hfb(config: HFBSamplerConfig) -> GeneratedSpectrum:
         "hfb_A_requested": config.A,
         "hfb_tab_path": str(tab_p),
         "hfb_cor_path": (str(cor_p) if cor_p is not None else None),
-        "hfb_corrections_applied": False,
+        "hfb_corrections_applied": hfb_corrections_applied,
         "hfb_header_Z": record.header.Z,
         "hfb_header_A": record.header.A,
         "hfb_Z_mismatch": record.header.Z != config.Z,

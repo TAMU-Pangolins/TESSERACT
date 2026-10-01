@@ -367,6 +367,8 @@ def step1_build_ratesmc(basics: dict, resonance: dict,
                 # numpy's SeedSequence hashes the seed, so adjacent integers
                 # give uncorrelated streams.
                 cmd.extend(["--seed", str(seed_base + j)])
+            if _bool(resonance.get('hfb_corrections'), False):
+                cmd.append("--hfb-corrections")
             if _bool(resonance.get('use_strength'), False):
                 cmd.append("--use-strength")
             if not _bool(resonance.get('sample_J'), True):

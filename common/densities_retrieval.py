@@ -188,79 +188,73 @@ def J_index(J_phys: float, A: int) -> int:
 
 # ---------------------------- corrections ----------------------------
 
-def read_hfb_cor(path: str) -> Dict[Tuple[int, float], Dict[str, np.ndarray]]:
+def read_hfb_cor(path: str) -> Dict[Tuple[int, int], Tuple[float, float]]:
     """
-    Read a zXXX.cor corrections file.
-    Returns a dict keyed by (parity, U) with arrays to overwrite: T, Ncumul, Rho_level, Rho_state, rho_J.
-    Rows are split into positive/negative blocks by detecting a U-sequence reset.
+    Read a RIPL-3 HFB zXXX.cor file of level-density normalisations.
+
+    Each line is "Z A n_low n_high ctable ptable [nuclide]": the HFB density
+    is renormalised to the discrete levels (and s-wave spacing where known)
+    as
+
+        rho(U, J, pi) = exp(ctable * sqrt(U - ptable)) * rho_HFB(U - ptable, J, pi)
+
+    (TALYS ldmodel 5/6). Returns {(Z, A): (ctable, ptable)}; a missing file
+    gives an empty dict.
     """
-    cor: Dict[Tuple[int, float], Dict[str, np.ndarray]] = {}
+    cor: Dict[Tuple[int, int], Tuple[float, float]] = {}
     try:
         with open(path, "r", encoding="utf-8", errors="ignore") as f:
-            lines = [ln.strip() for ln in f.readlines() if ln.strip()]
+            lines = f.readlines()
     except FileNotFoundError:
         return cor
-
-    def try_parse_row(ln: str):
-        parts = ln.split()
-        if len(parts) >= 55:
-            try:
-                U = float(parts[0]); T = float(parts[1])
-                Nc, RhoL, RhoS = map(float, parts[2:5])
-                rhoJ = np.array([float(x) for x in parts[5:55]], dtype=float)
-                return U, T, Nc, RhoL, RhoS, rhoJ
-            except Exception:
-                return None
-        return None
-
-    rows = []
     for ln in lines:
-        r = try_parse_row(ln)
-        if r is not None:
-            rows.append(r)
-
-    if not rows:
-        return cor
-
-    # Detect where the sequence restarts (switch from + to - parity)
-    Uvals = np.array([r[0] for r in rows], dtype=float)
-    reset_idx = None
-    for i in range(1, len(Uvals)):
-        if Uvals[i] < Uvals[i-1] - 1e-6:
-            reset_idx = i
-            break
-
-    if reset_idx is None:
-        # Couldn’t detect split; treat all as positive
-        for U, T, Nc, RhoL, RhoS, rhoJ in rows:
-            cor[(+1, U)] = {"T": T, "Ncumul": Nc, "Rho_level": RhoL, "Rho_state": RhoS, "rho_J": rhoJ}
-        return cor
-
-    pos_rows = rows[:reset_idx]
-    neg_rows = rows[reset_idx:]
-    for U, T, Nc, RhoL, RhoS, rhoJ in pos_rows:
-        cor[(+1, U)] = {"T": T, "Ncumul": Nc, "Rho_level": RhoL, "Rho_state": RhoS, "rho_J": rhoJ}
-    for U, T, Nc, RhoL, RhoS, rhoJ in neg_rows:
-        cor[(-1, U)] = {"T": T, "Ncumul": Nc, "Rho_level": RhoL, "Rho_state": RhoS, "rho_J": rhoJ}
+        parts = ln.split()
+        if len(parts) < 6:
+            continue
+        try:
+            Z, A = int(parts[0]), int(parts[1])
+            c, delta = float(parts[4]), float(parts[5])
+        except ValueError:
+            continue
+        cor[(Z, A)] = (c, delta)
     return cor
 
-def apply_hfb_corrections(record: HFBRecord, cor: Dict[Tuple[int, float], Dict[str, np.ndarray]], tol: float = 1e-6) -> HFBRecord:
+
+def _correct_block(block: HFBBlock, c: float, delta: float) -> HFBBlock:
+    U = block.U
+    shifted = U - delta
+    factor = np.where(shifted > 0.0, np.exp(c * np.sqrt(np.clip(shifted, 0.0, None))), 0.0)
+
+    def rescale(y: np.ndarray) -> np.ndarray:
+        # rho_HFB at U - delta (zero below the tabulated range), times exp(c sqrt(U - delta))
+        return factor * np.interp(shifted, U, y, left=0.0, right=y[-1])
+
+    return HFBBlock(
+        parity=block.parity,
+        U=U.copy(),
+        T=block.T.copy(),
+        Ncumul=block.Ncumul.copy(),  # not renormalised; unused by the samplers
+        Rho_level=rescale(block.Rho_level),
+        Rho_state=rescale(block.Rho_state),
+        rho_J=np.column_stack([rescale(block.rho_J[:, k]) for k in range(block.rho_J.shape[1])]),
+    )
+
+
+def apply_hfb_corrections(record: HFBRecord, cor: Dict[Tuple[int, int], Tuple[float, float]]) -> HFBRecord:
     """
-    Overwrite rows in 'record' with values from 'cor' where U matches within 'tol'.
+    Apply the (ctable, ptable) normalisation for the record's isotope (see
+    read_hfb_cor). Returns a new record; raises KeyError if the isotope has
+    no entry.
     """
-    for block in (record.positive, record.negative):
-        pi = block.parity
-        for (pi_row, Ucorr), data in cor.items():
-            if pi_row != pi:
-                continue
-            idx = int(np.argmin(np.abs(block.U - Ucorr)))
-            if abs(block.U[idx] - Ucorr) <= tol:
-                block.T[idx] = float(data["T"])
-                block.Ncumul[idx] = float(data["Ncumul"])
-                block.Rho_level[idx] = float(data["Rho_level"])
-                block.Rho_state[idx] = float(data["Rho_state"])
-                block.rho_J[idx, :] = np.asarray(data["rho_J"], dtype=float)
-    return record
+    key = (record.header.Z, record.header.A)
+    if key not in cor:
+        raise KeyError(f"No level-density correction for Z={key[0]}, A={key[1]}.")
+    c, delta = cor[key]
+    return HFBRecord(
+        header=record.header,
+        positive=_correct_block(record.positive, c, delta),
+        negative=_correct_block(record.negative, c, delta),
+    )
 
 # ---------------------------- utilities ----------------------------
 

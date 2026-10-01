@@ -94,5 +94,34 @@ class ReducedWidthSpectrumTest(unittest.TestCase):
             spectrum.compute_rate([0.1])
 
 
+class HfbCorrectionsConfigTest(unittest.TestCase):
+    """z009.cor has a real (nonzero ptable) entry for A=17 (9F: see test_hfb_corrections.py)."""
+
+    def _cfg(self, **overrides):
+        kwargs = dict(
+            Z=9, data_root=DATA_ROOT, A=17, J=0.5, pi=1, s1=0.5, s2=0.0,
+            Gamma_i_mean_eV=0.5, Gamma_o_mean_eV=0.5, delta_E_mev=0.2,
+            E_min_mev=0.5, E_max_mev=3.0, n_density_points=201,
+            n_sigma_points=64, U_offset_mev=4.0, seed=1, sample_J=False,
+        )
+        kwargs.update(overrides)
+        return HFBSamplerConfig(**kwargs)
+
+    def test_metadata_reports_corrections_applied(self):
+        spec_on = synthesize_sigma_from_hfb(self._cfg(use_hfb_corrections=True))
+        spec_off = synthesize_sigma_from_hfb(self._cfg(use_hfb_corrections=False))
+        self.assertTrue(spec_on.metadata["hfb_corrections_applied"])
+        self.assertFalse(spec_off.metadata["hfb_corrections_applied"])
+
+    def test_corrections_change_the_level_density_grid(self):
+        import numpy as np
+
+        spec_on = synthesize_sigma_from_hfb(self._cfg(use_hfb_corrections=True))
+        spec_off = synthesize_sigma_from_hfb(self._cfg(use_hfb_corrections=False))
+        self.assertGreater(
+            np.max(np.abs(spec_on.rho_levels_per_MeV - spec_off.rho_levels_per_MeV)), 0.0
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

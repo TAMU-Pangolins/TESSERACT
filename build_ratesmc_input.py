@@ -557,6 +557,7 @@ def build_ratesmc_input(args) -> None:
         # --Gamma-*-mean-eV are reduced widths here; they are converted to
         # partial widths below, so the generator must not build sigma from them.
         widths_are_reduced=True,
+        use_hfb_corrections=getattr(args, "hfb_corrections", False),
     )
     try:
         generated = synthesize_sigma_from_hfb(cfg)
@@ -846,6 +847,15 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         default=None,
         help="Override the local cache path for HFB density tables.",
+    )
+    p.add_argument(
+        "--hfb-corrections",
+        action="store_true",
+        default=False,
+        help=(
+            "Renormalise the HFB level densities with the RIPL-3 .cor "
+            "(ctable, ptable) entry of the compound nucleus."
+        ),
     )
     p.add_argument(
         "--A",
