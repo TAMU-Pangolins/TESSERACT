@@ -130,24 +130,86 @@ def _parse_header_flexible(lines: list[str]):
     # Nothing found
     return None, 0
 
-def read_hfb_tab(path: str, strict: bool = True):
+def _isotope_block_starts(raw: List[str]) -> Dict[Tuple[int, int], int]:
+    """
+    Map (A, parity) -> index of the banner line for every isotope block.
+
+    RIPL-3 zXXX.tab files hold every tabulated isotope of one element, each as
+    a positive-parity block followed by a negative-parity block, introduced by
+    a banner such as "Z= 14 A= 28: Positive-Parity Spin-dependent ...".
+    """
+    starts: Dict[Tuple[int, int], int] = {}
+    for i, ln in enumerate(raw):
+        m = _BANNER_ZA.search(ln)
+        if not m:
+            continue
+        low = ln.lower()
+        if "positive" in low:
+            parity = +1
+        elif "negative" in low:
+            parity = -1
+        else:
+            continue
+        starts.setdefault((int(m.group(2)), parity), i)
+    return starts
+
+
+def _collect_rows(raw: List[str], start: int, stop: int, n: int = 60) -> Tuple[List[str], int]:
+    """Return up to `n` data rows from raw[start:stop] and the index after the last one."""
+    rows = []
+    i = start
+    while i < stop and len(rows) < n:
+        if _line_is_data_row(raw[i]):
+            rows.append(raw[i])
+        i += 1
+    return rows, i
+
+
+def read_hfb_tab(path: str, A: Optional[int] = None, strict: bool = True):
+    """
+    Read the HFB level-density tables for one isotope from a zXXX.tab file.
+
+    `A` selects the isotope. It may be omitted only when the file contains a
+    single isotope; otherwise a ValueError is raised rather than silently
+    returning the first (lightest) isotope in the file.
+    """
     with open(path, "r", encoding="utf-8", errors="ignore") as f:
         raw = [ln.rstrip("\n") for ln in f]
 
-    hdr_dict, start_idx = _parse_header_flexible(raw)
-    # Collect 60 numeric lines for +parity
-    pos_lines = []
-    i = start_idx
-    while i < len(raw) and len(pos_lines) < 60:
-        if _line_is_data_row(raw[i]):
-            pos_lines.append(raw[i])
-        i += 1
-    # Collect 60 numeric lines for -parity
-    neg_lines = []
-    while i < len(raw) and len(neg_lines) < 60:
-        if _line_is_data_row(raw[i]):
-            neg_lines.append(raw[i])
-        i += 1
+    starts = _isotope_block_starts(raw)
+    if starts:
+        available = sorted({a for (a, _) in starts})
+        if A is None:
+            if len(available) != 1:
+                raise ValueError(
+                    f"{path} contains {len(available)} isotopes "
+                    f"(A={available[0]}..{available[-1]}); pass A= to select one."
+                )
+            A = available[0]
+        A = int(A)
+        if (A, +1) not in starts or (A, -1) not in starts:
+            raise ValueError(
+                f"A={A} not found in {path}; available A values: {available}"
+            )
+        banners = sorted(starts.values())
+
+        def _block_end(begin: int) -> int:
+            later = [b for b in banners if b > begin]
+            return later[0] if later else len(raw)
+
+        pos_start = starts[(A, +1)]
+        neg_start = starts[(A, -1)]
+        pos_lines, _ = _collect_rows(raw, pos_start, _block_end(pos_start))
+        neg_lines, _ = _collect_rows(raw, neg_start, _block_end(neg_start))
+        Z_banner = int(_BANNER_ZA.search(raw[pos_start]).group(1))
+        hdr_dict = dict(Z=Z_banner, A=A)
+    else:
+        # Non-RIPL layout without banners: fall back to the first two blocks.
+        if A is not None:
+            raise ValueError(f"No isotope banners found in {path}; cannot select A={A}.")
+        hdr_dict, start_idx = _parse_header_flexible(raw)
+        pos_lines, after_pos = _collect_rows(raw, start_idx, len(raw))
+        neg_lines, _ = _collect_rows(raw, after_pos, len(raw))
 
     if len(pos_lines) != 60 or len(neg_lines) != 60:
         if strict:

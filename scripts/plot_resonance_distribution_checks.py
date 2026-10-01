@@ -287,6 +287,7 @@ def expected_spin_probabilities(
         record = load_hfb_record(
             tab_path=str(tab_path),
             cor_path=(str(cor_path) if cor_path is not None else None),
+            A=a_comp,
             warn_if_ignored=False,
         )
     except Exception:
@@ -331,12 +332,13 @@ def plot_spin_panel(ax, path: Path, parity: int) -> None:
 def expected_energy_density(path: Path, parity: int) -> tuple[np.ndarray, np.ndarray] | None:
     lines, metadata, table = load_run_table(path)
     try:
-        z_comp, _a_comp = _infer_compound_nucleus(metadata)
+        z_comp, a_comp = _infer_compound_nucleus(metadata)
         u_offset = _infer_u_offset_mev(metadata)
         tab_path, cor_path = resolve_density_paths(z_comp, data_root=None)
         record = load_hfb_record(
             tab_path=str(tab_path),
             cor_path=(str(cor_path) if cor_path is not None else None),
+            A=a_comp,
             warn_if_ignored=False,
         )
         block = record.positive if parity == +1 else record.negative
@@ -369,6 +371,7 @@ def expected_j_density(path: Path, parity: int, j_value: float) -> tuple[np.ndar
         record = load_hfb_record(
             tab_path=str(tab_path),
             cor_path=(str(cor_path) if cor_path is not None else None),
+            A=a_comp,
             warn_if_ignored=False,
         )
         block = record.positive if parity == +1 else record.negative

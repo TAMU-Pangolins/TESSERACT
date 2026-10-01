@@ -276,11 +276,13 @@ def synthesize_sigma_from_hfb(config: HFBSamplerConfig) -> GeneratedSpectrum:
         record = load_hfb_record(
             tab_path=str(tab_p),
             cor_path=(str(cor_p) if cor_p is not None else None),
+            A=config.A,
             warn_if_ignored=False,
         )
         E_mev, rho_per_mev = build_total_density_grid(
             Z=config.Z,
             data_root=config.data_root,
+            A=config.A,
             pi=config.pi,
             E_min_mev=config.E_min_mev,
             E_max_mev=config.E_max_mev,

@@ -44,7 +44,7 @@ def resolve_density_paths(
 
 
 def load_rho_function(
-    tab_path, cor_path=None, *, use_corrections=False, warn_if_ignored=True
+    tab_path, cor_path=None, *, A=None, use_corrections=False, warn_if_ignored=True
 ):
     r"""
     Load the interpolator for \(\rho(U, J, \pi)\) from a `zXXX.tab` file.
@@ -55,6 +55,9 @@ def load_rho_function(
         Path to the required HFB `.tab` file.
     cor_path : str or Path or None, optional
         Optional path to the corresponding `.cor` file.
+    A : int or None, optional
+        Mass number of the isotope to read. Required when the `.tab` file
+        holds several isotopes (the usual RIPL-3 layout).
     use_corrections : bool, default=False
         Apply `.cor` adjustments when both this flag and `cor_path` are present.
     warn_if_ignored : bool, default=True
@@ -65,7 +68,7 @@ def load_rho_function(
     callable
         Interpolator `rho(U, Jcol, pi)` in levels/MeV.
     """
-    rec = read_hfb_tab(tab_path)
+    rec = read_hfb_tab(tab_path, A=A)
     if use_corrections and cor_path:
         cor = read_hfb_cor(cor_path)
         rec = apply_hfb_corrections(rec, cor)
@@ -78,7 +81,7 @@ def load_rho_function(
 
 
 def load_hfb_record(
-    tab_path, cor_path=None, *, use_corrections=False, warn_if_ignored=True
+    tab_path, cor_path=None, *, A=None, use_corrections=False, warn_if_ignored=True
 ):
     r"""
     Load the full HFB record, including spin-resolved \(\rho_J\), from disk.
@@ -89,6 +92,9 @@ def load_hfb_record(
         Path to the required HFB `.tab` file.
     cor_path : str or Path or None, optional
         Optional path to the corresponding `.cor` file.
+    A : int or None, optional
+        Mass number of the isotope to read. Required when the `.tab` file
+        holds several isotopes (the usual RIPL-3 layout).
     use_corrections : bool, default=False
         Apply `.cor` adjustments when both this flag and `cor_path` are present.
     warn_if_ignored : bool, default=True
@@ -99,7 +105,7 @@ def load_hfb_record(
     object
         Parsed HFB record as returned by `read_hfb_tab` / `apply_hfb_corrections`.
     """
-    rec = read_hfb_tab(tab_path)
+    rec = read_hfb_tab(tab_path, A=A)
     if use_corrections and cor_path:
         cor = read_hfb_cor(cor_path)
         rec = apply_hfb_corrections(rec, cor)
@@ -256,6 +262,7 @@ def build_density_grid(
     rho_UJpi = load_rho_function(
         tab_path=str(tab_p),
         cor_path=(str(cor_p) if cor_p is not None else None),
+        A=A,
         # no external flags; hfb_adapter decides how/when to apply .cor
     )
 
@@ -275,6 +282,7 @@ def build_total_density_grid(
     Z: int | None = None,
     data_root: str | Path | None = None,
     tab_path: str | Path | None = None,
+    A: int | None = None,
     pi: int = 1,
     E_min_mev: float = 0.1,
     E_max_mev: float = 2.0,
@@ -292,6 +300,8 @@ def build_total_density_grid(
         Optional directory holding the HFB density files.
     tab_path : str or Path or None, optional
         Explicit override for the `.tab` path. If provided, `Z` is ignored.
+    A : int or None, optional
+        Mass number of the isotope to read from the `.tab` file.
     pi : int, default=1
         Parity selector.
     E_min_mev, E_max_mev : float
@@ -339,6 +349,7 @@ def build_total_density_grid(
     record = load_hfb_record(
         tab_path=str(tab_p),
         cor_path=(str(cor_p) if cor_p is not None else None),
+        A=A,
     )
 
     rho_E_eV_fn = rho_total_levels_per_eV_from_E(record, pi=pi, U_of_E_mev=U_of_E_mev)
