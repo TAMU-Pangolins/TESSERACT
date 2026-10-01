@@ -221,5 +221,51 @@ class TemplateHandlingTest(unittest.TestCase):
         self.assertTrue(any(ln.startswith("Interference") for ln in lines))
 
 
+class RatesMCStepTest(unittest.TestCase):
+    FAKE = """#!/bin/sh
+# Mimics RatesMC: refuses arguments, reads ./RatesMC.in, needs ./mass_1.mas20,
+# writes ./RatesMC.out and exits 1 even on success (as the 2.2+ rewrite does).
+[ "$#" -eq 0 ] || { echo "Custom filenames not yet implemented!"; exit 0; }
+[ -f RatesMC.in ] && [ -f mass_1.mas20 ] || exit 2
+head -1 RatesMC.in > RatesMC.out
+echo " T9      RRate_low       Median Rate     RRate_high     f.u." >> RatesMC.out
+echo " 0.010   1.0e-90   1.0e-90   1.0e-90   1.0e+00" >> RatesMC.out
+echo " 0.020   1.0e-60   1.0e-60   1.0e-60   1.0e+00" >> RatesMC.out
+exit 1
+"""
+
+    def test_runs_in_run_dir_without_arguments_and_ignores_exit_code(self):
+        import os
+        import tesseract
+
+        with tempfile.TemporaryDirectory() as d:
+            d = Path(d)
+            install = d / "RatesMC-src"
+            (install / "build").mkdir(parents=True)
+            fake = install / "build" / "RatesMC"
+            fake.write_text(self.FAKE)
+            os.chmod(fake, 0o755)
+            for name in ("mass_1.mas20", "nubase_3.mas20"):
+                (install / name).write_text("table\n")
+
+            reaction = "22Mg(a,p)25Al"
+            run_dir = d / "out" / reaction / "RUN_0"
+            run_dir.mkdir(parents=True)
+            infile = run_dir / f"{reaction}.in"
+            infile.write_text(f"{reaction}\nbody\n")
+
+            tesseract.step_run_ratesmc(
+                {"reaction": reaction},
+                {"output_dir": str(d / "out"), "runs": "1"},
+                {"ratesmc_bin": str(fake)},
+            )
+
+            out = run_dir / f"{reaction}.out"
+            self.assertTrue(out.exists())
+            self.assertEqual(tesseract._ratesmc_rate_rows(out), 2)
+            self.assertEqual(infile.read_text(), f"{reaction}\nbody\n")  # input untouched
+            self.assertTrue((run_dir / "mass_1.mas20").is_symlink())
+
+
 if __name__ == "__main__":
     unittest.main()

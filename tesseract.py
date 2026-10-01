@@ -336,15 +336,59 @@ def _resolve_ratesmc_bin(ratesmc: dict):
     return None
 
 
+_RATESMC_MASS_TABLES = ("mass_1.mas20", "nubase_3.mas20")
+
+
+def _find_ratesmc_mass_tables(ratesmc_bin: Path, ratesmc: dict):
+    """
+    Locate AME/NUBASE tables for RatesMC, which reads them from its working
+    directory. Checks mass_dir in [ratesmc], then the executable's directory
+    and its parent (an upstream checkout keeps them beside the source, one
+    level above build/). Returns the list of paths, or None.
+    """
+    dirs = []
+    if ratesmc.get('mass_dir'):
+        dirs.append(Path(os.path.expanduser(ratesmc['mass_dir'])))
+    real_bin = ratesmc_bin.resolve()
+    dirs += [real_bin.parent, real_bin.parent.parent]
+    for d in dirs:
+        paths = [d / name for name in _RATESMC_MASS_TABLES]
+        if all(p.exists() for p in paths):
+            return paths
+    return None
+
+
+def _ratesmc_rate_rows(out_path: Path) -> int:
+    """Number of temperature rows (numeric first column, >= 4 columns) in a RatesMC .out file."""
+    if not out_path.exists():
+        return 0
+    n = 0
+    for line in out_path.read_text(errors="replace").splitlines():
+        parts = line.split()
+        if len(parts) < 4:
+            continue
+        try:
+            float(parts[0])
+        except ValueError:
+            continue
+        n += 1
+    return n
+
+
 def step_run_ratesmc(basics: dict, resonance: dict, ratesmc: dict,
                      run_idx: int = None) -> None:
     """
-    Execute the compiled RatesMC binary on each RUN_j/{reaction}.in produced by
-    [resonance], matching how RatesMC is actually invoked in practice: run from
-    its own install directory (where it finds its mass-table data files) with
-    the input file's absolute path passed as an argument, producing
-    {reaction}.out beside that input file. Skips a run silently if its .out
-    already exists.
+    Execute RatesMC on each RUN_j/{reaction}.in produced by [resonance].
+
+    Every RatesMC release reads its input from ./RatesMC.in and writes
+    ./RatesMC.out, and none accepts an input path: 2.11 treats argv[1] as the
+    *output* filename (into a 30-character buffer) and the 2.2+/C++ rewrite
+    refuses any argument. So RatesMC is run with no arguments inside RUN_j on
+    a copy of the input named RatesMC.in, with the AME/NUBASE tables linked
+    in, and RatesMC.out is copied to {reaction}.out. Success is judged by
+    RatesMC.out containing rate rows, not by the exit code, because the
+    rewrite returns 1 even after a successful run. Skips a run silently if
+    its {reaction}.out already exists.
 
     If the RatesMC executable can't be resolved, this step prints a warning
     and returns without error — nothing downstream ([integration]/[talys])
@@ -361,6 +405,13 @@ def step_run_ratesmc(basics: dict, resonance: dict, ratesmc: dict,
         print(f"[ratesmc] WARNING: RatesMC executable could not be found{where}. "
               "Skipping the [ratesmc] step.", flush=True)
         return
+    ratesmc_bin = ratesmc_bin.resolve()
+
+    mass_tables = _find_ratesmc_mass_tables(ratesmc_bin, ratesmc)
+    if mass_tables is None:
+        print("[ratesmc] WARNING: mass_1.mas20 / nubase_3.mas20 not found beside the "
+              "executable (set mass_dir in [ratesmc]); RatesMC 2.2+ needs them.",
+              flush=True)
 
     run_range = [run_idx] if run_idx is not None else range(runs)
     print(f"[ratesmc] using executable: {ratesmc_bin}")
@@ -380,22 +431,34 @@ def step_run_ratesmc(basics: dict, resonance: dict, ratesmc: dict,
             continue
 
         print(f"[ratesmc] RUN_{j} ...", flush=True)
-        log_path = run_dir / "RatesMC.log"
-        with open(log_path, "w") as log:
+        shutil.copyfile(infile, run_dir / "RatesMC.in")
+        for table in mass_tables or []:
+            link = run_dir / table.name
+            if not link.exists():
+                link.symlink_to(table)
+        rates_out = run_dir / "RatesMC.out"
+        if rates_out.exists():
+            rates_out.unlink()      # never mistake a stale file for this run's output
+
+        # RatesMC writes its own RatesMC.log, so keep console output separate.
+        stdout_path = run_dir / "RatesMC.stdout"
+        with open(stdout_path, "w") as log:
             result = subprocess.run(
-                [str(ratesmc_bin), str(infile.resolve())],
-                cwd=ratesmc_bin.parent, stdout=log, stderr=subprocess.STDOUT,
+                [str(ratesmc_bin)],
+                cwd=run_dir, stdout=log, stderr=subprocess.STDOUT,
             )
 
-        if result.returncode != 0:
-            print(f"[ratesmc] WARNING: RatesMC exited with code {result.returncode} "
-                  f"for RUN_{j}; see {log_path}.", flush=True)
+        n_rows = _ratesmc_rate_rows(rates_out)
+        if n_rows == 0:
+            print(f"[ratesmc] WARNING: RatesMC produced no rates for RUN_{j} "
+                  f"(exit code {result.returncode}); see {stdout_path}.", flush=True)
             continue
+        shutil.copyfile(rates_out, outfile)
 
-        log_text = log_path.read_text(errors="replace")
+        log_text = stdout_path.read_text(errors="replace")
         if re.search(r"ERROR|WARNING|FATAL", log_text):
             print(f"[ratesmc] WARNING: RatesMC reported issues for RUN_{j}; "
-                  f"see {log_path}.", flush=True)
+                  f"see {stdout_path}.", flush=True)
 
     if n_skipped:
         print(f"[ratesmc] {n_skipped}/{runs} run(s) already had a .out file — skipped.")
