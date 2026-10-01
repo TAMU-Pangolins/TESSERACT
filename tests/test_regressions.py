@@ -622,5 +622,75 @@ class CheckpointTest(unittest.TestCase):
             self.assertIsNone(topt.checkpoint_load(str(path), "fit_dE_0.2", ["rvadjust_a"]))
 
 
+_LEV_25AL = """  13  25    7    5                                                          25Al
+   0   0.000000   2.5    1  0                   7.183E+00                 5/2+
+   1   0.451700   0.5    1  1                   2.290E-09                 1/2+
+                               0  1.000000 0.000E+00
+   2   0.944900   1.5    1  0                   4.300E-12                 3/2+
+   3   1.612500   3.5    1  0                   1.200E-14               (7/2)+
+   4   1.789500   2.5    1  0                   3.930E-13                 5/2+
+   5   5.045000   1.5   -1  0                   0.000E+00 JP
+"""
+
+
+class FinalStatesTest(unittest.TestCase):
+    def _levels_dir(self, d):
+        (Path(d) / "Al.lev").write_text(_LEV_25AL)
+        return d
+
+    def test_level_file_and_cutoff(self):
+        from nucres.final_states import discrete_final_states, read_levels
+
+        with tempfile.TemporaryDirectory() as d:
+            self._levels_dir(d)
+            read_levels.cache_clear()
+            lv = read_levels(d, 13, 25)
+            self.assertEqual([round(x.E, 4) for x in lv], [0.0, 0.4517, 0.9449, 1.6125, 1.7895, 5.045])
+            self.assertEqual((lv[1].J, lv[1].parity, lv[1].measured), (0.5, 1, True))
+            self.assertFalse(lv[5].measured)
+            # no .cor: complete up to the last measured level from the ground state
+            keep, E_cut = discrete_final_states(d, 13, 25, None)
+            self.assertEqual((len(keep), E_cut), (5, 1.7895))
+            cor = Path(d) / "z013.cor"
+            cor.write_text("  13  25   2   2     0.00000    -0.07947                                    25Al\n")
+            keep, E_cut = discrete_final_states(d, 13, 25, str(cor))
+            self.assertEqual((len(keep), E_cut), (3, 0.9449))
+
+    def test_gamma_multipoles_and_strengths(self):
+        from nucres.final_states import gamma_multipole, strength
+
+        self.assertEqual(gamma_multipole(1, -1, 0, 1), "E1")
+        self.assertEqual(gamma_multipole(1, 1, 0, 1), "M1")
+        self.assertEqual(gamma_multipole(2, 1, 0, 1), "E2")
+        self.assertIsNone(gamma_multipole(0, 1, 0, 1))      # no 0 -> 0
+        self.assertIsNone(gamma_multipole(3, 1, 1, -1))     # M2: beyond the model
+        Eg = np.linspace(1, 30, 300)
+        fe1 = strength("E1", Eg, 28, 14)
+        self.assertTrue(np.all(fe1 > 0))
+        self.assertTrue(15.0 < Eg[np.argmax(fe1 * Eg ** 3)] < 25.0)  # GDR region
+        self.assertEqual(len(set(np.round(strength("M1", Eg, 28, 14), 20))), 1)
+
+    def test_summed_particle_width_mean(self):
+        from nucres.final_states import Continuum, FinalStateModel, Level
+
+        levels = [Level(0.0, 2.5, 1, True), Level(0.4517, 0.5, 1, True)]
+        J = np.array([0.5, 1.5, 2.5])
+        cont = Continuum(U=np.array([1.0]), J=J,
+                         N_pos=np.array([[0.0, 4.0, 0.0]]), N_neg=np.zeros((1, 3)))
+        P = {l: (lambda E, l=l: np.full_like(np.asarray(E, dtype=float), 10.0 ** -(l + 2))) for l in range(9)}
+        m = FinalStateModel("particle", 13, 25, levels, cont, S_proj=9.166, S_exit=5.514,
+                            ejectile_spin=0.5, ejectile_parity=1, pen=lambda l: P[l],
+                            gamma2_mean_eV=100.0)
+        # 2+ resonance: l=0 to 5/2+ (S=2,3), l=2 to 1/2+, l=0 to 3/2+ (continuum, 4 states)
+        expect = 2 * 100.0 * (1e-2 + 1e-4 + 4 * 1e-2)
+        rng = np.random.default_rng(0)
+        draws = [m.exit_width(1.0, 2.0, 1, rng).Gamma_eV for _ in range(20000)]
+        self.assertAlmostEqual(np.mean(draws) / expect, 1.0, delta=0.03)
+        # a state that is energetically closed contributes nothing
+        far = FinalStateModel("particle", 13, 25, [Level(9.0, 0.5, 1, True)], Continuum(np.zeros(0), J, np.zeros((0, 3)), np.zeros((0, 3))),
+                              S_proj=9.166, S_exit=5.514, pen=lambda l: P[l], gamma2_mean_eV=100.0)
+        self.assertEqual(far.exit_width(1.0, 2.0, 1, rng).Gamma_eV, 0.0)
+
+
 if __name__ == "__main__":
     unittest.main()

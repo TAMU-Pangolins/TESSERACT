@@ -99,6 +99,9 @@ class Resonance:
         Optional orbital angular momenta for downstream serialization or analysis.
     parity : int or None
         Optional resonance parity (+1/-1); not used by the cross-section formulas.
+    Exf_keV : float or None
+        Optional excitation energy of the final state the exit width refers
+        to (RatesMC's Exf column); None uses the export default.
     """
 
     E_r: float  # eV
@@ -113,6 +116,7 @@ class Resonance:
     L2: Optional[int] = None
     L3: Optional[int] = None
     parity: Optional[int] = None
+    Exf_keV: Optional[float] = None
 
 
 def channel_radius_fm(A1, A2, r0=1.25):

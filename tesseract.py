@@ -309,7 +309,10 @@ def step1_build_ratesmc(basics: dict, resonance: dict,
                           ('Gamma_i_dof', '--Gamma-i-dof'),
                           ('Gamma_o_dof', '--Gamma-o-dof'),
                           ('final_spin', '--final-spin'),
-                          ('final_parity', '--final-parity')):
+                          ('final_parity', '--final-parity'),
+                          ('exit_width_model', '--exit-width-model'),
+                          ('levels_dir', '--levels-dir'),
+                          ('continuum_dU', '--continuum-dU')):
             if key in resonance:
                 cmd.extend([flag, resonance[key]])
         if _bool(resonance.get('hfb_corrections'), False):

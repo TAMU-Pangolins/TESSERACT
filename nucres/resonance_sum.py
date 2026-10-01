@@ -151,16 +151,21 @@ class ResonanceSum:
                 )
         return self._P[key]
 
-    def _exit(self, l: int, offset: float) -> Callable:
-        """P_l of the exit channel as a function of the exit-channel energy."""
-        key = ("out", l, round(offset, 9))
+    def _exit(self, l: int) -> Callable:
+        """
+        P_l of the exit channel as a function of the exit-channel energy.
+
+        One table per l covers every final state: E_x = E + S_proj - S_exit
+        - E_xf only shifts where it is evaluated (rows may each carry their
+        own E_xf when exit widths are summed over final states).
+        """
+        key = ("out", l)
         if key not in self._P:
             rx = self.reaction
-            lo = max(self.E_min * 0.5 + offset, 1e-6)
-            hi = self.E_max * 1.5 + offset
+            hi = self.E_max * 1.5 + max(rx.S_proj_mev - rx.S_exit_mev, 0.0) + 1.0
             self._P[key] = make_penetrability_interp(
                 l, rx.Z_exit, self.Z_res, rx.M_exit, self.M_res,
-                r0=rx.R0_fm, Emin_mev=lo, Emax_mev=max(hi, lo * 1.01), npts=self.npts,
+                r0=rx.R0_fm, Emin_mev=5e-3, Emax_mev=hi, npts=self.npts,
             )
         return self._P[key]
 
@@ -178,7 +183,7 @@ class ResonanceSum:
         exf = Exf if channel == 1 else 0.0
         offset = rx.S_proj_mev - rx.S_exit_mev - exf
         Ex = E + offset
-        P = self._exit(L, offset)
+        P = self._exit(L)
         Pr = float(P(E_r + offset))
         out = np.where(Ex > 0.0, G * P(np.clip(Ex, 1e-12, None)) / Pr, 0.0)
         return out
