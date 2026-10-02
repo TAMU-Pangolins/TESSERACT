@@ -320,12 +320,15 @@ def split_nuclide_token(token: Optional[str]) -> Tuple[Optional[int], Optional[s
 
 
 def element_symbol_to_Z(symbol: Optional[str]) -> Optional[int]:
-    """Map an element symbol or special light-particle token to its proton number."""
+    """
+    Map an element symbol, or a bare lowercase light-particle token ("n",
+    "p"), to its proton number. Case matters for the clash: "P" and "N" are
+    phosphorus and nitrogen, "p" and "n" a proton and a neutron.
+    """
     if symbol is None:
         return None
-    lower = symbol.lower()
-    if lower in SPECIAL_NUCLIDES:
-        return SPECIAL_NUCLIDES[lower][0]
+    if symbol in SPECIAL_NUCLIDES:
+        return SPECIAL_NUCLIDES[symbol][0]
     return ELEMENT_SYMBOLS.get(symbol.capitalize())
 
 
@@ -340,7 +343,10 @@ def interpret_z_token(token: Optional[str]) -> Optional[int]:
     try:
         return int(float(token))
     except ValueError:
-        mass, symbol = split_nuclide_token(token)
+        raw = token.strip()
+        if raw in SPECIAL_NUCLIDES:          # bare "p" / "n"
+            return SPECIAL_NUCLIDES[raw][0]
+        mass, symbol = split_nuclide_token(token)   # symbol is capitalised: "29P" -> P
         if symbol:
             return element_symbol_to_Z(symbol)
         return None
@@ -373,7 +379,11 @@ def mass_from_token(
         return mass_amu * AMU_TO_KG
     except ValueError:
         pass
-    mass_number, symbol = split_nuclide_token(token)
+    raw = token.strip()
+    if raw in SPECIAL_NUCLIDES:              # bare "p" / "n"
+        z_val, mass_number = SPECIAL_NUCLIDES[raw]
+        return atomic_mass_kg(z_val, mass_number, ame=ame)
+    mass_number, symbol = split_nuclide_token(token)   # symbol capitalised: element
     z_val = z_hint
     if symbol:
         sym_z = element_symbol_to_Z(symbol)
@@ -381,10 +391,6 @@ def mass_from_token(
             z_val = sym_z
     if z_val is None:
         return None
-    if mass_number is None and symbol:
-        special = SPECIAL_NUCLIDES.get(symbol.lower())
-        if special:
-            mass_number = special[1]
     if mass_number is None:
         return None
     return atomic_mass_kg(z_val, mass_number, ame=ame)
