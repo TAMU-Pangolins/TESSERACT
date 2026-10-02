@@ -7,9 +7,11 @@ from unittest.mock import patch
 from build_ratesmc_input import (
     _clear_upper_limits,
     _convert_reduced_to_partial_widths,
+    _exit_channel_settings,
     _infer_compound_nucleus,
     _mass_number_from_token,
     _parse_template_metadata,
+    _resolve_intrinsic_parity,
     build_ratesmc_input,
     inject_rows,
     projectile_separation_energy_mev,
@@ -313,6 +315,97 @@ class ClearUpperLimitsTest(unittest.TestCase):
             )
             text = out.read_text()
         self.assertIn("497.38", text)
+
+
+class ResolveIntrinsicParityTest(unittest.TestCase):
+    def test_explicit_override_wins_without_lookup(self):
+        # Z=999999 would fail any real lookup; the override must short-circuit it.
+        self.assertEqual(_resolve_intrinsic_parity("target", 999999, 1, -1, None), -1)
+
+    def test_real_nubase_lookup_succeeds(self):
+        # alpha: Z=2, A=4, ground state 0+.
+        self.assertEqual(_resolve_intrinsic_parity("projectile", 2, 4, None, 0.0), 1)
+
+    def test_missing_nuclide_raises_with_required_wording(self):
+        with self.assertRaises(ValueError) as ctx:
+            _resolve_intrinsic_parity("target", 999, 999, None, None)
+        msg = str(ctx.exception)
+        self.assertIn("NUBASE failed to retrieve the spin/parity for the target", msg)
+        self.assertIn("Z=999, A=999", msg)
+        self.assertIn("doesn't exist or its parity is not recorded in the NUBASE file", msg)
+
+    def test_ambiguous_real_nuclide_raises_with_required_wording(self):
+        # Z=7, A=24 is a real NUBASE entry with an undetermined ground-state parity.
+        with self.assertRaises(ValueError) as ctx:
+            _resolve_intrinsic_parity("projectile", 7, 24, None, None)
+        msg = str(ctx.exception)
+        self.assertIn("NUBASE failed to retrieve the spin/parity for the projectile", msg)
+        self.assertIn("Z=7, A=24", msg)
+
+    def test_missing_za_without_override_raises(self):
+        with self.assertRaises(ValueError):
+            _resolve_intrinsic_parity("target", None, None, None, None)
+
+
+class ExitChannelSettingsTest(unittest.TestCase):
+    PARTICLE_LINES = TEMPLATE_TEXT.splitlines()  # 22Mg(a,p)25Al
+
+    GAMMA_LINES = [
+        "24Mg(p,g)25Al",
+        "12    ! Ztarget",
+        "1     ! Zproj",
+        "0.5   ! Jproj",
+        "0.0   ! Jtarget",
+        "1.0078 ! Aproj",
+        "23.985 ! Atarget",
+        "*" * 50,
+        "Resonant Contribution",
+        "Ecm     DEcm    wg      Dwg     J     G1        DG1        L1    G2      DG2      L2   G3  DG3  L3  Exf   Int",
+        "*" * 50,
+        "Upper Limits of Resonances",
+        "*" * 50,
+        "1000 ! Number of random samples",
+    ]
+
+    def test_particle_exit_resolves_ejectile_and_final_state_from_nubase(self):
+        metadata = _parse_template_metadata(self.PARTICLE_LINES)
+        args = Namespace(auto_l2=True, final_spin=None, final_parity=None, exf_kev=0.0)
+        settings = _exit_channel_settings(metadata, args)
+        self.assertEqual(settings["exit_kind"], "particle")
+        # proton ejectile: 1/2+
+        self.assertAlmostEqual(settings["ejectile_spin"], 0.5)
+        self.assertEqual(settings["ejectile_parity"], 1)
+        # 25Al residual ground state: 5/2+
+        self.assertAlmostEqual(settings["final_spin"], 2.5)
+        self.assertEqual(settings["final_parity"], 1)
+
+    def test_gamma_exit_resolves_compound_ground_state_from_nubase(self):
+        metadata = _parse_template_metadata(self.GAMMA_LINES)
+        args = Namespace(auto_l2=True, final_spin=None, final_parity=None, exf_kev=0.0)
+        settings = _exit_channel_settings(metadata, args)
+        self.assertEqual(settings["exit_kind"], "gamma")
+        # compound nucleus is 25Al: 5/2+
+        self.assertAlmostEqual(settings["final_spin"], 2.5)
+
+    def test_explicit_final_spin_parity_override_skips_nubase(self):
+        metadata = _parse_template_metadata(self.GAMMA_LINES)
+        args = Namespace(auto_l2=True, final_spin=0.5, final_parity=-1, exf_kev=500.0)
+        settings = _exit_channel_settings(metadata, args)
+        self.assertAlmostEqual(settings["final_spin"], 0.5)
+        self.assertEqual(settings["final_parity"], -1)
+
+    def test_excited_final_state_without_override_raises(self):
+        metadata = _parse_template_metadata(self.GAMMA_LINES)
+        args = Namespace(auto_l2=True, final_spin=None, final_parity=None, exf_kev=500.0)
+        with self.assertRaises(ValueError) as ctx:
+            _exit_channel_settings(metadata, args)
+        self.assertIn("--exf-kev populates an excited final state", str(ctx.exception))
+
+    def test_no_auto_l2_disables_exit_kind(self):
+        metadata = _parse_template_metadata(self.PARTICLE_LINES)
+        args = Namespace(auto_l2=False, final_spin=None, final_parity=None, exf_kev=0.0)
+        settings = _exit_channel_settings(metadata, args)
+        self.assertIsNone(settings["exit_kind"])
 
 
 if __name__ == "__main__":

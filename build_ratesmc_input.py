@@ -15,6 +15,7 @@ from nucres.ratesmc_export import (
     resonant_header_line,
 )
 from nucres.read_qvals import (
+    ground_state_jpi,
     interpret_z_token,
     load_ame,
     mass_from_token,
@@ -357,6 +358,124 @@ def _infer_compound_nucleus(metadata: TemplateMetadata) -> Tuple[int, int]:
     return z_targ + z_proj, a_targ + a_proj
 
 
+def _resolve_intrinsic_parity(
+    label: str,
+    Z: Optional[int],
+    A: Optional[int],
+    override: Optional[int],
+    template_spin: Optional[float],
+) -> int:
+    """
+    Ground-state parity of the projectile or target.
+
+    An explicit override wins; otherwise the NUBASE2020 ground state is used,
+    and failure to resolve it (missing nuclide, or an undetermined parity)
+    raises rather than silently assuming +1 -- a wrong default here would be
+    hard to notice and would misidentify which resonance J^pi sequences the
+    entrance channel can form. A NUBASE spin that disagrees with the
+    template's spin is reported, since the template spin is what enters the
+    statistical factor.
+    """
+    if override is not None:
+        return int(override)
+    if Z is None or A is None:
+        raise ValueError(
+            f"Cannot look up the {label} parity without its Z and A; "
+            f"pass --{label}-parity explicitly."
+        )
+    try:
+        J_nb, parity = ground_state_jpi(Z, A)
+    except KeyError:
+        parity = None
+    if parity is None:
+        raise ValueError(
+            f"NUBASE failed to retrieve the spin/parity for the {label} "
+            f"(Z={Z}, A={A}) because it either doesn't exist or its parity "
+            f"is not recorded in the NUBASE file. Pass --{label}-parity explicitly."
+        )
+    if template_spin is not None and J_nb is not None and abs(J_nb - template_spin) > 1e-6:
+        print(
+            f"WARNING: template {label} spin {template_spin} differs from "
+            f"NUBASE ground-state spin {J_nb} (Z={Z}, A={A})."
+        )
+    return int(parity)
+
+
+def _exit_channel_settings(metadata: TemplateMetadata, args) -> dict:
+    """
+    Exit-channel information for choosing L2 per resonance.
+
+    Decay is assumed to go to the ground state: the ejectile's J^pi and the
+    final state's J^pi both come from NUBASE2020 ground states (the residual
+    for particle exits, the compound nucleus for gamma exits) unless
+    --final-spin/--final-parity are given; they are required when --exf-kev
+    populates an excited final state, since NUBASE only has ground states.
+    """
+    exit_symbol = _reaction_exit_symbol(metadata.reaction)
+    if exit_symbol in ("g", "gamma"):
+        kind = "gamma"
+    elif exit_symbol in _PARTICLE_EXIT_CHANNELS:
+        kind = "particle"
+    else:
+        return {"exit_kind": None}
+
+    settings: dict = {"exit_kind": kind}
+    if not getattr(args, "auto_l2", True):
+        settings["exit_kind"] = None
+        return settings
+
+    if kind == "particle":
+        _, ejectile, residual = _parse_reaction_channels(metadata.reaction)
+        ej_Z, ej_A = ejectile
+        if ej_Z is None or ej_A is None:
+            raise ValueError(
+                f"Cannot look up the ejectile parity: {metadata.reaction!r} did not "
+                "parse into Z/A for it. Pass --final-spin/--final-parity or --no-auto-l2."
+            )
+        try:
+            s_e, pi_e = ground_state_jpi(ej_Z, ej_A)
+        except KeyError:
+            s_e, pi_e = None, None
+        if s_e is None or pi_e is None:
+            raise ValueError(
+                f"NUBASE failed to retrieve the spin/parity for the ejectile "
+                f"(Z={ej_Z}, A={ej_A}) because it either doesn't exist or its parity "
+                "is not recorded in the NUBASE file. Pass --final-spin/--final-parity "
+                "or --no-auto-l2."
+            )
+        settings.update(ejectile_spin=float(s_e), ejectile_parity=int(pi_e))
+        final_nucleus = residual
+    else:
+        final_nucleus = _infer_compound_nucleus(metadata)
+
+    J_f = getattr(args, "final_spin", None)
+    pi_f = getattr(args, "final_parity", None)
+    if J_f is None or pi_f is None:
+        if (getattr(args, "exf_kev", 0.0) or 0.0) > 0.0:
+            raise ValueError(
+                "--exf-kev populates an excited final state; give its J^pi "
+                "with --final-spin and --final-parity (or use --no-auto-l2)."
+            )
+        f_Z, f_A = final_nucleus
+        try:
+            J_nb, pi_nb = (
+                ground_state_jpi(f_Z, f_A) if f_Z is not None and f_A is not None else (None, None)
+            )
+        except KeyError:
+            J_nb, pi_nb = None, None
+        J_f = J_nb if J_f is None else J_f
+        pi_f = pi_nb if pi_f is None else pi_f
+    if J_f is None or (kind == "particle" and pi_f is None):
+        raise ValueError(
+            f"NUBASE failed to retrieve the spin/parity for the final nucleus "
+            f"(Z={final_nucleus[0]}, A={final_nucleus[1]}) because it either doesn't "
+            "exist or its parity is not recorded in the NUBASE file. Pass "
+            "--final-spin/--final-parity or --no-auto-l2."
+        )
+    settings.update(final_spin=float(J_f), final_parity=(int(pi_f) if pi_f is not None else None))
+    return settings
+
+
 def _convert_reduced_to_partial_widths(
     resonances,
     metadata: TemplateMetadata,
@@ -532,6 +651,22 @@ def build_ratesmc_input(args) -> None:
         else _infer_u_offset_mev(metadata)
     )
 
+    projectile_parity = _resolve_intrinsic_parity(
+        "projectile",
+        metadata.proj_Z,
+        _mass_number_from_token(metadata.proj_A_token),
+        getattr(args, "projectile_parity", None),
+        s1_val,
+    )
+    target_parity = _resolve_intrinsic_parity(
+        "target",
+        metadata.Z,
+        _mass_number_from_token(metadata.targ_A_token),
+        getattr(args, "target_parity", None),
+        s2_val,
+    )
+    exit_settings = _exit_channel_settings(metadata, args)
+
     cfg = HFBSamplerConfig(
         Z=Z_val,
         data_root=args.data_root,
@@ -540,6 +675,10 @@ def build_ratesmc_input(args) -> None:
         pi=args.pi,
         s1=s1_val,
         s2=s2_val,
+        projectile_parity=projectile_parity,
+        target_parity=target_parity,
+        drop_forbidden=getattr(args, "drop_forbidden", True),
+        **exit_settings,
         m1=m1_val,
         m2=m2_val,
         Gamma_i_mean_eV=args.Gamma_i_mean_eV,
@@ -626,6 +765,21 @@ def build_ratesmc_input(args) -> None:
         clear_upper_limits=not getattr(args, "keep_upper_limits", False),
     )
     count = len(rows)
+    if generated.metadata.get("n_exit_forbidden"):
+        print(
+            f"Dropped {generated.metadata['n_exit_forbidden']} resonances that cannot "
+            "decay to the final state (no allowed exit l / gamma multipolarity)."
+        )
+    if generated.metadata.get("dropped_Jpi"):
+        dropped = ", ".join(
+            f"{J:g}{'+' if p > 0 else '-'}" for J, p in generated.metadata["dropped_Jpi"][:12]
+        )
+        more = " ..." if len(generated.metadata["dropped_Jpi"]) > 12 else ""
+        print(
+            f"Dropped {len(generated.metadata['dropped_Jpi'])} J^pi sequences the entrance "
+            f"channel cannot form ({dropped}{more}); expected levels removed: "
+            f"{generated.metadata['expected_levels_dropped']:.1f}"
+        )
     print(f"Wrote RatesMC.in with {count} resonances to {output_path}")
     if count == 0:
         print(
@@ -775,7 +929,10 @@ def parse_args() -> argparse.Namespace:
         "--l2",
         type=int,
         default=1,
-        help="Exit channel orbital angular momentum / multipolarity L2.",
+        help=(
+            "Exit channel orbital angular momentum / multipolarity L2, used only "
+            "with --no-auto-l2 or when the final-state J^pi is unknown."
+        ),
     )
     p.add_argument(
         "--l3",
@@ -869,7 +1026,37 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="Resonance spin used in generated spectrum (default: first J in template).",
     )
-    p.add_argument("--pi", type=int, choices=(-1, 1), default=1, help="Parity (+-1).")
+    p.add_argument(
+        "--pi",
+        type=int,
+        choices=(-1, 0, 1),
+        default=0,
+        help="Resonance parity to sample: +1 or -1 for one parity, 0 for both (default).",
+    )
+    p.add_argument(
+        "--target-parity",
+        type=int,
+        choices=(-1, 1),
+        default=None,
+        help="Target ground-state parity (default: NUBASE2020).",
+    )
+    p.add_argument(
+        "--projectile-parity",
+        type=int,
+        choices=(-1, 1),
+        default=None,
+        help="Projectile ground-state parity (default: NUBASE2020).",
+    )
+    p.add_argument(
+        "--keep-forbidden",
+        dest="drop_forbidden",
+        action="store_false",
+        default=True,
+        help=(
+            "Keep J^pi sequences the entrance channel cannot form "
+            "(default: drop them)."
+        ),
+    )
     p.add_argument(
         "--s1",
         type=float,
@@ -895,6 +1082,26 @@ def parse_args() -> argparse.Namespace:
         type=float,
         default=1.0,
         help="Mean exit REDUCED width gamma^2 for PT sampling (eV); converted to Gamma = 2 gamma^2 P for particle exits.",
+    )
+    p.add_argument(
+        "--final-spin",
+        type=float,
+        default=None,
+        help="Spin of the final state (default: NUBASE ground state of the residual).",
+    )
+    p.add_argument(
+        "--final-parity",
+        type=int,
+        choices=(-1, 1),
+        default=None,
+        help="Parity of the final state (default: NUBASE ground state of the residual).",
+    )
+    p.add_argument(
+        "--no-auto-l2",
+        dest="auto_l2",
+        action="store_false",
+        default=True,
+        help="Use the fixed --l2 for every resonance instead of the lowest allowed exit l.",
     )
     p.add_argument(
         "--delta-E-mev",
@@ -957,7 +1164,7 @@ def parse_args() -> argparse.Namespace:
         dest="auto_l1",
         action="store_true",
         default=True,
-        help="Compute L1 from J, s1, s2, and parity (assumes intrinsic parity product +1).",
+        help="Set L1 to the smallest l allowed by J, s1, s2 and the parities.",
     )
     p.add_argument(
         "--no-auto-l1",

@@ -10,6 +10,7 @@ AMU_TO_KG = 1.66053906660e-27
 KEV_PER_AMU = 931_494.10242
 DATA_DIR = Path(__file__).resolve().parents[1] / "data"
 DEFAULT_AME_PATH = DATA_DIR / "ame20.csv"
+DEFAULT_NUBASE_PATH = DATA_DIR / "nubase_3.mas20"
 ELEMENT_SYMBOLS = {
     "H": 1,
     "He": 2,
@@ -144,6 +145,72 @@ def _clean_numeric(value: str) -> float:
     if cleaned in ("", "+", "-"):
         raise ValueError(f"Cannot parse numeric value from {value!r}")
     return float(cleaned)
+
+
+def _parse_jpi(field: str) -> Tuple[Optional[float], Optional[int]]:
+    """
+    Parse a NUBASE J^pi field such as "1/2-*", "(5/2+)", "0+", "3+#".
+
+    Returns `(J, parity)`; either is None when NUBASE does not give it
+    unambiguously (e.g. "(1,2)+" gives no J, "high" gives neither).
+    """
+    tokens = field.split()
+    if not tokens:
+        return None, None
+    tok = tokens[0].replace("*", "").replace("#", "").replace("(", "").replace(")", "")
+    parity = {"+": 1, "-": -1}.get(tok[-1:]) if tok else None
+    spin = tok[:-1] if parity is not None else tok
+    try:
+        if "/" in spin:
+            num, den = spin.split("/")
+            J = int(num) / int(den)
+        else:
+            J = float(int(spin))
+    except ValueError:
+        J = None
+    return J, parity
+
+
+@lru_cache(maxsize=1)
+def load_nubase_ground_states(
+    path: str | Path = DEFAULT_NUBASE_PATH,
+) -> Dict[Tuple[int, int], Tuple[Optional[float], Optional[int]]]:
+    """
+    Load NUBASE2020 ground-state spins and parities keyed by `(Z, A)`.
+
+    Values are `(J, parity)` with parity +1/-1; entries NUBASE leaves
+    undetermined are None.
+    """
+    lut: Dict[Tuple[int, int], Tuple[Optional[float], Optional[int]]] = {}
+    with open(path, encoding="utf-8", errors="ignore") as f:
+        for line in f:
+            if line.startswith("#") or len(line) < 89:
+                continue
+            try:
+                A = int(line[0:3])
+                Z = int(line[4:7])
+            except ValueError:
+                continue
+            if line[7] != "0":  # isomer / excited-level rows
+                continue
+            lut[(Z, A)] = _parse_jpi(line[88:102])
+    return lut
+
+
+def ground_state_jpi(Z: int, A: int, path: str | Path = DEFAULT_NUBASE_PATH):
+    """
+    Return the NUBASE2020 ground-state `(J, parity)` for nuclide `(Z, A)`.
+
+    Raises
+    ------
+    KeyError
+        If the nuclide is not in NUBASE.
+    """
+    lut = load_nubase_ground_states(path)
+    try:
+        return lut[(int(Z), int(A))]
+    except KeyError as exc:
+        raise KeyError(f"NUBASE has no ground state for Z={Z}, A={A}") from exc
 
 
 @lru_cache(maxsize=1)

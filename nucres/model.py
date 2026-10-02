@@ -25,9 +25,18 @@ class HFBRateRequest:
     J : float
         Fixed resonance spin used when the downstream sampler is not sampling `J`.
     pi : int
-        Parity selector, typically `+1` or `-1`.
+        Compound-nucleus (resonance) parity to sample: `+1` or `-1` for a
+        single parity, or `0` for both parities.
     s1, s2 : float
         Projectile and target spins.
+    projectile_parity, target_parity : int
+        Intrinsic ground-state parities of projectile and target (`+1`/`-1`),
+        used to determine which resonance J^pi values are formable. Defaults
+        to `+1`/`+1`; pass the real values for any nuclide whose ground state
+        is negative parity (e.g. 15N is 1/2-).
+    drop_forbidden : bool
+        If true (default), resonance J^pi combinations that cannot be formed
+        from `projectile_parity`/`target_parity` are excluded from sampling.
     m1, m2 : float
         Projectile and target masses in kg.
     Gamma_i_mean_eV, Gamma_o_mean_eV : float
@@ -55,6 +64,9 @@ class HFBRateRequest:
     pi: int
     s1: float = 0.5
     s2: float = 0.5
+    projectile_parity: int = 1
+    target_parity: int = 1
+    drop_forbidden: bool = True
     m1: float = MASS_PROTON
     m2: float = MASS_PROTON
     Gamma_i_mean_eV: float = 1.0
@@ -86,6 +98,9 @@ class HFBRateRequest:
             pi=self.pi,
             s1=self.s1,
             s2=self.s2,
+            projectile_parity=self.projectile_parity,
+            target_parity=self.target_parity,
+            drop_forbidden=self.drop_forbidden,
             m1=self.m1,
             m2=self.m2,
             Gamma_i_mean_eV=self.Gamma_i_mean_eV,

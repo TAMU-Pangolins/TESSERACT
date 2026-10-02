@@ -350,7 +350,7 @@ def step1_build_ratesmc(basics: dict, resonance: dict,
                 "--l1",               resonance.get('l1',               '0'),
                 "--l2",               resonance.get('l2',               '1'),
                 "--l3",               resonance.get('l3',               '0'),
-                "--pi",               resonance.get('pi',               '1'),
+                "--pi",               resonance.get('pi',               '0'),
                 "--delta-E-mev",      resonance.get('delta_E_mev',      '0.05'),
                 "--spacing-model",    resonance.get('spacing_model',    'poisson'),
                 "--n-sigma-points",   resonance.get('n_sigma_points',   '4000'),
@@ -369,6 +369,12 @@ def step1_build_ratesmc(basics: dict, resonance: dict,
                 cmd.extend(["--seed", str(seed_base + j)])
             if _bool(resonance.get('hfb_corrections'), False):
                 cmd.append("--hfb-corrections")
+            for key, flag in (('target_parity', '--target-parity'),
+                              ('projectile_parity', '--projectile-parity')):
+                if key in resonance:
+                    cmd.extend([flag, resonance[key]])
+            if not _bool(resonance.get('drop_forbidden'), True):
+                cmd.append("--keep-forbidden")
             if _bool(resonance.get('use_strength'), False):
                 cmd.append("--use-strength")
             if not _bool(resonance.get('sample_J'), True):
