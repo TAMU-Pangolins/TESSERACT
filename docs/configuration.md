@@ -79,12 +79,15 @@ copies `RatesMC.out` to `<reaction>.out`. A run succeeds when `RatesMC.out`
 contains rate rows; the exit code is ignored (the 2.2+ rewrite returns 1 on
 success). Console output goes to `RUN_j/RatesMC.stdout`, since RatesMC writes
 its own `RatesMC.log`. Nothing downstream reads RatesMC's output, so if no
-executable is found the step is skipped with a warning.
+executable is found the step is skipped with a warning, and by default
+RatesMC runs in the background while `[integration]` and `[talys]` proceed
+(give a condor job two CPUs). The driver waits for it before finishing.
 
 | Key | Default | Meaning |
 | --- | --- | --- |
 | `ratesmc_bin` | `$RATESMC_BIN`, else `RatesMC`/`ratesmc` on `PATH` | Executable (path or command name). |
 | `mass_dir` | beside the executable, else one level up (upstream `build/`) | Directory holding `mass_1.mas20` and `nubase_3.mas20`. |
+| `concurrent` | `true` | Run RatesMC alongside the later steps; `false` runs it before them. |
 
 Use RatesMC 2.3.0 (upstream [rlongland/RatesMC](https://github.com/rlongland/RatesMC)),
 which runs all 64 templates. RatesMC 2.11 hangs while reading 8 of them.

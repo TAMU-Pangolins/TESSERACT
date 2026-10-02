@@ -20,7 +20,10 @@ Rules:
   • [ratesmc] is the one exception: nothing downstream ([integration]/
       [talys]) reads RatesMC's own output, so if the RatesMC executable
       can't be resolved this step is skipped with a warning instead of
-      aborting the pipeline.
+      aborting the pipeline. For the same reason it runs in the background
+      alongside [integration]/[talys] (set  concurrent = false  in
+      [ratesmc] to run it before them instead); the driver waits for it
+      before finishing.
 
 Output naming with multiple runs (runs = N):
   [resonance]   outputs/{reaction}/RUN_{j}/{reaction}.in          j = 0..N-1
@@ -40,6 +43,7 @@ import re
 import shutil
 import sys
 import subprocess
+import threading
 from pathlib import Path
 
 # Absolute directory containing this script — used to locate sibling scripts
@@ -695,10 +699,32 @@ def main():
                                  next_step='integration', run_idx=run_idx)
 
     # ── Step 1b: [ratesmc] (optional) ─────────────────────────────────────────
+    # Nothing downstream reads RatesMC's output, so by default it runs in a
+    # background thread while [integration]/[talys] proceed; the thread
+    # spends its time waiting on the RatesMC subprocess, which releases the
+    # GIL. Its failure is re-raised once the other steps have finished.
+    ratesmc_thread = None
+    ratesmc_error = []
     if has_ratesmc:
+        concurrent = _bool(ratesmc.get('concurrent'), True) and (has_integration or has_talys)
+
+        def _ratesmc():
+            try:
+                step_run_ratesmc(basics, resonance, ratesmc, run_idx=run_idx)
+                _banner("ratesmc", "end")
+            except BaseException as exc:   # sys.exit() raises SystemExit
+                ratesmc_error.append(exc)
+
         _banner("ratesmc", "start")
-        step_run_ratesmc(basics, resonance, ratesmc, run_idx=run_idx)
-        _banner("ratesmc", "end")
+        if concurrent:
+            print("[ratesmc] running in the background alongside the remaining steps",
+                  flush=True)
+            ratesmc_thread = threading.Thread(target=_ratesmc, name="ratesmc")
+            ratesmc_thread.start()
+        else:
+            _ratesmc()
+            if ratesmc_error:
+                raise ratesmc_error[0]
 
     # ── Step 2: [integration] ─────────────────────────────────────────────────
     if has_integration:
@@ -750,6 +776,13 @@ def main():
         _banner("talys", "start")
         step3_talys_opt(talys, exp_files, args.input, run_idx=run_idx)
         _banner("talys", "end")
+
+    if ratesmc_thread is not None:
+        if ratesmc_thread.is_alive():
+            print("[ratesmc] waiting for RatesMC to finish ...", flush=True)
+        ratesmc_thread.join()
+        if ratesmc_error:
+            raise ratesmc_error[0]
 
     print("Pipeline complete.")
 
