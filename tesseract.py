@@ -370,11 +370,15 @@ def step1_build_ratesmc(basics: dict, resonance: dict,
             if _bool(resonance.get('hfb_corrections'), False):
                 cmd.append("--hfb-corrections")
             for key, flag in (('target_parity', '--target-parity'),
-                              ('projectile_parity', '--projectile-parity')):
+                              ('projectile_parity', '--projectile-parity'),
+                              ('final_spin', '--final-spin'),
+                              ('final_parity', '--final-parity')):
                 if key in resonance:
                     cmd.extend([flag, resonance[key]])
             if not _bool(resonance.get('drop_forbidden'), True):
                 cmd.append("--keep-forbidden")
+            if not _bool(resonance.get('auto_l2'), True):
+                cmd.append("--no-auto-l2")
             if _bool(resonance.get('use_strength'), False):
                 cmd.append("--use-strength")
             if not _bool(resonance.get('sample_J'), True):
