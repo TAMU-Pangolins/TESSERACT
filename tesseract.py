@@ -411,10 +411,11 @@ def step_run_ratesmc(basics: dict, resonance: dict, ratesmc: dict,
     *output* filename (into a 30-character buffer) and the 2.2+/C++ rewrite
     refuses any argument. So RatesMC is run with no arguments inside RUN_j on
     a copy of the input named RatesMC.in, with the AME/NUBASE tables linked
-    in, and RatesMC.out is copied to {reaction}.out. Success is judged by
-    RatesMC.out containing rate rows, not by the exit code, because the
-    rewrite returns 1 even after a successful run. Skips a run silently if
-    its {reaction}.out already exists.
+    in, and RatesMC.out is copied to {reaction}.out. RatesMC.integ (the
+    integrand dump, many GB) is linked to /dev/null unless keep_integrand.
+    Success is judged by RatesMC.out containing rate rows, not by the exit
+    code, because the rewrite returns 1 even after a successful run. Skips a
+    run silently if its {reaction}.out already exists.
 
     If the RatesMC executable can't be resolved, this step prints a warning
     and returns without error — nothing downstream ([integration]/[talys])
@@ -439,6 +440,7 @@ def step_run_ratesmc(basics: dict, resonance: dict, ratesmc: dict,
               "executable (set mass_dir in [ratesmc]); RatesMC 2.2+ needs them.",
               flush=True)
 
+    keep_integrand = _bool(ratesmc.get('keep_integrand'), False)
     run_range = [run_idx] if run_idx is not None else range(runs)
     print(f"[ratesmc] using executable: {ratesmc_bin}")
     print(f"[ratesmc] processing run(s): {list(run_range)}")
@@ -465,6 +467,16 @@ def step_run_ratesmc(basics: dict, resonance: dict, ratesmc: dict,
         rates_out = run_dir / "RatesMC.out"
         if rates_out.exists():
             rates_out.unlink()      # never mistake a stale file for this run's output
+
+        # RatesMC writes every integrand evaluation of every Int=1 resonance
+        # at every temperature to RatesMC.integ, flushing each line: 12-18 GB
+        # per run for the (a,p) cases, and much of the run time on NFS.
+        # Nothing reads it, so it goes to /dev/null unless asked for.
+        integ = run_dir / "RatesMC.integ"
+        if integ.is_symlink() or integ.exists():
+            integ.unlink()
+        if not keep_integrand:
+            integ.symlink_to(os.devnull)
 
         # RatesMC writes its own RatesMC.log, so keep console output separate.
         stdout_path = run_dir / "RatesMC.stdout"

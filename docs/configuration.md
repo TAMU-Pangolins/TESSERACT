@@ -88,6 +88,7 @@ RatesMC runs in the background while `[integration]` and `[talys]` proceed
 | `ratesmc_bin` | `$RATESMC_BIN`, else `RatesMC`/`ratesmc` on `PATH` | Executable (path or command name). |
 | `mass_dir` | beside the executable, else one level up (upstream `build/`) | Directory holding `mass_1.mas20` and `nubase_3.mas20`. |
 | `concurrent` | `true` | Run RatesMC alongside the later steps; `false` runs it before them. |
+| `keep_integrand` | `false` | Keep `RatesMC.integ`, RatesMC's dump of every integrand evaluation (12–18 GB per run for the (a,p) cases); otherwise it is linked to `/dev/null`. |
 
 Use RatesMC 2.3.0 (upstream [rlongland/RatesMC](https://github.com/rlongland/RatesMC)),
 which runs all 64 templates. RatesMC 2.11 hangs while reading 8 of them.
