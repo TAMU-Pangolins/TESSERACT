@@ -255,9 +255,12 @@ def _channel_numbers_from_token(token: Optional[str]) -> Tuple[Optional[int], Op
     mass_number, symbol = split_nuclide_token(token)
     if symbol is None:
         return None, None
-    special = _LIGHT_PARTICLES.get(symbol.lower())
-    if special is not None:
-        return special
+    # Light-particle names (p, n, d, t, a) only without a mass number: "29P"
+    # is phosphorus and "14N" nitrogen, not a proton or a neutron.
+    if mass_number is None:
+        special = _LIGHT_PARTICLES.get(symbol.lower())
+        if special is not None:
+            return special
     return interpret_z_token(token), mass_number
 
 

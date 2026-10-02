@@ -5,11 +5,13 @@ from pathlib import Path
 from unittest.mock import patch
 
 from build_ratesmc_input import (
+    _channel_numbers_from_token,
     _clear_upper_limits,
     _convert_reduced_to_partial_widths,
     _exit_channel_settings,
     _infer_compound_nucleus,
     _mass_number_from_token,
+    _parse_reaction_channels,
     _parse_template_metadata,
     _resolve_intrinsic_parity,
     build_ratesmc_input,
@@ -406,6 +408,16 @@ class ExitChannelSettingsTest(unittest.TestCase):
         args = Namespace(auto_l2=False, final_spin=None, final_parity=None, exf_kev=0.0)
         settings = _exit_channel_settings(metadata, args)
         self.assertIsNone(settings["exit_kind"])
+
+
+class ReactionTokenTest(unittest.TestCase):
+    def test_element_symbols_are_not_light_particles(self):
+        self.assertEqual(_channel_numbers_from_token("29P"), (15, 29))   # was (1, 1): a proton
+        self.assertEqual(_channel_numbers_from_token("14N"), (7, 14))    # was (0, 1): a neutron
+        self.assertEqual(_channel_numbers_from_token("p"), (1, 1))
+        self.assertEqual(_channel_numbers_from_token("a"), (2, 4))
+        proj, ejec, res = _parse_reaction_channels("26Si(a,p)29P")
+        self.assertEqual((proj, ejec, res), ((2, 4), (1, 1), (15, 29)))
 
 
 if __name__ == "__main__":
