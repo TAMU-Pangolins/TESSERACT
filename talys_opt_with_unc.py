@@ -262,6 +262,7 @@ def write_talys_files(
     Write energies.txt and talys.inp to workdir.
 
     talys.inp contains in order:
+      0. strucpath $TALYS_STRUCPATH, if that is set
       1. Nuclear identity (projectile / element / mass) from [basics]
       2. Energy file reference
       3. Fixed TALYS keywords from [talys] key=value pairs
@@ -278,6 +279,15 @@ def write_talys_files(
 
     inp_path = os.path.join(workdir, "talys.inp")
     lines = []
+
+    # Each TALYS run opens ~330 structure files; thousands of fits doing that
+    # against an NFS copy of the database saturated the file server, so a
+    # job wrapper can point TALYS at a node-local copy instead. TALYS copies
+    # this value over its compiled-in path without clearing it, so the
+    # wrapper must give a path at least as long as that one.
+    strucpath = os.environ.get('TALYS_STRUCPATH')
+    if strucpath:
+        lines.append(f"strucpath {strucpath}\n")
 
     # Nuclear identity
     lines.append(f"projectile {cfg['proj']}\n")
