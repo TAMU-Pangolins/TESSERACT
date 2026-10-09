@@ -412,7 +412,8 @@ def step_run_ratesmc(basics: dict, resonance: dict, ratesmc: dict,
     refuses any argument. So RatesMC is run with no arguments inside RUN_j on
     a copy of the input named RatesMC.in, with the AME/NUBASE tables linked
     in, and RatesMC.out is copied to {reaction}.out. RatesMC.integ (the
-    integrand dump, many GB) is linked to /dev/null unless keep_integrand.
+    integrand dump, many GB) is linked to /dev/null unless keep_integrand,
+    and RatesMC.sfact (S-factor samples, up to GBs) unless keep_sfactor.
     Success is judged by RatesMC.out containing rate rows, not by the exit
     code, because the rewrite returns 1 even after a successful run. Skips a
     run silently if its {reaction}.out already exists.
@@ -441,6 +442,7 @@ def step_run_ratesmc(basics: dict, resonance: dict, ratesmc: dict,
               flush=True)
 
     keep_integrand = _bool(ratesmc.get('keep_integrand'), False)
+    keep_sfactor   = _bool(ratesmc.get('keep_sfactor'), False)
     run_range = [run_idx] if run_idx is not None else range(runs)
     print(f"[ratesmc] using executable: {ratesmc_bin}")
     print(f"[ratesmc] processing run(s): {list(run_range)}")
@@ -471,12 +473,16 @@ def step_run_ratesmc(basics: dict, resonance: dict, ratesmc: dict,
         # RatesMC writes every integrand evaluation of every Int=1 resonance
         # at every temperature to RatesMC.integ, flushing each line: 12-18 GB
         # per run for the (a,p) cases, and much of the run time on NFS.
-        # Nothing reads it, so it goes to /dev/null unless asked for.
-        integ = run_dir / "RatesMC.integ"
-        if integ.is_symlink() or integ.exists():
-            integ.unlink()
-        if not keep_integrand:
-            integ.symlink_to(os.devnull)
+        # RatesMC.sfact (the S-factor samples, 0.2-3 GB per run) is likewise
+        # write-only. Nothing reads either, so each goes to /dev/null unless
+        # asked for; ~2,700 concurrent runs writing .sfact saturated /data.
+        for name, keep in (("RatesMC.integ", keep_integrand),
+                           ("RatesMC.sfact", keep_sfactor)):
+            dump = run_dir / name
+            if dump.is_symlink() or dump.exists():
+                dump.unlink()
+            if not keep:
+                dump.symlink_to(os.devnull)
 
         # RatesMC writes its own RatesMC.log, so keep console output separate.
         stdout_path = run_dir / "RatesMC.stdout"
