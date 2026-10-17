@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass
 from functools import lru_cache
+import math
 from typing import Optional
 
 import mpmath as mp
@@ -173,16 +174,25 @@ def penetrability_P_l_mev(l, Z1, Z2, A1, A2, E_mev, r0=1.25):
     float
         Penetrability evaluated at `E_mev`. Nonpositive energies return `0.0`.
     """
+    return math.exp(log_penetrability_P_l_mev(l, Z1, Z2, A1, A2, E_mev, r0))
+
+
+def log_penetrability_P_l_mev(l, Z1, Z2, A1, A2, E_mev, r0=1.25):
+    """Natural log of Coulomb P_l, retaining values below float64 range.
+
+    Keep the Coulomb functions in mpmath until after taking the logarithm:
+    converting G to float or squaring it in float64 can overflow well before
+    P itself underflows. Nonpositive channel energies return -inf.
+    """
     if E_mev <= 0.0:
-        return 0.0
+        return -math.inf
     a_fm = channel_radius_fm(A1, A2, r0)
     mu_amu = (A1 * A2) / (A1 + A2)
     rho = 0.218735 * a_fm * (mu_amu * E_mev) ** 0.5
     eta = float(sommerfeld_eta_mev(Z1, Z2, A1, A2, E_mev))
-    F = float(mp.coulombf(l, eta, rho))
-    G = float(mp.coulombg(l, eta, rho))
-    d = F * F + G * G
-    return float(rho / d) if d != 0.0 else 0.0
+    F = mp.coulombf(l, eta, rho)
+    G = mp.coulombg(l, eta, rho)
+    return float(mp.log(rho) - mp.log(F * F + G * G))
 
 
 def finite_size_coulomb_mev(r_fm, Z1, Z2, Rc_fm):
@@ -417,13 +427,13 @@ def _P_grid_cached(l, Z1, Z2, A1, A2, r0, Emin_mev, Emax_mev, npts):
     threshold; one uniform in `eta` removes the dominant behavior by
     construction, leaving only the slowly-varying correction to interpolate.
     """
-    eta_lo = float(sommerfeld_eta_mev(Z1, Z2, A1, A2, Emax_mev))  # larger E -> smaller eta
-    eta_hi = float(sommerfeld_eta_mev(Z1, Z2, A1, A2, Emin_mev))  # smaller E -> larger eta
-    eta_grid = np.linspace(eta_lo, eta_hi, int(npts))
     const = 0.157489 * (Z1 * Z2) * np.sqrt((A1 * A2) / (A1 + A2))
+    # Neutral channels need a nondegenerate inverse-sqrt(E) coordinate.
+    const = const if const != 0.0 else 1.0
+    eta_grid = np.linspace(const / np.sqrt(Emax_mev), const / np.sqrt(Emin_mev), int(npts))
     Es = (const / eta_grid) ** 2
     logPs = np.array(
-        [np.log(max(penetrability_P_l_mev(l, Z1, Z2, A1, A2, float(e), r0), 1e-300))
+        [log_penetrability_P_l_mev(l, Z1, Z2, A1, A2, float(e), r0)
          for e in Es],
         dtype=float,
     )
@@ -471,18 +481,37 @@ def make_penetrability_interp(
     The first construction is the expensive step. Repeated calls with identical
     arguments reuse the cached grid.
     """
+    logP = make_log_penetrability_interp(
+        l, Z1, Z2, A1, A2, r0, Emin_mev, Emax_mev, npts
+    )
+
+    def P(E_mev):
+        with np.errstate(under="ignore"):
+            return np.exp(logP(E_mev))
+
+    return P
+
+
+def make_log_penetrability_interp(
+    l, Z1, Z2, A1, A2, r0=1.25, Emin_mev=1e-6, Emax_mev=5.0, npts=600
+):
+    """Interpolate log Coulomb P_l without a transmission floor.
+
+    Uses the same cached grid and endpoint clamping as
+    make_penetrability_interp. Nonpositive energies return -inf.
+    """
     eta_grid, logPs, const = _P_grid_cached(
         l, Z1, Z2, A1, A2, float(r0), float(Emin_mev), float(Emax_mev), int(npts)
     )
 
-    def P(E_mev):
+    def logP(E_mev):
         e = np.asarray(E_mev, dtype=float)
         e_safe = np.where(e > 0.0, e, 1.0)  # placeholder; masked out below
         eta_q = const / np.sqrt(e_safe)
         logP_q = np.interp(eta_q, eta_grid, logPs, left=logPs[0], right=logPs[-1])
-        return np.where(e > 0.0, np.exp(logP_q), 0.0)
+        return np.where(e > 0.0, logP_q, -np.inf)
 
-    return P
+    return logP
 
 
 def sigma_bw_constant(E_eV, r):

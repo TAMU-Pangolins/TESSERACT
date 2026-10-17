@@ -9,6 +9,7 @@ from nucres.resonance import (
     finite_size_coulomb_mev,
     jwkb_log_transmission_mev,
     make_jwkb_log_transmission_interp,
+    make_log_penetrability_interp,
     make_penetrability_interp,
     sigma_bw_constant,
     sigma_bw_energy_dep,
@@ -165,6 +166,17 @@ class ResonanceModelTest(unittest.TestCase):
 
 
 class PenetrabilityInterpolationTest(unittest.TestCase):
+    def test_neutral_channel_grid_is_finite_and_matches_s_wave_formula(self):
+        energies = np.array([0.1, 0.3, 1.0])
+        logP = make_log_penetrability_interp(
+            0, 0, 12, 1, 24, Emin_mev=0.1, Emax_mev=1.0, npts=100
+        )
+        # For eta=l=0, F=sin(rho), G=cos(rho), so P=rho.
+        radius = 1.25 * (1 + 24 ** (1 / 3))
+        expected = 0.218735 * radius * np.sqrt(24 / 25 * energies)
+        np.testing.assert_allclose(np.exp(logP(energies)), expected, rtol=1e-4)
+        self.assertTrue(np.all(np.isneginf(logP([0.0, -1.0]))))
+
     def test_sub_barrier_interpolation_is_accurate(self):
         from nucres.resonance import penetrability_P_l_mev
 
