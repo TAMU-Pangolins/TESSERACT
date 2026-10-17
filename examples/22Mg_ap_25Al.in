@@ -1,0 +1,66 @@
+# Run from the repository root:
+# uv run python tesseract.py --input examples/22Mg_ap_25Al.in
+# Walkthrough: docs/workflows.md#full-pipeline-22mgap25al
+
+[basics]
+reaction     = 22Mg(a,p)25Al
+E_min_mev    = 0.1
+E_max_mev    = 10.0
+
+# Needed by the [talys] step below.
+projectile_Z = 2
+projectile_A = 4
+target_Z     = 12
+target_A     = 22
+ejectile_Z   = 1
+ejectile_A   = 1
+residual_Z   = 13
+residual_A   = 25
+
+[resonance]
+input_dir  = input
+output_dir = outputs/example_22Mg_ap_25Al/resonances
+runs      = 10     # small ensemble for a quick first run; scale up later
+samples   = 1000   # HFB density sampling points (default is 5000)
+seed      = 1      # each run gets seed+run_index, so all 10 are reproducible but distinct
+mean_i    = 0.010
+mean_o    = 0.0045
+
+[ratesmc]
+# No ratesmc_bin set: auto-detects RatesMC on $PATH / $RATESMC_BIN (see
+# Installation guide). If RatesMC isn't installed, this step prints a
+# warning and is skipped -- it does not block the rest of the pipeline.
+
+[integration]
+output_dir = outputs/example_22Mg_ap_25Al/cross_sections
+unint_output_dir = outputs/example_22Mg_ap_25Al/cross_sections
+dE = 0.2           # one bin width keeps this example to one TALYS fit per run
+
+[talys]
+talys_output_dir = outputs/example_22Mg_ap_25Al/talys
+ldmodel      = 1
+alphaomp     = 6
+xseps        = 1.e-20
+transeps     = 1.e-20
+outbasic     = y
+channels     = y
+filechannels = y
+
+method          = least_squares   # limit optimiser evaluations for this example
+maxiter         = 50
+xtol            = 1e-3
+ftol            = 1e-3
+lsq_workers     = 1               # raise only if you can actually request that many cores
+exp_rel_err     = 0.10
+e_fit_min       = 0.0
+prior_rel_std   = 2.00
+prior_abs_floor = 0.1
+debug_every     = 10
+
+\opt
+# Level density parameters for residual 25Al (Z=13, A=25), ldmodel 1 (BSFG).
+# Format: keyword Z A  x0  lo  hi
+T      13   25    2.167    0.1    10.0
+E0     13   25   -1.328   -5.0    5.0
+a      13   25    3.844    1.0   10.0
+\opt
