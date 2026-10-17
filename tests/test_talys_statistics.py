@@ -1,7 +1,10 @@
 import os
+import contextlib
+import io
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import numpy as np
@@ -232,6 +235,44 @@ class ExpTableHeaderParsingTest(unittest.TestCase):
 
 
 class CheckpointTest(unittest.TestCase):
+    def test_final_talys_failure_clears_only_this_fits_checkpoint(self):
+        for another_fit in (False, True):
+            with self.subTest(another_fit=another_fit), tempfile.TemporaryDirectory() as d:
+                root = Path(d)
+                data = root / "fit_dE_0.2_run0.csv"
+                data.write_text("# E,sigma| dE=0.2\n2.0,1.0\n2.2,2.0\n")
+                run_dir = root / "RUN_0"
+                run_dir.mkdir()
+                checkpoint = str(run_dir / "checkpoint.json")
+                entry = {"params": [1.1], "param_names": ["p1"],
+                         "loss": 1.0, "nfev": 3, "timestamp": "t"}
+                topt.checkpoint_save(checkpoint, data.stem, entry)
+                other_key = "fit_dE_0.5_run0"
+                if another_fit:
+                    topt.checkpoint_save(checkpoint, other_key, entry)
+                cfg = {"opt_params": [_OptParam()],
+                       "script": {"exp_file": str(data), "talys_output_dir": d}}
+                result = SimpleNamespace(x=np.array([1.1]), fun=1.0)
+
+                with patch("sys.argv", ["talys_opt_with_unc.py"]), \
+                        patch.object(topt, "load_config", return_value=cfg), \
+                        patch.object(topt, "minimize", return_value=result) as optimize, \
+                        patch.object(topt, "run_talys_get_xs", return_value=None) as xs, \
+                        patch.object(topt, "run_talys_get_rate") as rate, \
+                        patch.object(topt, "save_results") as save, \
+                        contextlib.redirect_stdout(io.StringIO()):
+                    topt.main()
+
+                optimize.assert_called_once()
+                xs.assert_called_once()
+                rate.assert_not_called()
+                save.assert_not_called()
+                self.assertIsNone(topt.checkpoint_load(checkpoint, data.stem, ["p1"]))
+                if another_fit:
+                    self.assertEqual(topt.checkpoint_load(checkpoint, other_key, ["p1"]), entry)
+                else:
+                    self.assertFalse(Path(checkpoint).exists())
+
     def test_entries_per_fit_in_one_file(self):
         import json
 

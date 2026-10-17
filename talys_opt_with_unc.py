@@ -1376,6 +1376,7 @@ def main():
     out_xs = run_talys_get_xs(params_best, cfg)
     if out_xs is None:
         print("\nWARNING: TALYS failed at best-fit parameters.")
+        checkpoint_clear(checkpoint_path, checkpoint_key)
         return
     x_t, y_t = out_xs
     plot_best_fit_xs(cfg, x_exp, y_exp, x_t, y_t, params_best, y_err=y_err,
