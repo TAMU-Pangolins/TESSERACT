@@ -97,6 +97,10 @@ class ResonanceSum:
         Entrance-channel energy dependence ("jwkb_real_omp" replaces the
         Coulomb P_l by the real-OMP JWKB transmission; exit channels always
         use Coulomb P_l, as RatesMC does).
+    penetrability_cache : dict, optional
+        Shared store for the penetrability tables. Only share it between
+        objects with the same reaction header, energy range, model and
+        table sizes.
 
     Notes
     -----
@@ -118,6 +122,7 @@ class ResonanceSum:
         npts: int = 800,
         jwkb_npts: int = 300,
         jwkb_radial_npts: int = 2400,
+        penetrability_cache: Optional[Dict[tuple, Callable]] = None,
     ):
         self.reaction = reaction
         self.rows = [
@@ -130,7 +135,13 @@ class ResonanceSum:
         self.npts = int(npts)
         self.jwkb_npts = int(jwkb_npts)
         self.jwkb_radial_npts = int(jwkb_radial_npts)
-        self._logP: Dict[tuple, Callable] = {}
+        # Penetrability tables depend only on the reaction header, the energy
+        # range, the model and the table sizes. Several ResonanceSum objects
+        # built with the same values (e.g. many runs of one reaction) may pass
+        # the same dict to avoid rebuilding the tables for every run.
+        self._logP: Dict[tuple, Callable] = (
+            penetrability_cache if penetrability_cache is not None else {}
+        )
 
         rx = reaction
         self.omega_den = (2 * rx.J_proj + 1) * (2 * rx.J_targ + 1)
@@ -239,23 +250,40 @@ class ResonanceSum:
         grid = grid[(grid >= lo) & (grid <= hi)]
         return np.unique(grid)
 
+    def bin_integrals_per_resonance(
+        self, edges: Sequence[float], n_base: int = 4000, n_peak: int = 400
+    ) -> np.ndarray:
+        """
+        Integral of each resonance's sigma over each bin, in b MeV.
+
+        Returns an array of shape (len(self.rows), len(edges) - 1): entry
+        [i, k] is the integral of resonance self.rows[i] over bin
+        [edges[k], edges[k+1]]. Each resonance is integrated on its own grid
+        (see _grid) with the trapezoid rule; the cumulative integral is
+        evaluated at the bin edges, so a resonance's tails are assigned to
+        the bins they fall in.
+        """
+        edges = np.asarray(edges, dtype=float)
+        out = np.zeros((len(self.rows), len(edges) - 1))
+        for i, row in enumerate(self.rows):
+            grid = self._grid(row, edges, n_base, n_peak)
+            s = self.sigma_one(row, grid)
+            cum = np.concatenate([[0.0], np.cumsum(0.5 * (s[1:] + s[:-1]) * np.diff(grid))])
+            out[i] = np.diff(np.interp(edges, grid, cum))
+        return out
+
     def bin_integrals(
         self, edges: Sequence[float], n_base: int = 4000, n_peak: int = 400
     ) -> np.ndarray:
         """
         Integral of sigma over each bin [edges[i], edges[i+1]], in b MeV.
 
-        Each resonance is integrated on its own grid (see _grid) with the
-        trapezoid rule; the cumulative integral is evaluated at the bin edges.
+        The sum over resonances of bin_integrals_per_resonance().
         """
         edges = np.asarray(edges, dtype=float)
-        total = np.zeros(len(edges) - 1)
-        for row in self.rows:
-            grid = self._grid(row, edges, n_base, n_peak)
-            s = self.sigma_one(row, grid)
-            cum = np.concatenate([[0.0], np.cumsum(0.5 * (s[1:] + s[:-1]) * np.diff(grid))])
-            total += np.diff(np.interp(edges, grid, cum))
-        return total
+        if not self.rows:
+            return np.zeros(len(edges) - 1)
+        return self.bin_integrals_per_resonance(edges, n_base, n_peak).sum(axis=0)
 
 
     def rate(self, T9, E_lo: float = 1e-3, E_hi: float = 10.0,
