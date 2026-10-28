@@ -90,6 +90,73 @@ class ChiSquarePriorScalingTest(unittest.TestCase):
         self.assertGreater(abs(total - chi2 / dof), 1e-3)
 
 
+class LogarithmicResidualGuardTest(unittest.TestCase):
+    """Logarithmic residuals for cross sections expressed in millibarns."""
+
+    def _objective(self, experimental_cross_sections, model_cross_sections):
+        configuration = {
+            'opt_params': [_OptParam()],
+            'script': {
+                'exp_rel_err': '0.10',
+                'prior_rel_std': '0',
+                'debug_every': '0',
+            },
+        }
+        energies_mev = np.linspace(2.0, 2.6, len(experimental_cross_sections))
+        uncertainties = 0.10 * experimental_cross_sections
+        fit_mask = np.ones(len(experimental_cross_sections), dtype=bool)
+        with patch.object(
+            topt,
+            'run_talys_get_xs',
+            return_value=(energies_mev, model_cross_sections),
+        ):
+            objective = topt.make_objective(
+                configuration,
+                energies_mev,
+                experimental_cross_sections,
+                uncertainties,
+                fit_mask,
+            )
+            parameters = np.array([1.0])
+            loss = objective(parameters)
+            residuals = objective.residuals(parameters)
+        return loss, residuals
+
+    def test_small_positive_cross_sections_preserve_the_analytic_residual(self):
+        experimental_cross_sections = np.full(4, 2e-10)
+        model_cross_sections = np.full(4, 1e-10)
+        loss, residuals = self._objective(
+            experimental_cross_sections, model_cross_sections
+        )
+
+        expected_residual = np.log(2.0) / 0.10
+        expected_loss = 4 * expected_residual ** 2
+        self.assertAlmostEqual(loss, expected_loss, places=9)
+        np.testing.assert_allclose(residuals, expected_residual, rtol=1e-12)
+        self.assertAlmostEqual(float(residuals @ residuals), loss, places=12)
+
+    def test_relative_residual_is_independent_of_cross_section_scale(self):
+        expected_loss = 4 * (np.log(2.0) / 0.10) ** 2
+        for model_cross_section in (1e-10, 1e-5, 1.0):
+            with self.subTest(model_cross_section=model_cross_section):
+                loss, _ = self._objective(
+                    np.full(4, 2 * model_cross_section),
+                    np.full(4, model_cross_section),
+                )
+                self.assertAlmostEqual(loss, expected_loss, places=9)
+
+    def test_zero_and_subfloor_predictions_share_a_finite_guard(self):
+        model_cross_sections = np.array([0.0, topt.FLOOR / 10, topt.FLOOR])
+        loss, residuals = self._objective(
+            np.ones(3), model_cross_sections
+        )
+
+        expected_residual = -np.log(topt.FLOOR) / 0.10
+        np.testing.assert_allclose(residuals, expected_residual, rtol=1e-12)
+        self.assertTrue(np.isfinite(loss))
+        self.assertAlmostEqual(float(residuals @ residuals), loss, places=9)
+
+
 class PerPointErrorColumnTest(unittest.TestCase):
     """
     The data file's third (uncertainty) column must set each point's
