@@ -1,4 +1,4 @@
-"""Decide whether a GitHub event changes inputs to the documentation build."""
+"""Read complete GitHub event changes and identify documentation inputs."""
 
 import json
 import os
@@ -18,10 +18,10 @@ DOCUMENTATION_FILES = {
 DOCUMENTATION_DIRECTORIES = ('docs/', 'nucres/', 'common/')
 
 
-def documentation_required(event_name, event):
-    """Compare the complete event change, including removed and renamed inputs."""
+def changed_paths(event_name, event):
+    """Return complete event paths, or None when a full check is necessary."""
     if event_name == 'workflow_dispatch':
-        return True
+        return None
 
     try:
         if event_name == 'pull_request':
@@ -34,16 +34,16 @@ def documentation_required(event_name, event):
             base_revision = event['before']
             head_revision = event['after']
         else:
-            return True
+            return None
     except KeyError:
-        return True
+        return None
 
-    # A missing comparison must cause a build rather than silently omit it.
+    # A missing comparison requires complete verification.
     revisions = (base_revision, head_revision)
     if any(not isinstance(revision, str)
            or re.fullmatch(r'(?:[0-9a-fA-F]{40}|[0-9a-fA-F]{64})', revision) is None
            or set(revision) == {'0'} for revision in revisions):
-        return True
+        return None
 
     if event_name == 'pull_request':
         comparison = [f'{base_revision}...{head_revision}']
@@ -55,12 +55,16 @@ def documentation_required(event_name, event):
             stderr=subprocess.PIPE,
         )
     except subprocess.CalledProcessError:
-        print('Could not compare documentation inputs; running the build.')
-        return True
+        print('Could not compare changed files; running complete checks.')
+        return None
 
-    paths = changed.decode('utf-8', errors='surrogateescape').split('\0')
-    return any(path in DOCUMENTATION_FILES
-               or path.startswith(DOCUMENTATION_DIRECTORIES) for path in paths)
+    return [path for path in changed.decode('utf-8', errors='surrogateescape').split('\0') if path]
+
+
+def documentation_required(event_name, event):
+    paths = changed_paths(event_name, event)
+    return paths is None or any(path in DOCUMENTATION_FILES
+                                or path.startswith(DOCUMENTATION_DIRECTORIES) for path in paths)
 
 
 def main():

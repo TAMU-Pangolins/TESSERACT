@@ -20,6 +20,8 @@ jobs:
     steps:
       - name: Check out the repository
         uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
       - name: Install uv and Python
         uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
         with:
@@ -27,12 +29,14 @@ jobs:
           python-version: "3.11"
           enable-cache: true
       - name: Install locked dependencies
-        run: uv sync --locked --no-dev
+        run: uv sync --locked
+      - name: Check Python syntax across tracked code
+        run: uv run --no-sync python .github/scripts/code_checks.py syntax
+      - name: Check Python correctness lint
+        run: uv run --no-sync python .github/scripts/code_checks.py lint
       - name: Install verified HFB tables for physics tests
         run: uv run --no-sync python download_data.py --dest data/densities/level-densities-hfb
-      - name: Run regression and physics tests
+      - name: Run targeted and full regression tests
         env:
           MPLBACKEND: Agg
-        run: uv run --no-sync python -m unittest discover -s tests -v
-      - name: Check batch script syntax
-        run: bash -n run_ratesmc_batches.sh
+        run: uv run --no-sync python .github/scripts/code_checks.py tests
