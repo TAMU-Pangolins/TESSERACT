@@ -59,6 +59,7 @@ template's Resonant Contribution table, once per run.
 | `n_random_samples` | `1` | Overrides the template's number of RatesMC samples. 1 on purpose: the sampled resonances are treated as perfectly known, so there is no experimental uncertainty to sample. |
 | `default_frac_unc` | `0.001` | Fractional uncertainty written for Ecm and widths. |
 | `int_flag` | `1` | RatesMC integration flag (0 analytic, 1 numerical). |
+| `int_width_cutoff` | unset | Set the flag per resonance instead: numerical where Γ_tot/E_r exceeds this value, analytic below it. Overrides `int_flag`. Numerically integrating many narrow resonances is what makes RatesMC slow; `0.01` matched all-numerical rates to ~0.1% in tests at a fraction of the run time. |
 | `precision` | `3` | Mantissa digits of the non-Ecm columns. |
 | `n_sigma_points` | `4000` | Grid of the generator's own diagnostic sigma (not used downstream). |
 | `use_strength` | `false` | Also write omega-gamma; the widths are written either way. |

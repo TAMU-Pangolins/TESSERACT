@@ -732,6 +732,26 @@ class PlotScriptFixesTest(unittest.TestCase):
                          "22Mg_ap_25Al_bw_0.2_0.5.png")
 
 
+class IntWidthCutoffTest(unittest.TestCase):
+    def _row(self, Gamma_o, **opts):
+        from nucres.ratesmc_export import RatesMCExportOptions, resonance_to_row
+        from nucres.resonance import Resonance
+
+        res = Resonance(E_r=1.0e6, J=1.0, s1=0.0, s2=0.0, m1=1.0, m2=1.0,
+                        Gamma_i=1.0, Gamma_o=Gamma_o)
+        return resonance_to_row(res, RatesMCExportOptions(**opts))
+
+    def test_flag_set_by_total_width_over_energy(self):
+        # E_r = 1 MeV; Gamma_tot/E_r = (1 eV + Gamma_o) / 1e6 eV
+        self.assertEqual(self._row(2.0e4, int_width_cutoff=0.01).Int, 1)   # ~0.02 > 0.01
+        self.assertEqual(self._row(5.0e3, int_width_cutoff=0.01).Int, 0)   # ~0.005 < 0.01
+
+    def test_cutoff_overrides_int_flag_and_default_is_unchanged(self):
+        self.assertEqual(self._row(5.0e3, int_flag=1, int_width_cutoff=0.01).Int, 0)
+        self.assertEqual(self._row(5.0e3, int_flag=1).Int, 1)
+        self.assertEqual(self._row(2.0e4, int_flag=0).Int, 0)
+
+
 class ReactionTokenTest(unittest.TestCase):
     def test_element_symbols_are_not_light_particles(self):
         from build_ratesmc_input import _channel_numbers_from_token, _parse_reaction_channels

@@ -25,6 +25,10 @@ class RatesMCExportOptions:
         Excitation energy of the populated final state in keV.
     int_flag : int
         RatesMC integration flag, typically `0` for analytical or `1` for numerical.
+    int_width_cutoff : float or None
+        If set, overrides `int_flag` per resonance: `Int = 1` (numerical) when the
+        total width over the resonance energy, (G1 + G2 + G3) / E_r, exceeds this
+        value, else `Int = 0` (analytical narrow-resonance rate).
     include_g3 : bool
         Whether the optional third-width columns should be retained.
     include_corr_frac : bool
@@ -51,6 +55,11 @@ class RatesMCExportOptions:
     exf_keV: float = 0.0
     # Int flag (0 = analytical, 1 = numerical)
     int_flag: int = 1
+    # Per-resonance Int by width: numerical only where Gamma_tot / E_r exceeds this.
+    # Numerically integrating thousands of narrow resonances is what makes RatesMC
+    # slow (38Ca, ~49k resonances: days at all-Int=1, ~2 h at a 0.01-0.1 cutoff),
+    # and the analytical rate is exact for them; broad ones need Int=1 (2026-10-26).
+    int_width_cutoff: Optional[float] = None
     # Whether to keep G3 columns; when False, G3 and DG3 are zeroed
     include_g3: bool = False
     # Include Corr/Frac column when template expects it.
@@ -209,6 +218,10 @@ def resonance_to_row(res: Resonance, opts: RatesMCExportOptions) -> RatesMCRow:
         G3 = 0.0
         DG3 = 0.0
 
+    int_flag = opts.int_flag
+    if opts.int_width_cutoff is not None and res.E_r > 0.0:
+        int_flag = 1 if (G1 + G2 + G3) / res.E_r > opts.int_width_cutoff else 0
+
     return RatesMCRow(
         Ecm=Ecm_keV,
         DEcm=DEcm,
@@ -225,7 +238,7 @@ def resonance_to_row(res: Resonance, opts: RatesMCExportOptions) -> RatesMCRow:
         DG3=DG3,
         L3=res.L3 if res.L3 is not None else opts.l3,
         Exf=res.Exf_keV if res.Exf_keV is not None else opts.exf_keV,
-        Int=opts.int_flag,
+        Int=int_flag,
         corr_frac=opts.corr_frac_value,
     )
 
