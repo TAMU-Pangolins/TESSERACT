@@ -209,6 +209,7 @@ def build_density_grid(
     n_points: int = 2001,
     # mapping from lab energy (eV) to excitation U (MeV)
     U_of_E_mev=None,
+    use_corrections: bool = False,
 ) -> tuple[np.ndarray, np.ndarray]:
     r"""
     Build a uniform MeV energy grid and evaluate the fixed-spin level density.
@@ -233,6 +234,8 @@ def build_density_grid(
         Number of samples in the returned grid.
     U_of_E_mev : callable, optional
         Mapping from energy in eV to excitation energy in MeV. Defaults to \(U = E\).
+    use_corrections : bool, default=False
+        Renormalise with the RIPL-3 `.cor` entry for this isotope, if any.
 
     Returns
     -------
@@ -271,12 +274,11 @@ def build_density_grid(
         def U_of_E_mev(E_eV):
             return np.asarray(E_eV, dtype=float) * 1e-6
 
-    # Let load_rho_function decide how to handle corrections when cor_p is present
     rho_UJpi = load_rho_function(
         tab_path=str(tab_p),
         cor_path=(str(cor_p) if cor_p is not None else None),
         A=A,
-        # no external flags; hfb_adapter decides how/when to apply .cor
+        use_corrections=use_corrections,
     )
 
     rho_E_eV_fn = rho_levels_per_eV_from_E(
@@ -301,6 +303,7 @@ def build_total_density_grid(
     E_max_mev: float = 2.0,
     n_points: int = 2001,
     U_of_E_mev=None,
+    use_corrections: bool = False,
 ) -> tuple[np.ndarray, np.ndarray]:
     r"""
     Build a uniform MeV grid using the total level density for fixed parity.
@@ -323,6 +326,8 @@ def build_total_density_grid(
         Number of samples in the returned grid.
     U_of_E_mev : callable, optional
         Mapping from energy in eV to excitation energy in MeV. Defaults to \(U = E\).
+    use_corrections : bool, default=False
+        Renormalise with the RIPL-3 `.cor` entry for this isotope, if any.
 
     Returns
     -------
@@ -363,6 +368,7 @@ def build_total_density_grid(
         tab_path=str(tab_p),
         cor_path=(str(cor_p) if cor_p is not None else None),
         A=A,
+        use_corrections=use_corrections,
     )
 
     rho_E_eV_fn = rho_total_levels_per_eV_from_E(record, pi=pi, U_of_E_mev=U_of_E_mev)

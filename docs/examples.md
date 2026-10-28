@@ -3,6 +3,12 @@
 This page is a grab bag of short runnable snippets. For broader step-by-step
 flows, see [Workflows](workflows.md).
 
+## Full pipeline
+
+Use the checked-in `examples/22Mg_ap_25Al.in` configuration. The
+[full pipeline walkthrough](workflows.md#full-pipeline-22mgap25al) explains
+how to run one realisation or the complete ten-run example and where outputs go.
+
 ## Minimal Breit–Wigner
 
 ```bash

@@ -135,6 +135,33 @@ def main():
     if args.penetrability_model == "jwkb_real_omp":
         print(f"OMP model: {args.omp_model} (real part only)")
 
+    # "common" holds everything identical across every RUN_j of this reaction
+    # (same template physics, same model choices); "run" holds only what
+    # depends on this run's own resonance realization. tesseract.py merges
+    # "common" once and "run" per RUN_j into the consolidated
+    # <reaction>_meta.json, then deletes this per-run file.
+    common_meta = {
+        "reaction": reaction,
+        "projectile": {"Z": int(rxn.Z_proj), "M_u": float(rxn.M_proj), "J": float(rxn.J_proj)},
+        "target": {"Z": int(rxn.Z_targ), "M_u": float(rxn.M_targ), "J": float(rxn.J_targ)},
+        "E_min_mev": float(args.E_min),
+        "E_max_mev": float(args.E_max),
+        "n_grid_points": int(args.n_grid_points),
+        "jwkb_npts": int(args.jwkb_npts),
+        "jwkb_radial_npts": int(args.jwkb_radial_npts),
+        "cross_section_model": "RatesMC Breit-Wigner (entrance and exit widths energy-dependent)",
+        "integrated_xs_method": "exact per-resonance bin integrals",
+    }
+    if args.penetrability_model == "jwkb_real_omp":
+        common_meta.update(alpha_omp_metadata(args.omp_model))
+    else:
+        common_meta.update({
+            "penetrability_model": "coulomb",
+            "omp_model": None,
+            "coulomb_geometry": "Coulomb functions at channel radius",
+            "imaginary_omp_ignored": None,
+        })
+
     # ============================================================
     # Unintegrated cross section (plotting grid)
     # ============================================================
@@ -146,29 +173,6 @@ def main():
         print("Computing unintegrated cross sections (plotting grid)...")
         E_test = np.linspace(args.E_min, args.E_max, args.n_grid_points)
         xs_unint = res_sum.sigma(E_test)
-
-        metadata = {
-            "reaction": reaction,
-            "projectile": {"Z": int(rxn.Z_proj), "M_u": float(rxn.M_proj), "J": float(rxn.J_proj)},
-            "target": {"Z": int(rxn.Z_targ), "M_u": float(rxn.M_targ), "J": float(rxn.J_targ)},
-            "n_resonances": int(len(res_sum.rows)),
-            "E_min_mev": float(args.E_min),
-            "E_max_mev": float(args.E_max),
-            "n_grid_points": int(args.n_grid_points),
-            "jwkb_npts": int(args.jwkb_npts),
-            "jwkb_radial_npts": int(args.jwkb_radial_npts),
-            "cross_section_model": "RatesMC Breit-Wigner (entrance and exit widths energy-dependent)",
-            "integrated_xs_method": "exact per-resonance bin integrals",
-        }
-        if args.penetrability_model == "jwkb_real_omp":
-            metadata.update(alpha_omp_metadata(args.omp_model))
-        else:
-            metadata.update({
-                "penetrability_model": "coulomb",
-                "omp_model": None,
-                "coulomb_geometry": "Coulomb functions at channel radius",
-                "imaginary_omp_ignored": None,
-            })
 
         np.savetxt(
             unint_file,
@@ -182,35 +186,42 @@ def main():
             ),
             fmt="%.4e"
         )
-        metadata_file = unint_file.replace(".txt", "_metadata.json")
-        with open(metadata_file, "w", encoding="utf-8") as fh:
-            json.dump(metadata, fh, indent=2, sort_keys=True)
         print(f"Saved unintegrated cross sections to {unint_file}")
-        print(f"Saved metadata to {metadata_file}")
 
     # ============================================================
     # Integrated (bin-averaged) cross sections
     # ============================================================
     dE_lst = [float(x.strip()) for x in args.dE.split(",")]
 
+    run_meta = {
+        "run_idx": int(args.run_idx),
+        "n_resonances_used": int(len(res_sum.rows)),
+        "n_resonances_total": int(len(rows)),
+        "dE_mev": dE_lst,
+    }
+
     if args.skip_integrated:
         print("Skipping integrated cross sections.")
-        print("Done.")
-        return
+    else:
+        for dE in dE_lst:
+            print(f"\nIntegrating with ΔE = {dE} MeV")
+            E_bins, xs_bin = binned_cross_section(res_sum, args.E_min, args.E_max, dE)
 
-    for dE in dE_lst:
-        print(f"\nIntegrating with ΔE = {dE} MeV")
-        E_bins, xs_bin = binned_cross_section(res_sum, args.E_min, args.E_max, dE)
+            outfile = os.path.join(args.output_dir, f"{stem}_integrated_xs_dE_{dE}{tag_suffix}.csv")
+            np.savetxt(
+                outfile,
+                np.column_stack((E_bins, xs_bin)),
+                delimiter=",",
+                header=f"E (MeV),sigma (mb)| dE={dE}",
+                fmt="%.4e"
+            )
+            print(f"Saved integrated cross sections to {outfile}")
 
-        outfile = os.path.join(args.output_dir, f"{stem}_integrated_xs_dE_{dE}{tag_suffix}.csv")
-        np.savetxt(
-            outfile,
-            np.column_stack((E_bins, xs_bin)),
-            delimiter=",",
-            header=f"E (MeV),sigma (mb)| dE={dE}",
-            fmt="%.4e"
-        )
-        print(f"Saved integrated cross sections to {outfile}")
+    implicit_meta = {"reaction": reaction, "common": common_meta, "run": run_meta}
+    metadata_file = unint_file.replace(".txt", "_metadata.json")
+    with open(metadata_file, "w", encoding="utf-8") as fh:
+        json.dump(implicit_meta, fh, indent=2, sort_keys=True)
+    print(f"Saved metadata to {metadata_file}")
 
     print("Done.")
 

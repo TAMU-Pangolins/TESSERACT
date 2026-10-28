@@ -36,7 +36,14 @@ If needed, first follow the upstream installation instructions for
 [TALYS](https://github.com/arjankoning1/talys#installation) and
 [RatesMC](https://github.com/rlongland/RatesMC#installation-instructions), including
 their data files and build dependencies. These programs are installed separately
-from the Python package. Then set the paths to your installations:
+from the Python package.
+
+This pipeline was developed against **RatesMC 2.3.0**. Build RatesMC following
+its upstream instructions. TESSERACT runs it inside each run directory with
+`RatesMC.in` as input and reads `RatesMC.out`; no custom-filename source patch
+is needed.
+
+Then set the paths to your installations:
 
 ```bash
 export PATH="/absolute/path/to/talys/bin:$PATH"
@@ -91,6 +98,20 @@ print("Cross section (barn):", cross_sections_barn)
 PY
 ```
 
+## Running a full example (22Mg(a,p)25Al)
+
+After completing installation, run the checked-in
+[example configuration](examples/22Mg_ap_25Al.in) from the repository root:
+
+```bash
+uv run python tesseract.py --input examples/22Mg_ap_25Al.in --run-idx 0
+```
+
+Omit `--run-idx 0` to run all ten realisations. Outputs go under
+`outputs/example_22Mg_ap_25Al/`. See the
+[full pipeline walkthrough](docs/workflows.md#full-pipeline-22mgap25al)
+for prerequisites, outputs, and ways to reduce the work.
+
 ## Core features
 
 - Breit–Wigner cross sections with constant or energy-dependent entrance widths.
@@ -104,10 +125,10 @@ PY
 | Requirement | Purpose |
 | --- | --- |
 | Python dependencies | NumPy, SciPy, mpmath, Matplotlib, and pandas; installed by `uv sync`. |
-| TALYS and its nuclear data libraries | Cross-section fitting and reaction-rate calculations; its discrete-level files (`structure/levels/final`) for summed exit widths. |
-| RatesMC (2.3.0 recommended) and `mass_1.mas20`, `nubase_3.mas20` | Monte Carlo reference reaction rates. |
-| NUBASE2020 | Ground-state spins and parities; included in `data/nubase_3.mas20`. |
+| TALYS and its nuclear data libraries | Cross-section fitting and reaction-rate calculations; discrete levels in `structure/levels/final` for summed exit widths. |
+| RatesMC and its support files | Monte Carlo reference reaction rates. Developed against 2.3.0; see the installation guide above. |
 | RIPL-3 HFB level-density tables | Resonance generation; downloaded automatically on first use or with `download_data.py`. |
+| NUBASE2020 | Ground-state spins and parities; included in `data/nubase_3.mas20`. |
 | AME2020 mass data | Q-value utilities; included in `data/ame20.csv`. |
 | Bash | Batch execution in `run_ratesmc_batches.sh`. |
 

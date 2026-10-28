@@ -36,7 +36,7 @@ import numpy as np
 
 from .resonance import (
     make_jwkb_log_transmission_interp,
-    make_penetrability_interp,
+    make_log_penetrability_interp,
 )
 
 HBARC_MEV_FM = 197.3269804
@@ -97,6 +97,18 @@ class ResonanceSum:
         Entrance-channel energy dependence ("jwkb_real_omp" replaces the
         Coulomb P_l by the real-OMP JWKB transmission; exit channels always
         use Coulomb P_l, as RatesMC does).
+    penetrability_cache : dict, optional
+        Shared store for the penetrability tables. Only share it between
+        objects with the same reaction header, energy range, model and
+        table sizes.
+
+    Notes
+    -----
+    Transmission ratios, widths, and the Breit-Wigner denominator are
+    evaluated in log space. No transmission floor is imposed, and each
+    width retains its specified value at the resonance energy even when
+    the absolute transmission underflows in float64. A nonzero exit or
+    spectator width referenced at a closed channel energy raises ValueError.
     """
 
     def __init__(
@@ -110,6 +122,7 @@ class ResonanceSum:
         npts: int = 800,
         jwkb_npts: int = 300,
         jwkb_radial_npts: int = 2400,
+        penetrability_cache: Optional[Dict[tuple, Callable]] = None,
     ):
         self.reaction = reaction
         self.rows = [
@@ -122,7 +135,13 @@ class ResonanceSum:
         self.npts = int(npts)
         self.jwkb_npts = int(jwkb_npts)
         self.jwkb_radial_npts = int(jwkb_radial_npts)
-        self._P: Dict[tuple, Callable] = {}
+        # Penetrability tables depend only on the reaction header, the energy
+        # range, the model and the table sizes. Several ResonanceSum objects
+        # built with the same values (e.g. many runs of one reaction) may pass
+        # the same dict to avoid rebuilding the tables for every run.
+        self._logP: Dict[tuple, Callable] = (
+            penetrability_cache if penetrability_cache is not None else {}
+        )
 
         rx = reaction
         self.omega_den = (2 * rx.J_proj + 1) * (2 * rx.J_targ + 1)
@@ -132,75 +151,83 @@ class ResonanceSum:
         self.Z_res = rx.Z_proj + rx.Z_targ - rx.Z_exit
 
     # -- penetrabilities ----------------------------------------------------
-    def _entrance(self, l: int) -> Callable:
+    def _entrance_log(self, l: int) -> Callable:
         key = ("in", l)
-        if key not in self._P:
+        if key not in self._logP:
             rx = self.reaction
             lo, hi = max(self.E_min * 0.5, 1e-6), self.E_max * 1.5
             if self.model == "jwkb_real_omp":
-                logT = make_jwkb_log_transmission_interp(
+                self._logP[key] = make_jwkb_log_transmission_interp(
                     l, rx.Z_proj, rx.Z_targ, rx.M_proj, rx.M_targ,
                     omp_model=self.omp_model, Emin_mev=lo, Emax_mev=hi,
                     npts=self.jwkb_npts, radial_npts=self.jwkb_radial_npts,
                 )
-                self._P[key] = lambda E, f=logT: np.exp(f(E))
             else:
-                self._P[key] = make_penetrability_interp(
+                self._logP[key] = make_log_penetrability_interp(
                     l, rx.Z_proj, rx.Z_targ, rx.M_proj, rx.M_targ,
                     r0=rx.R0_fm, Emin_mev=lo, Emax_mev=hi, npts=self.npts,
                 )
-        return self._P[key]
+        return self._logP[key]
 
-    def _exit(self, l: int) -> Callable:
-        """
-        P_l of the exit channel as a function of the exit-channel energy.
-
-        One table per l covers every final state: E_x = E + S_proj - S_exit
-        - E_xf only shifts where it is evaluated (rows may each carry their
-        own E_xf when exit widths are summed over final states).
-        """
-        key = ("out", l)
-        if key not in self._P:
+    def _exit_log(self, l: int, offset: float) -> Callable:
+        """Log P_l as a function of the exit-channel energy."""
+        key = ("out", l, round(offset, 9))
+        if key not in self._logP:
             rx = self.reaction
-            hi = self.E_max * 1.5 + max(rx.S_proj_mev - rx.S_exit_mev, 0.0) + 1.0
-            self._P[key] = make_penetrability_interp(
+            lo = max(self.E_min * 0.5 + offset, 1e-6)
+            hi = self.E_max * 1.5 + offset
+            self._logP[key] = make_log_penetrability_interp(
                 l, rx.Z_exit, self.Z_res, rx.M_exit, self.M_res,
-                r0=rx.R0_fm, Emin_mev=5e-3, Emax_mev=hi, npts=self.npts,
+                r0=rx.R0_fm, Emin_mev=lo, Emax_mev=max(hi, lo * 1.01), npts=self.npts,
             )
-        return self._P[key]
+        return self._logP[key]
 
-    def _scaled(self, channel: int, G: float, L: int, Exf: float, E, E_r) -> np.ndarray:
-        """Width of RatesMC channel 1 (exit) or 2 (spectator) at energy E."""
+    def _log_scaled(self, channel: int, G: float, L: int, Exf: float, E, E_r) -> np.ndarray:
+        """Log width of RatesMC channel 1 (exit) or 2 (spectator)."""
         rx = self.reaction
         E = np.asarray(E, dtype=float)
         if G <= 0.0:
-            return np.zeros_like(E)
+            return np.full_like(E, -np.inf)
+        exf = Exf if channel == 1 else 0.0
         if channel == rx.gamma_channel - 1:
-            exf = Exf if channel == 1 else 0.0
             num = rx.S_proj_mev + E - exf
             den = rx.S_proj_mev + E_r - exf
-            return G * np.power(np.clip(num, 0.0, None) / den, 2 * L + 1)
-        exf = Exf if channel == 1 else 0.0
+            if den <= 0.0:
+                raise ValueError("Nonzero gamma width referenced at a closed channel energy.")
+            with np.errstate(divide="ignore"):
+                return np.log(G) + (2 * L + 1) * (np.log(np.maximum(num, 0.0)) - np.log(den))
         offset = rx.S_proj_mev - rx.S_exit_mev - exf
         Ex = E + offset
-        P = self._exit(L)
-        Pr = float(P(E_r + offset))
-        out = np.where(Ex > 0.0, G * P(np.clip(Ex, 1e-12, None)) / Pr, 0.0)
-        return out
+        if E_r + offset <= 0.0:
+            raise ValueError("Nonzero particle width referenced at a closed channel energy.")
+        logP = self._exit_log(L, offset)
+        return np.log(G) + logP(Ex) - float(logP(E_r + offset))
 
     # -- cross section ------------------------------------------------------
     def sigma_one(self, row: ResonanceRow, E) -> np.ndarray:
         """Cross section of one resonance, in barns, at CM energies E (MeV)."""
         E = np.asarray(E, dtype=float)
-        P0 = self._entrance(row.L0)
-        G0 = row.G0 * P0(E) / float(P0(row.E_r))
-        G1 = self._scaled(1, row.G1, row.L1, row.Exf, E, row.E_r)
-        G2 = self._scaled(2, row.G2, row.L2, row.Exf, E, row.E_r)
+        out = np.zeros_like(E)
+        positive = E > 0.0
+        if not np.any(positive):
+            return out
+        energies = E[positive]
+        logP0 = self._entrance_log(row.L0)
+        # Widths are in MeV throughout the log-domain Breit-Wigner formula.
+        logG0 = np.log(row.G0) + logP0(energies) - float(logP0(row.E_r)) + np.log(1e-6)
+        logG1 = self._log_scaled(1, row.G1, row.L1, row.Exf, energies, row.E_r) + np.log(1e-6)
+        logG2 = self._log_scaled(2, row.G2, row.L2, row.Exf, energies, row.E_r) + np.log(1e-6)
         omega = (2 * row.J + 1) / self.omega_den
-        Gt = (G0 + G1 + G2) * 1e-6  # eV -> MeV
-        bw = (G0 * 1e-6) * (G1 * 1e-6) / ((E - row.E_r) ** 2 + 0.25 * Gt**2)
-        with np.errstate(divide="ignore", invalid="ignore"):
-            out = np.where(E > 0.0, omega * self.pi_lambda2_b_mev / E * bw, 0.0)
+        with np.errstate(divide="ignore", under="ignore"):
+            logGt = np.logaddexp(np.logaddexp(logG0, logG1), logG2)
+            log_detuning = 2 * np.log(np.abs(energies - row.E_r))
+            log_den = np.logaddexp(log_detuning, 2 * logGt - np.log(4.0))
+            # Exponentiate only the final cross section: individual width
+            # ratios may exceed float64 even when their BW ratio is finite.
+            out[positive] = np.exp(
+                np.log(omega * self.pi_lambda2_b_mev) - np.log(energies)
+                + logG0 + logG1 - log_den
+            )
         return out
 
     def sigma(self, E) -> np.ndarray:
@@ -223,23 +250,40 @@ class ResonanceSum:
         grid = grid[(grid >= lo) & (grid <= hi)]
         return np.unique(grid)
 
+    def bin_integrals_per_resonance(
+        self, edges: Sequence[float], n_base: int = 4000, n_peak: int = 400
+    ) -> np.ndarray:
+        """
+        Integral of each resonance's sigma over each bin, in b MeV.
+
+        Returns an array of shape (len(self.rows), len(edges) - 1): entry
+        [i, k] is the integral of resonance self.rows[i] over bin
+        [edges[k], edges[k+1]]. Each resonance is integrated on its own grid
+        (see _grid) with the trapezoid rule; the cumulative integral is
+        evaluated at the bin edges, so a resonance's tails are assigned to
+        the bins they fall in.
+        """
+        edges = np.asarray(edges, dtype=float)
+        out = np.zeros((len(self.rows), len(edges) - 1))
+        for i, row in enumerate(self.rows):
+            grid = self._grid(row, edges, n_base, n_peak)
+            s = self.sigma_one(row, grid)
+            cum = np.concatenate([[0.0], np.cumsum(0.5 * (s[1:] + s[:-1]) * np.diff(grid))])
+            out[i] = np.diff(np.interp(edges, grid, cum))
+        return out
+
     def bin_integrals(
         self, edges: Sequence[float], n_base: int = 4000, n_peak: int = 400
     ) -> np.ndarray:
         """
         Integral of sigma over each bin [edges[i], edges[i+1]], in b MeV.
 
-        Each resonance is integrated on its own grid (see _grid) with the
-        trapezoid rule; the cumulative integral is evaluated at the bin edges.
+        The sum over resonances of bin_integrals_per_resonance().
         """
         edges = np.asarray(edges, dtype=float)
-        total = np.zeros(len(edges) - 1)
-        for row in self.rows:
-            grid = self._grid(row, edges, n_base, n_peak)
-            s = self.sigma_one(row, grid)
-            cum = np.concatenate([[0.0], np.cumsum(0.5 * (s[1:] + s[:-1]) * np.diff(grid))])
-            total += np.diff(np.interp(edges, grid, cum))
-        return total
+        if not self.rows:
+            return np.zeros(len(edges) - 1)
+        return self.bin_integrals_per_resonance(edges, n_base, n_peak).sum(axis=0)
 
 
     def rate(self, T9, E_lo: float = 1e-3, E_hi: float = 10.0,

@@ -51,8 +51,7 @@ _SCRIPT_KEYS = frozenset({
     'exp_rel_err', 'e_fit_min', 'prior_rel_std', 'prior_abs_floor',
     'debug_every', 'exp_file', 'output_file', 'rates_mc_file',
     'rate_xmin', 'rate_xmax', 'plot_log_y_xs', 'plot_log_y_rate',
-    'talys_output_dir', 'exp_energy_frame',
-    'talys_xs_file', 'talys_points_per_bin', 'exp_bin_width',
+    'talys_output_dir', 'exp_energy_frame', 'talys_xs_file', 'talys_points_per_bin', 'exp_bin_width',
     # least_squares-only settings
     'gtol', 'lsq_diff_step', 'lsq_workers',
 })
@@ -445,6 +444,63 @@ def run_talys_get_rate(
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Comparing TALYS to bin-averaged data on the same footing
+# ─────────────────────────────────────────────────────────────────────────────
+def read_exp_table(path: str) -> np.ndarray:
+    """
+    Numeric rows (E, sigma[, d_sigma]) of a data file.
+
+    '#' lines are comments. A leading non-numeric line (a column header
+    without '#') is skipped. Step 2's integrated-cross-section files have
+    only a '#'-prefixed header, so pd.read_csv(path, comment='#') -- with
+    no explicit header=None -- took the FIRST DATA ROW as the column names
+    instead, silently dropping the lowest-energy bin from every fit.
+    """
+    df = pd.read_csv(path, comment="#", header=None)
+    first = pd.to_numeric(df.iloc[0], errors="coerce")
+    if first.isna().any():
+        df = df.iloc[1:]
+    return df.apply(pd.to_numeric).to_numpy(dtype=float)
+
+
+def exp_bin_width(exp_file: str, x_exp: np.ndarray, script: dict) -> float:
+    """
+    Width (MeV) of the data bins: exp_bin_width in [talys], else the 'dE='
+    in the integrated file's header, else '_dE_<w>' in its name, else the
+    median spacing of the bin centres.
+    """
+    if script.get('exp_bin_width'):
+        return float(script['exp_bin_width'])
+    try:
+        with open(exp_file) as fh:
+            m = re.search(r'dE\s*=\s*([0-9.eE+-]+)', fh.readline())
+        if m:
+            return float(m.group(1))
+    except OSError:
+        pass
+    m = re.search(r'_dE_([0-9.]+?)(?:_|\.csv|$)', os.path.basename(exp_file))
+    if m:
+        return float(m.group(1))
+    return float(np.median(np.diff(np.sort(x_exp))))
+
+
+def talys_bin_grid(x_centres: np.ndarray, width: float, n_per_bin: int):
+    """
+    Gauss-Legendre energies inside each bin [c - w/2, c + w/2] and weights
+    that average over the bin (they sum to 1 per bin). Interior nodes mean
+    adjacent bins never share an energy. n_per_bin = 1 is the bin centre.
+    """
+    nodes, weights = np.polynomial.legendre.leggauss(int(n_per_bin))
+    E = (np.asarray(x_centres, dtype=float)[:, None] + 0.5 * width * nodes[None, :]).ravel()
+    return E, weights / 2.0
+
+
+def talys_bin_average(y_sub: np.ndarray, weights: np.ndarray) -> np.ndarray:
+    """Bin averages from TALYS values at talys_bin_grid energies."""
+    return np.asarray(y_sub, dtype=float).reshape(-1, len(weights)) @ weights
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Checkpoints: one checkpoint.json per run directory, one entry per fit
 # ─────────────────────────────────────────────────────────────────────────────
 def _checkpoint_rmw(path: str, update) -> dict:
@@ -511,57 +567,6 @@ def checkpoint_clear(path: str, key: str) -> None:
 # ─────────────────────────────────────────────────────────────────────────────
 # Objective (closure — no global mutable state)
 # ─────────────────────────────────────────────────────────────────────────────
-def read_exp_table(path: str) -> np.ndarray:
-    """
-    Numeric rows (E, sigma[, d_sigma]) of a data file.
-
-    '#' lines are comments. A leading non-numeric line (a column header
-    without '#') is skipped. Step 2's files have only a '#' header, which
-    pd.read_csv(..., comment='#') used to take the FIRST DATA ROW as the
-    column names for, silently dropping the lowest-energy bin.
-    """
-    df = pd.read_csv(path, comment="#", header=None)
-    first = pd.to_numeric(df.iloc[0], errors="coerce")
-    if first.isna().any():
-        df = df.iloc[1:]
-    return df.apply(pd.to_numeric).to_numpy(dtype=float)
-
-
-def exp_bin_width(exp_file: str, x_exp: np.ndarray, script: dict) -> float:
-    """
-    Width (MeV) of the data bins: exp_bin_width in [talys], else the
-    'dE=' in the integrated file's header, else '_dE_<w>' in its name, else
-    the median spacing of the bin centres.
-    """
-    if script.get('exp_bin_width'):
-        return float(script['exp_bin_width'])
-    try:
-        with open(exp_file) as fh:
-            m = re.search(r'dE\s*=\s*([0-9.eE+-]+)', fh.readline())
-        if m:
-            return float(m.group(1))
-    except OSError:
-        pass
-    m = re.search(r'_dE_([0-9.]+?)(?:_|\.csv|$)', os.path.basename(exp_file))
-    if m:
-        return float(m.group(1))
-    return float(np.median(np.diff(np.sort(x_exp))))
-
-
-def talys_bin_grid(x_centres: np.ndarray, width: float, n_per_bin: int):
-    """
-    Gauss-Legendre energies inside each bin [c - w/2, c + w/2] and weights
-    that average over the bin (they sum to 1 per bin). Interior nodes mean
-    adjacent bins never share an energy. n_per_bin = 1 is the bin centre.
-    """
-    nodes, weights = np.polynomial.legendre.leggauss(int(n_per_bin))
-    E = (np.asarray(x_centres, dtype=float)[:, None] + 0.5 * width * nodes[None, :]).ravel()
-    return E, weights / 2.0
-
-
-def talys_bin_average(y_sub: np.ndarray, weights: np.ndarray) -> np.ndarray:
-    """Bin averages from TALYS values at talys_bin_grid energies."""
-    return np.asarray(y_sub, dtype=float).reshape(-1, len(weights)) @ weights
 
 
 def make_objective(cfg: dict, x_exp: np.ndarray, y_exp: np.ndarray,
@@ -571,10 +576,13 @@ def make_objective(cfg: dict, x_exp: np.ndarray, y_exp: np.ndarray,
     Build the objective for the optimiser.
 
     Returns a callable ``objective(params) -> float`` giving chi2 + prior,
-    with chi2 = sum((ln y_exp - ln y_TALYS)^2 / sigma_ln^2) over the fitted
-    bins (not divided by the degrees of freedom; chi2/dof is reported
-    separately) and TALYS averaged over each bin.  Powell and Nelder-Mead use
-    this.
+    the log-posterior up to a constant (chi2 is NOT divided by the degrees
+    of freedom here -- dividing only chi2 and not the prior would make the
+    prior dof times stronger than its configured width implies; chi2_red
+    = chi2/dof is still computed and reported for diagnostics). TALYS is
+    averaged over each data bin the same way the data itself was binned,
+    using cfg['_bin_weights'] if set (falls back to comparing bin centres
+    when absent, the previous behaviour).  Powell and Nelder-Mead use this.
 
     Attached to it:
         objective.residuals(params) -> np.ndarray
@@ -612,8 +620,9 @@ def make_objective(cfg: dict, x_exp: np.ndarray, y_exp: np.ndarray,
         rel = np.asarray(y_err, dtype=float) / np.asarray(y_exp, dtype=float)
     sigma_ln = np.where(np.isfinite(rel) & (rel > 0.0), rel, EXP_REL_ERR)[mask]
 
-    # TALYS is run at cfg['_talys_E_cm'] (n points per bin) and averaged over
-    # each bin with cfg['_bin_weights']; without them, the bin centres.
+    # TALYS is run at cfg['_talys_E_cm'] (several points per bin) and
+    # averaged over each bin with cfg['_bin_weights']; without them, TALYS
+    # is compared at the bin centres directly (the previous behaviour).
     bin_weights = cfg.get('_bin_weights')
 
     # Prior width per parameter (None → no prior term)
@@ -658,11 +667,13 @@ def make_objective(cfg: dict, x_exp: np.ndarray, y_exp: np.ndarray,
             y_t = talys_bin_average(y_t, bin_weights)
 
         # ── Log-space chi-square, as residuals ───────────────────────────────
-        # sum(r_data**2) = chi2; it is NOT divided by dof, so chi2 + prior is
-        # the log-posterior (up to a constant) and the prior keeps its weight.
-        # FLOOR only guards log(0); added to every value it would bias tiny sigma.
-        r_data   = (np.log(np.maximum(y_exp[mask], FLOOR))
-                    - np.log(np.maximum(y_t[mask], FLOOR))) / sigma_ln
+        # sum(r_data**2) = chi2; NOT divided by dof, so chi2 + prior is the
+        # log-posterior up to a constant and the prior keeps its configured
+        # weight (dividing only chi2 by dof, as before, left the prior dof
+        # times stronger than intended). chi2_red = chi2/dof is reported
+        # separately below for diagnostics.
+        log_res  = (np.log(y_exp[mask] + FLOOR) - np.log(y_t[mask] + FLOOR)) / sigma_ln
+        r_data   = log_res
         chi2     = float(np.sum(r_data ** 2))
         chi2_red = chi2 / dof
 
@@ -678,8 +689,9 @@ def make_objective(cfg: dict, x_exp: np.ndarray, y_exp: np.ndarray,
         with lock:
             if total < state['best'][0]:
                 state['best'] = (total, params.copy())
-                state['best_parts'] = {'chi2': chi2, 'chi2_red': chi2_red,
-                                       'prior': prior, 'dof': dof}
+                state['best_parts'] = {
+                    'chi2': chi2, 'chi2_red': chi2_red, 'prior': prior, 'dof': dof,
+                }
                 if checkpoint_path:
                     checkpoint_save(checkpoint_path, checkpoint_key or "fit", {
                         'params': params.tolist(),
@@ -981,8 +993,6 @@ def write_optimization_output(
     if info:
         lines.append(f"Objective   : chi2 + prior = {res.fun:.6g} "
                      f"(chi2 = {info['chi2']:.6g}, prior = {info['prior']:.6g}, dof = {info['dof']})\n")
-        lines.append(f"Fit window  : E >= {info['e_fit_min']} MeV; TALYS averaged over "
-                     f"{info['talys_points_per_bin']} point(s) per {info['bin_width']:g} MeV bin\n")
     lines.append("-" * 72 + "\n")
     lines.append("Optimized parameters:\n")
     for i, op in enumerate(cfg['opt_params']):
@@ -1305,8 +1315,11 @@ def main():
     # Attach energy grid to cfg so write_talys_files can use it
     cfg['_x_exp'] = x_exp
 
-    # TALYS is averaged over the same bins as the data: n Gauss-Legendre
-    # energies per bin (talys_points_per_bin; 1 = bin centres only).
+    # TALYS is averaged over the same bins as the data: N_PER_BIN
+    # Gauss-Legendre energies per bin (1 = bin centres only, the previous
+    # behaviour). Comparing TALYS's value at a bin centre to the bin-averaged
+    # data is biased for a steep cross section, growing with the bin width --
+    # exactly the effect a bin-width study is trying to measure.
     N_PER_BIN = int(script.get('talys_points_per_bin', '3'))
     BIN_WIDTH = exp_bin_width(exp_file, x_exp, script)
     if N_PER_BIN > 1:
@@ -1396,14 +1409,10 @@ def main():
         print(f"  {op.name} = {params_best[i]:.6g}")
     parts = obj.state.get('best_parts') or {}
     fit_info = {
-        'objective': float(res.fun),
-        'chi2': parts.get('chi2', float('nan')),
-        'chi2_red': parts.get('chi2_red', float('nan')),
-        'prior': parts.get('prior', float('nan')),
-        'dof': parts.get('dof', 0),
-        'e_fit_min': E_FIT_MIN,
-        'talys_points_per_bin': N_PER_BIN,
-        'bin_width': BIN_WIDTH,
+        'chi2':     parts.get('chi2', float('nan')),
+        'chi2_red': parts.get('chi2_red', res.fun),
+        'prior':    parts.get('prior', float('nan')),
+        'dof':      parts.get('dof', 0),
     }
     print(f"Objective chi2 + prior = {res.fun:.6g}  "
           f"(chi2 = {fit_info['chi2']:.6g}, prior = {fit_info['prior']:.6g})")
@@ -1413,6 +1422,7 @@ def main():
     out_xs = run_talys_get_xs(params_best, cfg)
     if out_xs is None:
         print("\nWARNING: TALYS failed at best-fit parameters.")
+        checkpoint_clear(checkpoint_path, checkpoint_key)
         return
     x_t, y_t = out_xs
     y_bin = (talys_bin_average(y_t, cfg['_bin_weights'])

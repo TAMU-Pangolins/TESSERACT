@@ -43,10 +43,17 @@ if [ -z "$RATESMC_BIN" ]; then
     exit 1
 fi
 
+if command -v "$RATESMC_BIN" >/dev/null 2>&1; then
+    RATESMC_BIN="$(command -v "$RATESMC_BIN")"
+fi
+
 if [ ! -x "$RATESMC_BIN" ]; then
     echo "RATESMC_BIN is not executable: $RATESMC_BIN" >&2
     exit 1
 fi
+
+# Symlinks in each run must point to the installation, even for relative inputs.
+RATESMC_BIN="$(readlink -f "$RATESMC_BIN")"
 
 resolve_python() {
     if [ -n "${PYTHON:-}" ] && command -v "$PYTHON" >/dev/null 2>&1; then
@@ -107,6 +114,9 @@ find_mass_dir() {
 }
 
 SUPPORT_DIR="$(find_mass_dir)"
+if [ -n "$SUPPORT_DIR" ]; then
+    SUPPORT_DIR="$(cd "$SUPPORT_DIR" && pwd)"
+fi
 if [ -z "$SUPPORT_DIR" ]; then
     echo "WARNING: mass_1.mas20 / nubase_3.mas20 not found (set MASS_DIR); RatesMC 2.2+ needs them." >&2
 fi

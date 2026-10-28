@@ -6,6 +6,53 @@ step fits into the larger TESSERACT process. The pipeline driver
 `tesseract.py` and its input file are described in
 [Configuration](configuration.md).
 
+## Full pipeline: 22Mg(a,p)25Al
+
+The runnable configuration lives in
+[`examples/22Mg_ap_25Al.in`](https://github.com/TAMU-Pangolins/TESSERACT/blob/main/examples/22Mg_ap_25Al.in).
+It runs resonance sampling, optional RatesMC execution, cross-section integration,
+and TALYS fitting for ten reproducible realisations. Edit that file to change
+parameters; the configuration is maintained there rather than copied into this page.
+
+First complete the
+[installation instructions](https://github.com/TAMU-Pangolins/TESSERACT#installation-guide):
+install the Python dependencies and HFB tables, make TALYS available on `PATH`,
+and configure RatesMC as described in the installation guide if you want its reference
+rates. If RatesMC cannot be found, its step is skipped; the other stages still run.
+
+From the repository root, start with one realisation:
+
+```bash
+uv run python tesseract.py --input examples/22Mg_ap_25Al.in --run-idx 0
+```
+
+Then run all ten:
+
+```bash
+uv run python tesseract.py --input examples/22Mg_ap_25Al.in
+```
+
+Existing output files are reused. When changing parameters, use a fresh output
+location or remove the affected generated outputs before rerunning, so old results
+are not reused with the new configuration.
+
+All example outputs are under `outputs/example_22Mg_ap_25Al/`:
+
+| Stage | Output relative to that directory |
+| --- | --- |
+| Resonance sampling | `resonances/22Mg(a,p)25Al/RUN_j/22Mg(a,p)25Al.in` |
+| RatesMC, when available | `resonances/22Mg(a,p)25Al/RUN_j/22Mg(a,p)25Al.out` |
+| Cross-section integration | `cross_sections/22Mg_ap_25Al_integrated_xs_dE_0.2_runj.csv` |
+| Unintegrated cross sections | `cross_sections/22Mg(a,p)25Al_xs_unintegrated_parallel_runj.txt` |
+| TALYS fitting | `talys/RUN_j/talys_results_*.npz` |
+
+Here `j` is the run index, from 0 through 9. The configuration uses one bin width
+and a limited least-squares optimiser. Even a single realisation can take time:
+Coulomb penetrability calculations and repeated external TALYS calls dominate the
+work. To shorten an initial check, narrow the energy window or temporarily remove
+`[talys]` and its contents to run only the earlier stages. The `samples` setting
+controls density-grid resolution, not the number of sampled resonances.
+
 ## A. Generate a Spectrum from HFB Densities
 
 The complete HFB level-density dataset is downloaded and cached automatically

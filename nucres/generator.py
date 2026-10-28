@@ -6,7 +6,7 @@ from typing import Any, Dict, List, Optional
 
 import numpy as np
 
-from common.densities_retrieval import J_index, spin_grid
+from common.densities_retrieval import J_index, read_hfb_cor, spin_grid
 
 from .hfb_adapter import load_hfb_record, resolve_density_paths
 from .physics import MASS_PROTON
@@ -65,37 +65,35 @@ class HFBSamplerConfig:
     drop_forbidden : bool
         If true (default), J^pi sequences that the entrance channel cannot
         form are removed before sampling, so they contribute no resonances.
-    Gamma_i_dof, Gamma_o_dof : float
-        Degrees of freedom nu of the chi^2/nu fluctuation of the entrance and
-        exit widths (mean preserved). nu = 1 is Porter-Thomas for a single
-        channel; a total gamma width summed over many transitions fluctuates
-        less (larger nu); nu = inf disables the fluctuation.
     exit_kind : {"particle", "gamma"} or None
         Exit channel type, used to choose L2 per resonance. None leaves L2
         unset (the caller's fixed default is used).
     ejectile_spin, ejectile_parity : float, int
         Spin and parity of the emitted particle (ignored for gamma exits).
     final_spin, final_parity : float or None, int or None
-        J^pi of the final state populated in the residual nucleus. If unknown
-        (None), L2 is left unset.
+        J^pi of the final state populated in the residual nucleus (assumed
+        to be its ground state). If unknown (None), L2 is left unset.
     drop_exit_forbidden : bool
         If true (default), resonances that cannot decay to the final state
         (no allowed l, or a gamma transition 0 -> 0) are dropped: they would
         contribute nothing to this reaction.
-    use_hfb_corrections : bool
-        Renormalise the HFB densities with the RIPL-3 `.cor` (ctable, ptable)
-        entry of the compound nucleus, as TALYS does for its HFB tables.
-        Isotopes without an entry use the raw table.
-    widths_are_reduced : bool
-        If true, the sampled `Gamma_i`/`Gamma_o` are reduced widths that the
-        caller converts to partial widths (as `build_ratesmc_input.py` does).
-        No cross section is then computed, since summing Breit-Wigner terms
-        over reduced widths would be meaningless; `sigma_barns` is None.
     spacing_model : {"poisson", "wigner"}
         Model used to place resonance energies. `"poisson"` preserves the
         independent placement used historically. `"wigner"` generates a
         Wigner-surmise renewal ladder independently for every fixed
         :math:`J^\pi` sequence in unfolded HFB-density space.
+    widths_are_reduced : bool
+        If true, the sampled `Gamma_i`/`Gamma_o` are reduced widths that the
+        caller converts to partial widths (as `build_ratesmc_input.py` does).
+        No cross section is then computed, since summing Breit-Wigner terms
+        over reduced widths would be meaningless; `sigma_barns` is None.
+    Gamma_i_dof, Gamma_o_dof : float
+        Degrees of freedom of the mean-preserving chi-square width draws.
+        Positive infinity disables fluctuations.
+    use_hfb_corrections : bool
+        If true, renormalise the HFB level density with the RIPL-3 `.cor`
+        (ctable, ptable) entry for this isotope, when the `.cor` file has
+        one; isotopes without an entry keep the raw table.
     """
 
     Z: int
@@ -120,17 +118,17 @@ class HFBSamplerConfig:
     seed: Optional[int] = None
     sample_J: bool = True
     auto_l1: bool = True
-    spacing_model: str = "poisson"
     drop_forbidden: bool = True
-    widths_are_reduced: bool = False
-    Gamma_i_dof: float = 1.0
-    Gamma_o_dof: float = 1.0
     exit_kind: Optional[str] = None
     ejectile_spin: float = 0.5
     ejectile_parity: int = 1
     final_spin: Optional[float] = None
     final_parity: Optional[int] = None
     drop_exit_forbidden: bool = True
+    spacing_model: str = "poisson"
+    widths_are_reduced: bool = False
+    Gamma_i_dof: float = 1.0
+    Gamma_o_dof: float = 1.0
     use_hfb_corrections: bool = False
 
 
@@ -358,6 +356,10 @@ def synthesize_sigma_from_hfb(config: HFBSamplerConfig) -> GeneratedSpectrum:
     resonance energy stored in `resonances` is recorded in eV.
     Missing HFB files propagate as `FileNotFoundError` from the adapter layer.
     """
+    for dof in (config.Gamma_i_dof, config.Gamma_o_dof):
+        if dof != np.inf and (not np.isfinite(dof) or dof <= 0):
+            raise ValueError("Width degrees of freedom must be positive or infinity")
+
     spacing_model = str(config.spacing_model).strip().lower()
     if spacing_model not in {"poisson", "wigner"}:
         raise ValueError(
@@ -372,6 +374,10 @@ def synthesize_sigma_from_hfb(config: HFBSamplerConfig) -> GeneratedSpectrum:
     def _U_of_E_mev(E_eV: np.ndarray) -> np.ndarray:
         return np.asarray(E_eV, dtype=float) * 1e-6 + float(config.U_offset_mev)
 
+    # Resolve the HFB level-density files once, up front, so the exact files
+    # and the isotope actually tabulated in them (record.header.Z/A) can be
+    # reported in the output metadata, and so the one load (with corrections
+    # applied if requested) feeds every J^pi channel density built below.
     tab_p, cor_p = resolve_density_paths(config.Z, data_root=config.data_root)
     record = load_hfb_record(
         tab_path=str(tab_p),
@@ -379,6 +385,10 @@ def synthesize_sigma_from_hfb(config: HFBSamplerConfig) -> GeneratedSpectrum:
         A=config.A,
         use_corrections=config.use_hfb_corrections,
         warn_if_ignored=False,
+    )
+    hfb_corrections_applied = bool(
+        config.use_hfb_corrections and cor_p is not None
+        and (record.header.Z, record.header.A) in read_hfb_cor(str(cor_p))
     )
 
     # ── Spin/parity-resolved densities rho_{J pi}(E) on the energy grid ──────
@@ -511,7 +521,7 @@ def synthesize_sigma_from_hfb(config: HFBSamplerConfig) -> GeneratedSpectrum:
     resonances: List[Resonance] = []
 
     def pt_width(mean_eV: float, dof: float) -> float:
-        if not np.isfinite(dof):
+        if dof == np.inf:
             return float(mean_eV)
         return float(mean_eV * rng.chisquare(df=dof) / dof)
 
@@ -554,6 +564,7 @@ def synthesize_sigma_from_hfb(config: HFBSamplerConfig) -> GeneratedSpectrum:
         "expected_levels_dropped": expected_dropped,
         "dropped_Jpi": dropped,
         "parities": parities,
+        "n_exit_forbidden": n_exit_forbidden,
         "n_bins": n_bins,
         "nonzero_lambda_bins": nz_bins,
         "n_drawn": n_drawn,
@@ -567,8 +578,28 @@ def synthesize_sigma_from_hfb(config: HFBSamplerConfig) -> GeneratedSpectrum:
         "widths_are_reduced": config.widths_are_reduced,
         "Gamma_i_dof": config.Gamma_i_dof,
         "Gamma_o_dof": config.Gamma_o_dof,
-        "n_exit_forbidden": n_exit_forbidden,
-        "use_hfb_corrections": config.use_hfb_corrections,
+        # Implicit level-density provenance: which files were actually read,
+        # which isotope they are tabulated for (per the file's own header),
+        # and whether the requested compound nucleus (config.Z/A) matches it.
+        "hfb_Z_requested": config.Z,
+        "hfb_A_requested": config.A,
+        "hfb_tab_path": str(tab_p),
+        "hfb_cor_path": (str(cor_p) if cor_p is not None else None),
+        "hfb_corrections_applied": hfb_corrections_applied,
+        "hfb_header_Z": record.header.Z,
+        "hfb_header_A": record.header.A,
+        "hfb_Z_mismatch": record.header.Z != config.Z,
+        # read_hfb_tab now raises if config.A isn't actually in the .tab file,
+        # so by the time we get here this is always False in practice; kept
+        # for transparency and as a guard against a future caller that
+        # catches that error and proceeds anyway.
+        "hfb_A_mismatch": record.header.A != config.A,
+        "hfb_deformation": {
+            "beta2": record.header.beta2,
+            "beta3": record.header.beta3,
+            "beta4": record.header.beta4,
+        },
+        "sample_J": config.sample_J,
     }
 
     return GeneratedSpectrum(

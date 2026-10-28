@@ -38,7 +38,7 @@ from typing import List, Optional, Sequence, Tuple
 
 import numpy as np
 
-from common.densities_retrieval import read_hfb_cor, spin_grid
+from common.densities_retrieval import spin_grid
 from .read_qvals import ELEMENT_SYMBOLS
 
 HBARC_MEV_FM = 197.3269804
@@ -151,14 +151,14 @@ class Continuum:
 
 def hfb_continuum(record, A: int, E_cut: float, U_max: float, dU: float) -> Continuum:
     """Expected numbers of states of each J^pi in bins of width dU over (E_cut, U_max]."""
+    if not np.isfinite(dU) or dU <= 0.0:
+        raise ValueError("Continuum bin width must be finite and positive")
     J = spin_grid(A)
     if U_max <= E_cut:
         empty = np.zeros((0, len(J)))
         return Continuum(np.zeros(0), J, empty, empty)
-    edges = np.arange(E_cut, U_max + dU, dU)
-    edges = edges[edges <= U_max + 1e-12]
-    if len(edges) < 2:
-        edges = np.array([E_cut, U_max])
+    edges = np.arange(E_cut, U_max, dU)
+    edges = np.append(edges, U_max)
     U = 0.5 * (edges[:-1] + edges[1:])
     width = np.diff(edges)
 

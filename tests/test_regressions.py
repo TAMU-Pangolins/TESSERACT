@@ -538,7 +538,7 @@ rvadjust a 1.0 0.5 1.5
         x = np.array([2.0, 2.2, 2.4, 2.6])
         E, w = topt.talys_bin_grid(x, 0.2, 3)
         cfg["_x_exp"], cfg["_talys_E_cm"], cfg["_bin_weights"] = x, E, w
-        model = lambda p: np.exp(-30.0 / np.sqrt(E)) * p        # sigma at sub-grid points
+        model = lambda p: 1e6 * np.exp(-30.0 / np.sqrt(E)) * p        # sigma at sub-grid points
         y_bin_true = topt.talys_bin_average(model(1.0), w)
         y_exp = y_bin_true * np.array([1.0, 1.0, 1.0, 1.2])
         y_err = y_exp * np.array([0.1, 0.1, 0.1, 0.05])           # last point: 5%
