@@ -152,6 +152,14 @@ log-posterior up to a constant); chi^2/dof is reported and written as
 | `rate_xmin`, `rate_xmax`, `plot_log_y_xs`, `plot_log_y_rate` | `0.0`, `2.0`, `true`, `true` | Plot settings. |
 | `output_file` | | Reserved (not passed to TALYS). |
 
+Set TALYS's numerical cut-offs low for the sub-millibarn cross sections of
+astrophysical reactions: `xseps = 1.e-20`, `transeps = 1.e-20`,
+`popeps = 1.e-20`. The fit runs TALYS without `astro`, where the defaults
+are `xseps = 1e-7`, `transeps = 1e-8` and `popeps = 1e-3` mb; with the
+default `popeps` the (a,p) cross section drops several-fold below
+1e-3 mb, a step in the fitted curve. (The rate run uses `astro y`, whose
+defaults are already low.) The lower values cost no measurable run time.
+
 `RUN_j/checkpoint.json` holds one entry per fit (keyed by the data file), so
 an evicted fit resumes from its own best point only; a finished fit removes
 its entry. `talys_opt_with_unc.py --debug-talys` runs TALYS once at x0 and
