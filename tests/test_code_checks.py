@@ -16,11 +16,13 @@ SPECIFICATION.loader.exec_module(code_checks)
 
 class CodeTestSelectionTest(unittest.TestCase):
     AVAILABLE = ['test_build_ratesmc_input.py', 'test_data.py', 'test_lab_to_cm.py',
-                 'test_ratesmc_export.py', 'test_resonance_sum.py', 'test_talys_statistics.py']
+                 'test_ratesmc_export.py', 'test_resonance_sum.py',
+                 'test_talys_output_selection.py', 'test_talys_statistics.py']
 
-    def test_optimizer_selects_statistics_and_energy_frame_tests(self):
+    def test_optimizer_selects_statistics_energy_frame_and_channel_tests(self):
         selected, _ = code_checks.select_tests(['talys_opt_with_unc.py'], self.AVAILABLE)
-        self.assertEqual(selected, ['test_lab_to_cm.py', 'test_talys_statistics.py'])
+        self.assertEqual(selected, ['test_lab_to_cm.py', 'test_talys_output_selection.py',
+                                    'test_talys_statistics.py'])
 
     def test_existing_analysis_tools_select_their_parser_regressions(self):
         for path in ['scripts/plot_talys_param_grid.py', 'plot_talys_results_new.py',
@@ -52,7 +54,8 @@ class CodeTestSelectionTest(unittest.TestCase):
         selected, _ = code_checks.select_tests(
             ['talys_opt_with_unc.py', 'scripts/plot_talys_param_grid.py', 'download_data.py'],
             self.AVAILABLE)
-        self.assertEqual(selected, ['test_data.py', 'test_lab_to_cm.py', 'test_talys_statistics.py'])
+        self.assertEqual(selected, ['test_data.py', 'test_lab_to_cm.py',
+                                   'test_talys_output_selection.py', 'test_talys_statistics.py'])
 
     def test_missing_target_or_unavailable_comparison_requires_the_full_suite(self):
         for paths in [None, ['talys_opt_with_unc.py']]:

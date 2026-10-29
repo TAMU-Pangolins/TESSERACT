@@ -3,8 +3,8 @@
 TALYS parameter optimiser — driven by tesseract.in.
 
 Optimises any set of TALYS parameters listed in the \\opt block of
-tesseract.in by minimising log-space reduced chi-square on the configured
-reaction's cross sections. Three optimisers are available via method = ... in [talys]:
+tesseract.in by minimising a log-space fit objective for the configured reaction.
+Three optimisers are available via method = ... in [talys]:
 
     Powell         scipy.optimize.minimize, derivative-free (default)
     Nelder-Mead    scipy.optimize.minimize, derivative-free

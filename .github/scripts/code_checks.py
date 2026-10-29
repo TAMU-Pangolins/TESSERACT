@@ -12,7 +12,8 @@ from documentation_changes import changed_paths
 
 
 TARGETED_TESTS = {
-    'talys_opt_with_unc.py': ('test_talys_statistics.py', 'test_lab_to_cm.py'),
+    'talys_opt_with_unc.py': ('test_talys_statistics.py', 'test_lab_to_cm.py',
+                            'test_talys_output_selection.py'),
     'plot_talys_results_new.py': ('test_talys_statistics.py',),
     'post_processing/plot_talys_results_new.py': ('test_talys_statistics.py',),
     'build_ratesmc_input.py': ('test_build_ratesmc_input.py', 'test_ratesmc_export.py'),
