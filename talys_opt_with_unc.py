@@ -606,6 +606,8 @@ def make_objective(cfg: dict, x_exp: np.ndarray, y_exp: np.ndarray,
             sum(r**2) == objective(params).  method = least_squares uses this.
         objective.state['count']  — number of evaluations so far
         objective.state['best']   — (best_total, best_params) seen so far
+        objective.statistics(params, model_cross_sections) -> dict
+            Diagnostics for supplied raw TALYS predictions, without a new run.
 
     Both callables share a single evaluation routine, so the loss, prior,
     checkpointing and debug printout are identical for every optimiser.
@@ -655,6 +657,34 @@ def make_objective(cfg: dict, x_exp: np.ndarray, y_exp: np.ndarray,
     state = {'count': 0, 'best': (np.inf, None), 'best_parts': None}
     lock  = threading.Lock()
 
+    def _residual_statistics(params, y_t):
+        # ── Log-space chi-square, as residuals ───────────────────────────────
+        # sum(r_data**2) = chi2; NOT divided by dof, so chi2 + prior is the
+        # log-posterior up to a constant and the prior keeps its configured
+        # weight (dividing only chi2 by dof, as before, left the prior dof
+        # times stronger than intended). chi2_red = chi2/dof is reported
+        # separately below for diagnostics.
+        # Clamp before taking logarithms; adding FLOOR would bias positive
+        # cross sections above the guard and change their relative residuals.
+        log_res  = (np.log(np.maximum(y_exp[mask], FLOOR))
+                    - np.log(np.maximum(y_t[mask], FLOOR))) / sigma_ln
+        r_data   = log_res
+        chi2     = float(np.sum(r_data ** 2))
+        chi2_red = chi2 / dof
+
+        # ── Gaussian prior, as residuals ─────────────────────────────────────
+        if prior_sigma is not None:
+            r_prior = (params - X0) / prior_sigma
+        else:
+            r_prior = np.zeros(0)
+        prior = float(np.sum(r_prior ** 2))
+
+        total = chi2 + prior
+
+        parts = {'objective': total, 'chi2': chi2, 'chi2_red': chi2_red,
+                 'prior': prior, 'dof': dof}
+        return np.concatenate([r_data, r_prior]), total, parts
+
     def _evaluate(params: np.ndarray):
         """
         One TALYS evaluation.  Returns (residual_vector, total_loss);
@@ -682,35 +712,13 @@ def make_objective(cfg: dict, x_exp: np.ndarray, y_exp: np.ndarray,
         if bin_weights is not None:
             y_t = talys_bin_average(y_t, bin_weights)
 
-        # ── Log-space chi-square, as residuals ───────────────────────────────
-        # sum(r_data**2) = chi2; NOT divided by dof, so chi2 + prior is the
-        # log-posterior up to a constant and the prior keeps its configured
-        # weight (dividing only chi2 by dof, as before, left the prior dof
-        # times stronger than intended). chi2_red = chi2/dof is reported
-        # separately below for diagnostics.
-        # Clamp before taking logarithms; adding FLOOR would bias positive
-        # cross sections above the guard and change their relative residuals.
-        log_res  = (np.log(np.maximum(y_exp[mask], FLOOR))
-                    - np.log(np.maximum(y_t[mask], FLOOR))) / sigma_ln
-        r_data   = log_res
-        chi2     = float(np.sum(r_data ** 2))
-        chi2_red = chi2 / dof
-
-        # ── Gaussian prior, as residuals ─────────────────────────────────────
-        if prior_sigma is not None:
-            r_prior = (params - X0) / prior_sigma
-        else:
-            r_prior = np.zeros(0)
-        prior = float(np.sum(r_prior ** 2))
-
-        total = chi2 + prior
+        residual_vector, total, parts = _residual_statistics(params, y_t)
+        chi2, chi2_red, prior = parts['chi2'], parts['chi2_red'], parts['prior']
 
         with lock:
             if total < state['best'][0]:
                 state['best'] = (total, params.copy())
-                state['best_parts'] = {
-                    'chi2': chi2, 'chi2_red': chi2_red, 'prior': prior, 'dof': dof,
-                }
+                state['best_parts'] = parts.copy()
                 if checkpoint_path:
                     checkpoint_save(checkpoint_path, checkpoint_key or "fit", {
                         'params': params.tolist(),
@@ -732,7 +740,7 @@ def make_objective(cfg: dict, x_exp: np.ndarray, y_exp: np.ndarray,
                 flush=True,
             )
 
-        return np.concatenate([r_data, r_prior]), total
+        return residual_vector, total
 
     def objective(params: np.ndarray) -> float:
         """Scalar loss chi2 + prior (Powell / Nelder-Mead)."""
@@ -743,6 +751,22 @@ def make_objective(cfg: dict, x_exp: np.ndarray, y_exp: np.ndarray,
         r, _ = _evaluate(params)
         return np.full(n_resid, FAIL_RESID) if r is None else r
 
+    def statistics(params, model_cross_sections):
+        """Return objective, chi-square, prior, and degrees of freedom.
+
+        Predictions are raw TALYS cross sections in mb on the configured bin
+        grid. A mismatched sample count raises ValueError. No native run or
+        best-trial state update is performed.
+        """
+        values = np.asarray(model_cross_sections, dtype=float)
+        points_per_bin = 1 if bin_weights is None else len(bin_weights)
+        if values.size != len(y_exp) * points_per_bin:
+            raise ValueError('TALYS output does not match the experimental bin grid')
+        if bin_weights is not None:
+            values = talys_bin_average(values, bin_weights)
+        return _residual_statistics(np.asarray(params, dtype=float), values)[2]
+
+    objective.statistics = statistics
     objective.residuals = residuals
     objective.state     = state
     return objective
@@ -854,7 +878,8 @@ def run_least_squares(obj, x0: np.ndarray, cfg: dict):
 # ─────────────────────────────────────────────────────────────────────────────
 # Plotting
 # ─────────────────────────────────────────────────────────────────────────────
-def plot_best_fit_xs(cfg, x_exp, y_exp, x_t, y_t, params_best, y_err=None, out_dir="."):
+def plot_best_fit_xs(cfg, x_exp, y_exp, x_t, y_t, params_best, y_err=None, out_dir=".",
+                     y_bin=None, e_fit_min=None):
     script      = cfg['script']
     EXP_REL_ERR = float(script.get('exp_rel_err', '0.10'))
     log_y       = script.get('plot_log_y_xs', 'true').lower() == 'true'
@@ -870,6 +895,11 @@ def plot_best_fit_xs(cfg, x_exp, y_exp, x_t, y_t, params_best, y_err=None, out_d
         fmt="o", capsize=3, label="Experimental",
     )
     plt.plot(x_t, y_t, linestyle="-", label=f"TALYS best-fit\n{label}")
+    if y_bin is not None:
+        plt.plot(x_exp, y_bin, 's', mfc='none', label='TALYS bin average')
+    if e_fit_min is not None:
+        plt.axvline(e_fit_min, color='grey', linestyle=':', linewidth=1,
+                    label=f'Fit window E >= {e_fit_min:g} MeV')
     plt.xlabel("Energy [MeV]")
     plt.ylabel("Cross section [mb]")
     if log_y:
@@ -913,7 +943,8 @@ def plot_reaction_rate(cfg, x_rate, y_rate, ratesmc_xy=None, out_dir="."):
 # ─────────────────────────────────────────────────────────────────────────────
 # Save / output helpers
 # ─────────────────────────────────────────────────────────────────────────────
-def save_results(cfg, x_exp, y_exp, y_err, x_xs, y_xs, x_rate, y_rate, params_best, out_dir="."):
+def save_results(cfg, x_exp, y_exp, y_err, x_xs, y_xs, x_rate, y_rate, params_best, out_dir=".",
+                 y_bin=None, fit_info=None):
     exp_file = cfg['script'].get('exp_file', 'exp')
     stem     = os.path.splitext(os.path.basename(exp_file))[0]
     path     = os.path.join(out_dir, f"talys_results_{stem}.npz")
@@ -928,6 +959,9 @@ def save_results(cfg, x_exp, y_exp, y_err, x_xs, y_xs, x_rate, y_rate, params_be
         y_best_rate = y_rate,
         params_best = params_best,
         param_names = np.array([op.name for op in cfg['opt_params']]),
+        y_xs_binned = (np.asarray(y_bin, dtype=float) if y_bin is not None
+                       else np.full(len(x_exp), np.nan)),
+        **{key: np.asarray(value) for key, value in (fit_info or {}).items()},
     )
     print(f"\nResults saved to {path}")
 
@@ -999,8 +1033,12 @@ def write_optimization_output(
     chi2_red = info.get('chi2_red', res.fun)
     lines.append(f"Min reduced chi-square: {chi2_red:.6g}\n")
     if info:
-        lines.append(f"Objective   : chi2 + prior = {res.fun:.6g} "
+        objective_value = info.get('objective', res.fun)
+        lines.append(f"Objective   : chi2 + prior = {objective_value:.6g} "
                      f"(chi2 = {info['chi2']:.6g}, prior = {info['prior']:.6g}, dof = {info['dof']})\n")
+        if all(key in info for key in ['e_fit_min', 'talys_points_per_bin', 'bin_width']):
+            lines.append(f"Fit window  : E >= {info['e_fit_min']} MeV; TALYS averaged over "
+                         f"{info['talys_points_per_bin']} point(s) per {info['bin_width']:g} MeV bin\n")
     lines.append("-" * 72 + "\n")
     lines.append("Optimized parameters:\n")
     for i, op in enumerate(cfg['opt_params']):
@@ -1056,7 +1094,9 @@ def replot(npz_path: str, tesseract_path: str = "tesseract.in",
     print(f"  params: {dict(zip(d['param_names'], params_best))}")
 
     plot_best_fit_xs(cfg, x_exp_, y_exp_, x_xs, y_xs, params_best, y_err=y_err_,
-                     out_dir=out_dir)
+                     out_dir=out_dir,
+                     y_bin=d['y_xs_binned'] if 'y_xs_binned' in d else None,
+                     e_fit_min=float(d['e_fit_min']) if 'e_fit_min' in d else None)
 
     rmc = ratesmc_path or cfg['script'].get('rates_mc_file', 'RatesMC.out')
     plot_reaction_rate(cfg, x_rate, y_rate, ratesmc_xy=read_ratesmc_file(rmc),
@@ -1416,17 +1456,6 @@ def main():
     print("\nBest-fit parameters:")
     for i, op in enumerate(opt_params):
         print(f"  {op.name} = {params_best[i]:.6g}")
-    parts = obj.state.get('best_parts') or {}
-    fit_info = {
-        'chi2':     parts.get('chi2', float('nan')),
-        'chi2_red': parts.get('chi2_red', res.fun),
-        'prior':    parts.get('prior', float('nan')),
-        'dof':      parts.get('dof', 0),
-    }
-    print(f"Objective chi2 + prior = {res.fun:.6g}  "
-          f"(chi2 = {fit_info['chi2']:.6g}, prior = {fit_info['prior']:.6g})")
-    print(f"Min reduced chi-square = {fit_info['chi2_red']:.6g}  (dof = {fit_info['dof']})")
-
     # ── Best-fit XS curve ─────────────────────────────────────────────────────
     out_xs = run_talys_get_xs(params_best, cfg)
     if out_xs is None:
@@ -1434,8 +1463,20 @@ def main():
         checkpoint_clear(checkpoint_path, checkpoint_key)
         return
     x_t, y_t = out_xs
+    # At a finite evaluation limit, a trial probe can differ from the returned
+    # parameters. Associate diagnostics with the parameters and curve we save.
+    fit_info = obj.statistics(params_best, y_t)
+    fit_info.update(optimizer_objective=float(res.fun), e_fit_min=E_FIT_MIN,
+                    talys_points_per_bin=N_PER_BIN, bin_width=BIN_WIDTH)
+    if cfg.get('_bin_weights') is not None:
+        y_bin = talys_bin_average(y_t, cfg['_bin_weights'])
+    else:
+        y_bin = np.asarray(y_t, dtype=float)
+    print(f"Objective chi2 + prior = {fit_info['objective']:.6g} "
+          f"(chi2 = {fit_info['chi2']:.6g}, prior = {fit_info['prior']:.6g})")
+    print(f"Min reduced chi-square = {fit_info['chi2_red']:.6g} (dof = {fit_info['dof']})")
     plot_best_fit_xs(cfg, x_exp, y_exp, x_t, y_t, params_best, y_err=y_err,
-                     out_dir=run_dir)
+                     out_dir=run_dir, y_bin=y_bin, e_fit_min=E_FIT_MIN)
 
     # ── Reaction rate at best fit ─────────────────────────────────────────────
     x_rate: np.ndarray = np.array([])
@@ -1461,7 +1502,7 @@ def main():
                                y_rate if len(y_rate) else None,
                                out_file=shared_out, fit_info=fit_info)
     save_results(cfg, x_exp, y_exp, y_err, x_t, y_t, x_rate, y_rate, params_best,
-                 out_dir=run_dir)
+                 out_dir=run_dir, y_bin=y_bin, fit_info=fit_info)
 
     # This fit is done: drop its checkpoint entry (the file goes when empty)
     checkpoint_clear(checkpoint_path, checkpoint_key)
