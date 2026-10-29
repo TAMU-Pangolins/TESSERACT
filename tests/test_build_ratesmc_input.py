@@ -250,7 +250,7 @@ class BuildRatesMCInputTest(unittest.TestCase):
 class ClearUpperLimitsTest(unittest.TestCase):
     def test_single_section_is_cleared(self):
         repo = Path(__file__).resolve().parent.parent
-        lines = (repo / "input" / "22Mg(a,p)25Al.txt").read_text().splitlines()
+        lines = (repo / "input" / "22Ne(a,n)25Mg.txt").read_text().splitlines()
         n_before = len(lines)
         removed = _clear_upper_limits(lines)
         self.assertGreater(removed, 0)
@@ -299,7 +299,7 @@ class ClearUpperLimitsTest(unittest.TestCase):
         # copy of 22Mg(a,p)25Al's -- confirm the generated output no longer
         # contains that leftover data by default.
         repo = Path(__file__).resolve().parent.parent
-        template = repo / "input" / "14O(a,p)17F.txt"
+        template = repo / "input" / "22Ne(a,n)25Mg.txt"
         with tempfile.TemporaryDirectory() as tmpdir:
             out = Path(tmpdir) / "out.in"
             inject_rows(template, out, rows=["  (generated rows)"], header_line=None)
@@ -308,7 +308,7 @@ class ClearUpperLimitsTest(unittest.TestCase):
 
     def test_keep_upper_limits_opt_out(self):
         repo = Path(__file__).resolve().parent.parent
-        template = repo / "input" / "14O(a,p)17F.txt"
+        template = repo / "input" / "22Ne(a,n)25Mg.txt"
         with tempfile.TemporaryDirectory() as tmpdir:
             out = Path(tmpdir) / "out.in"
             inject_rows(
