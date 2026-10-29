@@ -283,6 +283,13 @@ def write_talys_files(
     inp_path = os.path.join(workdir, "talys.inp")
     lines = []
 
+    # A job environment can select a local structure database without editing
+    # a shared configuration. Emit one path so TALYS cannot override it later
+    # with a second strucpath line from the fixed configuration keywords.
+    structure_path = os.environ.get('TALYS_STRUCPATH')
+    if structure_path:
+        lines.append(f'strucpath {structure_path}\n')
+
     # Nuclear identity
     lines.append(f"projectile {cfg['proj']}\n")
     lines.append(f"element    {cfg['tar']}\n")
@@ -291,6 +298,8 @@ def write_talys_files(
 
     # Fixed TALYS keywords
     for key, val in cfg['talys_fixed'].items():
+        if key == 'strucpath' and structure_path:
+            continue
         lines.append(f"{key} {val}\n")
 
     # Optimisation parameters (prefix carries keyword + qualifiers)
