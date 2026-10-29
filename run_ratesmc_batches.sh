@@ -1,3 +1,4 @@
+#!/usr/bin/env bash
 # Helper to build a fresh RatesMC.in for each run and execute RatesMC in
 # per-reaction, per-run directories:
 #   <OUTPUT_ROOT>/<reaction_name>/Run_<NNNN>/
@@ -8,8 +9,17 @@
 #   RATESMC_BIN   Path to the compiled RatesMC executable (required).
 #   RUNS          Number of Runs per reaction (default: 10).
 #   OUTPUT_ROOT   Base directory for outputs (default: outputs).
+#   MASS_DIR      Directory holding mass_1.mas20 / nubase_3.mas20 (default:
+#                 beside RATESMC_BIN, or one level up for an upstream build/).
+#
+# RatesMC writes its own RatesMC.log; console output goes to RatesMC.stdout.
+# A run counts as failed when RatesMC.out has no rate rows (the exit code is
+# not used: the RatesMC 2.2+ rewrite returns 1 even on success). The script
+# exits non-zero if any run failed.
 
 set -euo pipefail
+
+SCRIPT_DIRECTORY="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 resolve_ratesmc_bin() {
     if [ -n "${RATESMC_BIN:-}" ]; then
@@ -35,10 +45,17 @@ if [ -z "$RATESMC_BIN" ]; then
     exit 1
 fi
 
+if command -v "$RATESMC_BIN" >/dev/null 2>&1; then
+    RATESMC_BIN="$(command -v "$RATESMC_BIN")"
+fi
+
 if [ ! -x "$RATESMC_BIN" ]; then
     echo "RATESMC_BIN is not executable: $RATESMC_BIN" >&2
     exit 1
 fi
+
+# Symlinks in each run must point to the installation, even for relative inputs.
+RATESMC_BIN="$(readlink -f "$RATESMC_BIN")"
 
 resolve_python() {
     if [ -n "${PYTHON:-}" ] && command -v "$PYTHON" >/dev/null 2>&1; then
@@ -86,24 +103,58 @@ link_or_copy_ratesmc() {
     cp "$RATESMC_BIN" "$dest_dir/RatesMC"
 }
 
+find_mass_dir() {
+    local bin_dir
+    bin_dir="$(cd "$(dirname "$(readlink -f "$RATESMC_BIN")")" && pwd)"
+    for dir in "${MASS_DIR:-}" "$bin_dir" "$(dirname "$bin_dir")"; do
+        if [ -n "$dir" ] && [ -f "$dir/mass_1.mas20" ] && [ -f "$dir/nubase_3.mas20" ]; then
+            echo "$dir"
+            return
+        fi
+    done
+    echo ""
+}
+
+SUPPORT_DIR="$(find_mass_dir)"
+if [ -n "$SUPPORT_DIR" ]; then
+    SUPPORT_DIR="$(cd "$SUPPORT_DIR" && pwd)"
+fi
+if [ -z "$SUPPORT_DIR" ]; then
+    echo "WARNING: mass_1.mas20 / nubase_3.mas20 not found (set MASS_DIR); RatesMC 2.2+ needs them." >&2
+fi
+
 copy_support_files() {
     local dest_dir="$1"
-    local src_dir
-    src_dir="$(dirname "$RATESMC_BIN")"
-    # Link or copy known data files needed by RatesMC if present next to the binary.
+    [ -n "$SUPPORT_DIR" ] || return 0
     for fname in mass_1.mas20 nubase_3.mas20; do
-        if [ -f "${src_dir}/${fname}" ]; then
-            if ln -sf "${src_dir}/${fname}" "${dest_dir}/${fname}" 2>/dev/null; then
-                continue
-            fi
-            cp "${src_dir}/${fname}" "${dest_dir}/"
+        if ln -sf "${SUPPORT_DIR}/${fname}" "${dest_dir}/${fname}" 2>/dev/null; then
+            continue
         fi
+        cp "${SUPPORT_DIR}/${fname}" "${dest_dir}/"
     done
 }
 
+# Number of temperature rows (numeric first column, >= 4 columns) in a RatesMC .out.
+rate_rows() {
+    [ -f "$1" ] || { echo 0; return; }
+    awk '
+        function finite_nonnegative(value) {
+            return value ~ /^[+]?[0-9]*\.?[0-9]+([eE][-+]?[0-9]+)?$/ &&
+                   value + 0 >= 0 && value + 0 <= 1.7976931348623157e308
+        }
+        NF >= 4 && finite_nonnegative($1) && $1 + 0 > 0 &&
+        finite_nonnegative($2) && finite_nonnegative($3) && finite_nonnegative($4) &&
+        $2 + 0 <= $3 + 0 && $3 + 0 <= $4 + 0 { count++ }
+        END { print count + 0 }
+    ' "$1"
+}
+
+n_failed=0
+
 for template in "${templates[@]}"; do
     if [ ! -f "$template" ]; then
-        echo "Skipping missing template: $template" >&2
+        echo "ERROR: Missing requested template: $template" >&2
+        n_failed=$((n_failed + 1))
         continue
     fi
 
@@ -119,15 +170,25 @@ for template in "${templates[@]}"; do
 
         input_path="${run_dir}/RatesMC.in"
         echo "Generating input for ${reaction_name} Run ${run_idx} -> ${input_path}"
-        "$PYTHON_BIN" build_ratesmc_input.py \
+        "$PYTHON_BIN" "$SCRIPT_DIRECTORY/build_ratesmc_input.py" \
             --template "$template" \
             --output "$input_path" \
             --spacing-model "${SPACING_MODEL:-poisson}"
 
         echo "Running RatesMC for ${reaction_name} Run ${run_idx}"
-        (cd "$run_dir" && ./RatesMC > RatesMC.log 2>&1 || true)
-        if rg -q "ERROR|WARNING|FATAL" "$run_dir/RatesMC.log"; then
-            echo "RatesMC reported warnings/errors for ${reaction_name} Run ${run_idx}; see ${run_dir}/RatesMC.log" >&2
+        rm -f "$run_dir/RatesMC.out"   # never mistake a stale table for this run's
+        status=0
+        (cd "$run_dir" && ./RatesMC > RatesMC.stdout 2>&1) || status=$?
+        if [ "$(rate_rows "$run_dir/RatesMC.out")" -eq 0 ]; then
+            echo "ERROR: RatesMC produced no rates for ${reaction_name} Run ${run_idx} (exit ${status}); see ${run_dir}/RatesMC.stdout" >&2
+            n_failed=$((n_failed + 1))
+        elif grep -qE "ERROR|WARNING|FATAL" "$run_dir/RatesMC.stdout"; then
+            echo "RatesMC reported warnings/errors for ${reaction_name} Run ${run_idx}; see ${run_dir}/RatesMC.stdout" >&2
         fi
     done
 done
+
+if [ "$n_failed" -gt 0 ]; then
+    echo "${n_failed} RatesMC run(s) failed." >&2
+    exit 1
+fi
