@@ -15,7 +15,7 @@ parameters; the configuration is maintained there rather than copied into this p
 First complete the
 [installation instructions](https://github.com/TAMU-Pangolins/TESSERACT#installation-guide):
 install the Python dependencies and HFB tables, make TALYS available on `PATH`,
-and configure RatesMC with the documented source patch if you want its reference
+and configure an unmodified RatesMC 2.3.0 executable if you want its reference
 rates. If RatesMC cannot be found, its step is skipped; the other stages still run.
 
 From the repository root, start with one realisation:
@@ -112,3 +112,6 @@ This workflow does not depend on HFB density tables.
 ```bash
 uv run -- python scripts/diagnostic_plot.py --input 'input/22Mg(a,p)25Al.txt' --no-show
 ```
+
+The [configuration reference](configuration.md) documents the controls, defaults,
+output retention, numerical cutoffs, and optional final-state models.

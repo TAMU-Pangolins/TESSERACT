@@ -38,35 +38,11 @@ If needed, first follow the upstream installation instructions for
 their data files and build dependencies. These programs are installed separately
 from the Python package.
 
-This pipeline was developed and tested against **RatesMC 2.3.0**. That version
-needs one source change before building: by default it refuses a custom output
-filename, but TESSERACT's `[ratesmc]` step passes the `.in` file's path as
-`argv[1]` and expects RatesMC to write its output beside it. After cloning
-RatesMC, open `RatesMC.cpp` and change
-
-```cpp
-else {
-    std::cout << "Custom filenames not yet implemented!" << std::endl;
-    return 0;
-
-  }
-```
-
-to
-
-```cpp
-else {
-    ifilename = argv[1];
-    std::string stem = ifilename;
-    auto dot = stem.rfind('.');
-    if (dot != std::string::npos) stem = stem.substr(0, dot);
-    ofilename = stem + ".out";
-    ofullfilename = stem + ".full";
-  }
-```
-
-then build RatesMC as usual. Without this change, `[ratesmc]` will not produce
-the `{reaction}.out` file the rest of the pipeline expects.
+Native verification uses **RatesMC 2.3.0**, invoked without arguments inside
+each run directory. No custom-filename source patch is required. TESSERACT
+provides `RatesMC.in`, locates the AME/NUBASE support tables, and copies valid
+rate output to the reaction-specific filename. Console output is saved in
+`RatesMC.stdout`, separately from the program's own `RatesMC.log`.
 
 Then set the paths to your installations:
 
@@ -79,10 +55,11 @@ test -x "$RATESMC_BIN" && printf 'RatesMC executable is accessible\n'
 ```
 
 The `PATH` entry is the directory containing the executable named `talys`.
-`RATESMC_BIN` is the executable itself and is read by `run_ratesmc_batches.sh`.
+`RATESMC_BIN` is the executable itself and is read by the pipeline and batch runner.
 Keep `mass_1.mas20` and `nubase_3.mas20` beside that executable when required by
 your RatesMC installation; the batch script copies or links them into each run
-directory.
+directory. Alternatively, set `[ratesmc] mass_dir` in the configuration or
+`MASS_DIR` for the batch runner.
 
 Set these variables in the shell or batch-job environment that launches the
 calculation. Add the exports to your shell configuration for persistent
@@ -143,7 +120,7 @@ for prerequisites, outputs, and ways to reduce the work.
 | --- | --- |
 | Python dependencies | NumPy, SciPy, mpmath, Matplotlib, and pandas; installed by `uv sync`. |
 | TALYS and its nuclear data libraries | Cross-section fitting and reaction-rate calculations. |
-| RatesMC and its support files | Monte Carlo reference reaction rates. Developed against 2.3.0 — see the custom-filename patch in the installation guide above. |
+| RatesMC and its support files | Monte Carlo reference reaction rates. Verified with unmodified 2.3.0 using the invocation described above. |
 | RIPL-3 HFB level-density tables | Resonance generation; downloaded automatically on first use or with `download_data.py`. |
 | AME2020 mass data | Q-value utilities; included in `data/ame20.csv`. |
 | Bash and ripgrep (`rg`) | Execution and log checks in `run_ratesmc_batches.sh`. |

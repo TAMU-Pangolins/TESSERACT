@@ -6,6 +6,7 @@ Use this page for a quick sanity check and orientation:
 
 - [Concepts](concepts.md) explains the core physics quantities
 - [Workflows](workflows.md) shows end-to-end project flows
+- [Configuration](configuration.md) lists pipeline controls, defaults, and model assumptions
 - [Examples](examples.md) collects short runnable snippets
 - [API Reference](api/package.md) documents the `nucres` Python package
 
