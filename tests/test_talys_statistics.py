@@ -343,7 +343,7 @@ class FitRecordDedupTest(unittest.TestCase):
         sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
         import plot_talys_param_grid as grid
         import plot_rate_ratio_wide as ratio
-        import plot_talys_results_new as results
+        from post_processing import plot_talys_results_new as results
 
         a = "out/22Mg_ap_25Al_integrated_xs_dE_0.2_run0.csv"
         b = "out/22Mg_ap_25Al_integrated_xs_dE_0.5_run0.csv"
