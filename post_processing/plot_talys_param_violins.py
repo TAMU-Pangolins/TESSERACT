@@ -240,7 +240,7 @@ class ViolinGrid:
             jitter = self.rng.uniform(-0.3, 0.3, size=v.size)
             ax.scatter(i + jitter, v, c=chi2, cmap=CHI2_CMAP, norm=self.chi2_norm,
                        s=8, alpha=0.7, edgecolors="none")
-            ax.hlines(np.median(v), i - 0.35, i + 0.35, color="0.15", lw=1.5, zorder=5)
+#            ax.hlines(np.median(v), i - 0.35, i + 0.35, color="0.15", lw=1.5, zorder=5)
 
             b = f.bounds.get(name)
             if b is not None:
