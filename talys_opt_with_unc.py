@@ -639,7 +639,10 @@ def make_objective(cfg: dict, x_exp: np.ndarray, y_exp: np.ndarray,
         # weight (dividing only chi2 by dof, as before, left the prior dof
         # times stronger than intended). chi2_red = chi2/dof is reported
         # separately below for diagnostics.
-        log_res  = (np.log(y_exp[mask] + FLOOR) - np.log(y_t[mask] + FLOOR)) / sigma_ln
+        # Clamp before taking logarithms; adding FLOOR would bias positive
+        # cross sections above the guard and change their relative residuals.
+        log_res  = (np.log(np.maximum(y_exp[mask], FLOOR))
+                    - np.log(np.maximum(y_t[mask], FLOOR))) / sigma_ln
         r_data   = log_res
         chi2     = float(np.sum(r_data ** 2))
         chi2_red = chi2 / dof
