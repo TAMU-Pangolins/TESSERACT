@@ -118,6 +118,7 @@ def discover_runs(base_dir: str, reaction: str, binwidth: str) -> list[tuple[int
     """
     slug = reaction_slug(reaction)
     talys_opt_dir = Path(base_dir) / "talys_opt" / slug / f"binwidth_{binwidth}"
+    print(talys_opt_dir)
     xs_dir = Path(base_dir) / "cross_sections" / slug
 
     runs = []
@@ -127,9 +128,11 @@ def discover_runs(base_dir: str, reaction: str, binwidth: str) -> list[tuple[int
             continue
         run = int(m.group(1))
         npz_matches = sorted(run_dir.glob("*.npz"))
+        #print(npz_matches)
         if not npz_matches:
             continue
         xs_path = xs_dir / f"{slug}_xs_unintegrated_parallel_run{run}.txt"
+        print(xs_path)
         if not xs_path.exists():
             continue
         runs.append((run, npz_matches[0], xs_path))
