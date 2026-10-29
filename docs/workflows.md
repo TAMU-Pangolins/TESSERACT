@@ -51,6 +51,27 @@ work. To shorten an initial check, narrow the energy window or temporarily remov
 `[talys]` and its contents to run only the earlier stages. The `samples` setting
 controls density-grid resolution, not the number of sampled resonances.
 
+### TALYS reaction-output selection
+
+The optimizer reads cross sections for the configured projectile and ejectile.
+It checks, in order, `[talys] talys_xs_file` when specified,
+`<projectile><ejectile>.tot`, and the exclusive-channel file
+`xsNNNNNN.tot`. The six digits count emitted neutrons, protons, deuterons,
+tritons, helium-3 nuclei, and alpha particles. For example, `(a,p)` uses
+`xs010000.tot`, while `(p,g)` uses `xs000000.tot`. Enable `channels = y`
+and `filechannels = y` in `[talys]` to request exclusive output files.
+
+The first existing file is used. An absent explicit override produces a warning
+before checking the standard channel files; an invalid selected file is reported
+as a failure. Cross sections retain TALYS's millibarn units and the configured
+experimental energy frame.
+
+Rates are read only from `astrorate.<ejectile>`, such as `astrorate.g` for
+radiative capture or `astrorate.p` for a proton exit. Temperatures remain in GK
+and rates in cm³ mol⁻¹ s⁻¹. A missing channel output is reported; the optimizer
+does not substitute another ejectile's rate. This selection does not cause TALYS
+to generate rate files that the installed version does not support.
+
 ## A. Generate a Spectrum from HFB Densities
 
 The complete HFB level-density dataset is downloaded and cached automatically

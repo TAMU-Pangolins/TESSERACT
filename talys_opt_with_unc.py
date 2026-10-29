@@ -3,8 +3,8 @@
 TALYS parameter optimiser — driven by tesseract.in.
 
 Optimises any set of TALYS parameters listed in the \\opt block of
-tesseract.in by minimising log-space reduced chi-square on (a,p) cross
-sections.  Three optimisers are available via  method = ...  in [talys]:
+tesseract.in by minimising log-space reduced chi-square on the configured
+reaction's cross sections. Three optimisers are available via method = ... in [talys]:
 
     Powell         scipy.optimize.minimize, derivative-free (default)
     Nelder-Mead    scipy.optimize.minimize, derivative-free
@@ -49,7 +49,7 @@ _SCRIPT_KEYS = frozenset({
     'exp_rel_err', 'e_fit_min', 'prior_rel_std', 'prior_abs_floor',
     'debug_every', 'exp_file', 'output_file', 'rates_mc_file',
     'rate_xmin', 'rate_xmax', 'plot_log_y_xs', 'plot_log_y_rate',
-    'talys_output_dir', 'exp_energy_frame', 'talys_points_per_bin', 'exp_bin_width',
+    'talys_output_dir', 'exp_energy_frame', 'talys_xs_file', 'talys_points_per_bin', 'exp_bin_width',
     # least_squares-only settings
     'gtol', 'lsq_diff_step', 'lsq_workers',
 })
@@ -132,7 +132,30 @@ _Z_TO_SYMBOL = {
     17:'Cl',18:'Ar',19:'K', 20:'Ca',21:'Sc',22:'Ti',23:'V', 24:'Cr',
     25:'Mn',26:'Fe',27:'Co',28:'Ni',29:'Cu',30:'Zn',
 }
-_LIGHT_PARTICLE = {(0,1):'n', (1,1):'p', (1,2):'d', (1,3):'t', (2,4):'a'}
+_LIGHT_PARTICLE = {(0,0):'g', (0,1):'n', (1,1):'p', (1,2):'d', (1,3):'t', (2,3):'h', (2,4):'a'}
+
+# TALYS channelsout numbers emitted particles in this order. Radiative capture
+# emits none of these particles, so its exclusive file is xs000000.tot.
+_EXCLUSIVE_PARTICLES = ('n', 'p', 'd', 't', 'h', 'a')
+
+
+def talys_cross_section_candidates(cfg: dict) -> List[str]:
+    """Return output names in override, reaction, then exclusive-channel order.
+
+    Exclusive files describe one emitted ejectile, or radiative capture for g;
+    their creation requires the TALYS channels/filechannels output settings.
+    """
+    names = []
+    configured_file = cfg['script'].get('talys_xs_file')
+    if configured_file:
+        names.append(configured_file)
+    projectile, ejectile = cfg['proj'], cfg['ejec']
+    if ejectile not in (*_EXCLUSIVE_PARTICLES, 'g'):
+        raise ValueError(f'Unsupported TALYS ejectile: {ejectile!r}')
+    names.append(f'{projectile}{ejectile}.tot')
+    counts = ''.join('1' if ejectile == particle else '0' for particle in _EXCLUSIVE_PARTICLES)
+    names.append(f'xs{counts}.tot')
+    return names
 
 def _particle_symbol(Z: int, A: int) -> str:
     return _LIGHT_PARTICLE.get((Z, A), _Z_TO_SYMBOL.get(Z, '?'))
@@ -203,7 +226,7 @@ def load_config(tesseract_path: str) -> dict:
     ejec     = _particle_symbol(int(basics['ejectile_Z']), int(basics['ejectile_A']))
     residual = _Z_TO_SYMBOL.get(int(basics['residual_Z']), '?')
 
-    # TALYS takes, and tabulates ap.tot against, the projectile LAB energy.
+    # TALYS takes, and tabulates cross sections against, the projectile LAB energy.
     # TESSERACT's integrated cross sections are in the centre-of-mass frame,
     # so energies are converted on the way into TALYS and back out of it.
     m_proj = atomic_mass_u(int(basics['projectile_Z']), int(basics['projectile_A']))
@@ -317,31 +340,57 @@ def run_talys(workdir: str, inp_path: str, verbose: bool = False) -> bool:
         return False
 
 
-def read_ap_tot(workdir: str) -> Optional[Tuple[np.ndarray, np.ndarray]]:
-    """Read ap.tot; returns (E, sigma) or None."""
-    path = os.path.join(workdir, "ap.tot")
+def read_ap_tot(workdir: str, cfg: Optional[dict] = None) -> Optional[Tuple[np.ndarray, np.ndarray]]:
+    """Read the configured cross section as (lab energy in MeV, sigma in mb).
+
+    The legacy function name and ap.tot default are retained for callers without
+    a configuration. Missing or invalid outputs return None with a diagnostic.
+    An invalid preferred file does not fall back to a different calculation.
+    """
+    names = talys_cross_section_candidates(cfg) if cfg is not None else ['ap.tot']
+    path = None
+    for name in names:
+        candidate = os.path.join(workdir, name)
+        if os.path.isfile(candidate):
+            path = candidate
+            break
+    if path is None:
+        print(f"[TALYS] Missing cross-section output in {workdir}; expected one of {names}.", flush=True)
+        return None
+    if cfg is not None and cfg['script'].get('talys_xs_file') and path != os.path.join(workdir, names[0]):
+        print(f"[TALYS] Configured cross-section file {names[0]} is absent; reading {path}.", flush=True)
+    try:
+        df = pd.read_csv(path, sep=r"\s+", comment="#", header=None)
+        x  = df.iloc[:, 0].to_numpy(dtype=float)
+        y  = df.iloc[:, 1].to_numpy(dtype=float)
+        if np.any(~np.isfinite(x)) or np.any(~np.isfinite(y)):
+            raise ValueError('nonfinite energy or cross section')
+        return x, y
+    except Exception as exc:
+        print(f"[TALYS] Invalid cross-section output {path}: {exc}", flush=True)
+        return None
+
+
+def read_astrorate(workdir: str, cfg: Optional[dict] = None) -> Optional[Tuple[np.ndarray, np.ndarray]]:
+    """Read astrorate.<ejectile> as (temperature in GK, rate in cm^3 mol^-1 s^-1).
+
+    Calls without a configuration retain the astrorate.p default. Missing or
+    invalid output returns None; another ejectile's rate is never substituted.
+    """
+    ejectile = cfg['ejec'] if cfg is not None else 'p'
+    path = os.path.join(workdir, f'astrorate.{ejectile}')
     if not os.path.exists(path):
+        print(f"[TALYS] Missing reaction-rate output {path}.", flush=True)
         return None
     try:
         df = pd.read_csv(path, sep=r"\s+", comment="#", header=None)
         x  = df.iloc[:, 0].to_numpy(dtype=float)
         y  = df.iloc[:, 1].to_numpy(dtype=float)
-        return None if (np.any(~np.isfinite(x)) or np.any(~np.isfinite(y))) else (x, y)
-    except Exception:
-        return None
-
-
-def read_astrorate(workdir: str) -> Optional[Tuple[np.ndarray, np.ndarray]]:
-    """Read astrorate.p; returns (T9, rate) or None."""
-    path = os.path.join(workdir, "astrorate.p")
-    if not os.path.exists(path):
-        return None
-    try:
-        df = pd.read_csv(path, sep=r"\s+", comment="#", header=None)
-        x  = df.iloc[:, 0].to_numpy(dtype=float)
-        y  = df.iloc[:, 1].to_numpy(dtype=float)
-        return None if (np.any(~np.isfinite(x)) or np.any(~np.isfinite(y))) else (x, y)
-    except Exception:
+        if np.any(~np.isfinite(x)) or np.any(~np.isfinite(y)):
+            raise ValueError('nonfinite temperature or reaction rate')
+        return x, y
+    except Exception as exc:
+        print(f"[TALYS] Invalid reaction-rate output {path}: {exc}", flush=True)
         return None
 
 
@@ -379,7 +428,7 @@ def _cleanup_workdir(path: str, retries: int = 5, delay: float = 0.2) -> None:
 
 
 def _ap_tot_in_exp_frame(xy, cfg: dict):
-    """Convert ap.tot energies from TALYS's lab frame back to the exp_file frame."""
+    """Convert channel cross-section energies from lab to the exp_file frame."""
     if xy is None:
         return None
     x, y = xy
@@ -389,11 +438,11 @@ def _ap_tot_in_exp_frame(xy, cfg: dict):
 def run_talys_get_xs(
     opt_values: np.ndarray, cfg: dict
 ) -> Optional[Tuple[np.ndarray, np.ndarray]]:
-    """Run TALYS (no astro) and return ap.tot (E, sigma) or None, E in the exp_file frame."""
+    """Run TALYS and return the channel cross section in the exp_file energy frame."""
     wd = tempfile.mkdtemp(prefix="talys_xs_")
     try:
         inp = write_talys_files(wd, opt_values, cfg, astro="n", astrogs="n")
-        return _ap_tot_in_exp_frame(read_ap_tot(wd), cfg) if run_talys(wd, inp) else None
+        return _ap_tot_in_exp_frame(read_ap_tot(wd, cfg), cfg) if run_talys(wd, inp) else None
     finally:
         _cleanup_workdir(wd)
 
@@ -401,13 +450,13 @@ def run_talys_get_xs(
 def run_talys_get_rate(
     opt_values: np.ndarray, cfg: dict
 ) -> Tuple[Optional[Tuple], Optional[Tuple]]:
-    """Run TALYS (astro=y) and return (astrorate_xy, ap_tot_xy); either may be None."""
+    """Run TALYS (astro=y) and return (rate, channel cross section), either optional."""
     wd = tempfile.mkdtemp(prefix="talys_rate_")
     try:
         inp = write_talys_files(wd, opt_values, cfg, astro="y", astrogs="y")
         if not run_talys(wd, inp):
             return None, None
-        return read_astrorate(wd), _ap_tot_in_exp_frame(read_ap_tot(wd), cfg)
+        return read_astrorate(wd, cfg), _ap_tot_in_exp_frame(read_ap_tot(wd, cfg), cfg)
     finally:
         _cleanup_workdir(wd)
 
@@ -1017,7 +1066,7 @@ def replot(npz_path: str, tesseract_path: str = "tesseract.in",
 # ─────────────────────────────────────────────────────────────────────────────
 # Recover missing reaction rates from already-optimised runs
 #
-# Some runs finish optimisation fine but TALYS fails to produce astrorate.p
+# Some runs finish optimisation fine but TALYS fails to produce the channel rate
 # on that attempt (see the try/except around run_talys_get_rate() in main()).
 # save_results() still writes the .npz unconditionally, just with empty
 # x_rate / y_best_rate arrays, so tesseract.py's existence-only skip check
@@ -1074,7 +1123,7 @@ def _append_rate_recovered_note(shared_out: str, npz_path: str, n_points: int) -
             note = (
                 f"[UPDATE {timestamp}] Reaction rate for this run was recomputed "
                 f"post-hoc from the saved best-fit parameters ({n_points} T9 points), "
-                f"after the original run failed to produce astrorate.p. See "
+                f"after the original run failed to produce the channel rate. See "
                 f"{os.path.basename(npz_path)} for the updated rate.\n\n"
             )
             insert_at   = target.end()
@@ -1120,7 +1169,7 @@ def fix_missing_rate(npz_path: str, cfg: dict, shared_out: str) -> str:
           f"{dict(zip(saved_names, params_best))} ...", flush=True)
     rate_best, _ = run_talys_get_rate(params_best, run_cfg)
     if rate_best is None:
-        print(f"[fix-rates] {npz_path}: TALYS still failed to produce astrorate.p.")
+        print(f"[fix-rates] {npz_path}: TALYS still failed to produce astrorate.{cfg['ejec']}.")
         return "still_failed"
 
     x_rate, y_rate = rate_best
@@ -1187,7 +1236,7 @@ def main():
     ap.add_argument(
         "--fix-missing-rates", action="store_true",
         help="For runs whose talys_results_*.npz already exists but has empty "
-             "x_rate/y_best_rate (TALYS failed to produce astrorate.p on the "
+             "x_rate/y_best_rate (TALYS failed to produce the channel rate on the "
              "original run), reuse the saved best-fit params to rerun TALYS "
              "for the rate only (no re-optimisation), patch the npz in place, "
              "and note the update in talys_optimization.out. With --run-idx or "
@@ -1294,13 +1343,16 @@ def main():
         with tempfile.TemporaryDirectory(prefix="talys_debug_") as wd:
             inp = write_talys_files(wd, X0_dbg, cfg, astro="n", astrogs="n")
             run_talys(wd, inp, verbose=True)
-            ap_path = os.path.join(wd, "ap.tot")
-            if os.path.exists(ap_path):
-                print(f"\n[debug] ap.tot contents:\n")
-                with open(ap_path) as fh:
-                    print(fh.read())
+            names = talys_cross_section_candidates(cfg)
+            for name in names:
+                output_path = os.path.join(wd, name)
+                if os.path.isfile(output_path):
+                    print(f"\n[debug] {name} contents:\n")
+                    with open(output_path) as fh:
+                        print(fh.read())
+                    break
             else:
-                print("\n[debug] ap.tot was NOT created.")
+                print(f"\n[debug] No channel cross-section output was created; expected {names}.")
         raise SystemExit(0)
 
     # ── Checkpoint: resume x0 from this fit's entry if it was evicted ────────
@@ -1391,7 +1443,7 @@ def main():
     try:
         rate_best, _ = run_talys_get_rate(params_best, cfg)
         if rate_best is None:
-            print("\nWARNING: TALYS failed to produce astrorate.p at best fit.")
+            print(f"\nWARNING: TALYS failed to produce astrorate.{cfg['ejec']} at best fit.")
         else:
             x_rate, y_rate = rate_best
             rmc_path   = script.get('rates_mc_file', 'RatesMC.out')
