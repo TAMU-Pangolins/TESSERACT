@@ -14,7 +14,7 @@ curve, optionally restricted to specific run(s) with --run-idx.
 Input layout (TESSERACT outputs/ convention):
 
     {base_dir}/talys_opt/{stem}/binwidth_{bw}/RUN_{N}/talys_results_*.npz
-    {base_dir}/cross_sections/{stem}/{stem}_xs_unintegrated_parallel_run{N}.txt
+    {base_dir}/cross_sections/{stem}/{reaction}_xs_unintegrated_parallel_run{N}.txt
 
 Usage:
     # 95% interval across every available run, at T9 = 1.0 GK:
@@ -129,7 +129,7 @@ def discover_runs(base_dir: str, reaction: str, binwidth: str) -> list[tuple[int
         npz_matches = sorted(run_dir.glob("*.npz"))
         if not npz_matches:
             continue
-        xs_path = xs_dir / f"{slug}_xs_unintegrated_parallel_run{run}.txt"
+        xs_path = xs_dir / f"{reaction}_xs_unintegrated_parallel_run{run}.txt"
         if not xs_path.exists():
             continue
         runs.append((run, npz_matches[0], xs_path))
