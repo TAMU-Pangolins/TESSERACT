@@ -58,6 +58,8 @@ def integrand(E_mev, sigma_mb, T9):
 def cdf(E_mev, ig):
     """Normalized cumulative integral of the integrand vs energy (0 -> 1)."""
     cum = cumulative_trapezoid(ig, E_mev, initial=0.0)
+    if not np.isfinite(cum[-1]) or cum[-1] <= 0:
+        raise ValueError('A CDF requires a finite positive total integral')
     return cum / cum[-1]
 
 
@@ -70,6 +72,8 @@ def cdf_normalized_to_ratesmc(E_mev, ig, ratesmc_total):
     by energy E -- it can plateau below 1.0 (under-predicts the total rate)
     or rise above 1.0 (over-predicts it).
     """
+    if not np.isfinite(ratesmc_total) or ratesmc_total <= 0:
+        raise ValueError('The reference integral must be finite and positive')
     cum = cumulative_trapezoid(ig, E_mev, initial=0.0)
     return cum / ratesmc_total
 
@@ -97,8 +101,66 @@ def load_ratesmc_xs(txt_path):
     File format: comma-separated, header line starting with #
       E (MeV), sigma (mb)
     """
-    data = np.loadtxt(txt_path, delimiter=",", comments="#")
+    data = np.loadtxt(txt_path, delimiter=",", comments="#", ndmin=2)
     return data[:, 0], data[:, 1]   # MeV, mb
+
+
+def talys_on_fine_grid(energies, cross_sections, reference_energies):
+    """Interpolate positive TALYS cross sections in log space without extrapolation.
+
+    All energy arrays are in MeV and cross sections are in mb. TALYS energies
+    must be strictly increasing. Fewer than two positive finite samples, or
+    no reference-grid overlap, returns empty arrays for the caller to skip.
+    """
+    energies = np.asarray(energies, dtype=float)
+    cross_sections = np.asarray(cross_sections, dtype=float)
+    reference_energies = np.asarray(reference_energies, dtype=float)
+    reference_energies = reference_energies[np.isfinite(reference_energies)]
+    valid = np.isfinite(energies) & np.isfinite(cross_sections) & (cross_sections > 0)
+    energies, cross_sections = energies[valid], cross_sections[valid]
+    if energies.size < 2 or reference_energies.size == 0:
+        return np.array([]), np.array([])
+    if np.any(np.diff(energies) <= 0):
+        raise ValueError('TALYS energies must be strictly increasing')
+    inside = (reference_energies >= energies[0]) & (reference_energies <= energies[-1])
+    lower_energy = max(energies[0], reference_energies.min())
+    upper_energy = min(energies[-1], reference_energies.max())
+    if lower_energy >= upper_energy:
+        return np.array([]), np.array([])
+    output_energies = np.unique(np.concatenate(
+        ([lower_energy], reference_energies[inside], [upper_energy])))
+    output_cross_sections = np.exp(np.interp(output_energies, energies, np.log(cross_sections)))
+    return output_energies, output_cross_sections
+
+
+def fraction_outside(energies, integrand_values, lower_energy, upper_energy):
+    """Return reference-integral fractions below/above the TALYS energy range.
+
+    Integrate a linearly interpolated reference integrand, including partial
+    grid cells at each boundary. The energy grid must be strictly increasing.
+    """
+    energies = np.asarray(energies, dtype=float)
+    integrand_values = np.asarray(integrand_values, dtype=float)
+    if energies.size < 2:
+        return 0.0, 0.0
+    if np.any(np.diff(energies) <= 0):
+        raise ValueError('Reference energies must be strictly increasing')
+    cumulative = cumulative_trapezoid(integrand_values, energies, initial=0.0)
+    total = cumulative[-1]
+    if not np.isfinite(total) or total <= 0:
+        return 0.0, 0.0
+
+    def integral_below(boundary):
+        if boundary <= energies[0]:
+            return 0.0
+        if boundary >= energies[-1]:
+            return total
+        index = np.searchsorted(energies, boundary, side='right') - 1
+        boundary_value = np.interp(boundary, energies, integrand_values)
+        partial_area = 0.5 * (integrand_values[index] + boundary_value) * (boundary - energies[index])
+        return cumulative[index] + partial_area
+
+    return integral_below(lower_energy) / total, 1.0 - integral_below(upper_energy) / total
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -131,6 +193,8 @@ def discover_runs(base_dir: str, reaction: str, binwidth: str) -> list[tuple[int
         #print(npz_matches)
         if not npz_matches:
             continue
+        if len(npz_matches) > 1:
+            raise ValueError(f'Ambiguous TALYS results in {run_dir}: {npz_matches}')
         xs_path = xs_dir / f"{reaction}_xs_unintegrated_parallel_run{run}.txt"
         if not xs_path.exists():
             continue
@@ -166,6 +230,9 @@ def main():
                         help="Normalize each run's CDF to its own total integral (default), "
                              "or to that same run's RatesMC total rate.")
     args = parser.parse_args()
+
+    if not np.isfinite(args.t9) or args.t9 <= 0:
+        parser.error('--t9 must be finite and positive')
 
     if args.run_idx is not None and not args.no_band:
         parser.error("--run-idx is only meaningful together with --no-band.")
@@ -213,6 +280,11 @@ def main():
         E_talys, xs_talys = E_talys[mask_t], xs_talys[mask_t]
         E_rmc,   xs_rmc   = E_rmc[mask_r],   xs_rmc[mask_r]
 
+        if not args.no_talys:
+            E_talys, xs_talys = talys_on_fine_grid(E_talys, xs_talys, E_rmc)
+            if E_talys.size < 2:
+                print(f'WARNING: run {run}: insufficient positive TALYS coverage; skipping its CDF')
+
         # This run's RatesMC total, used as the normalization reference when
         # --normalize ratesmc (always computed, since RatesMC's own curve
         # needs it too).
@@ -223,6 +295,15 @@ def main():
             continue
         ratesmc_total = cumulative_trapezoid(
             ig_rmc_ref[mask_ref], E_rmc[mask_ref], initial=0.0)[-1]
+        if not np.isfinite(ratesmc_total) or ratesmc_total <= 0:
+            print(f'WARNING: run {run}: reference integral is not positive; skipping')
+            continue
+        if not args.no_talys and E_talys.size >= 2:
+            below, above = fraction_outside(E_rmc[mask_ref], ig_rmc_ref[mask_ref],
+                                            E_talys[0], E_talys[-1])
+            if below > 0.01 or above > 0.01:
+                print(f'WARNING: run {run}: {below:.1%} of the reference integral is below '
+                      f'TALYS coverage and {above:.1%} is above it')
 
         per_source = {"TALYS": (E_talys, xs_talys), "RatesMC": (E_rmc, xs_rmc)}
         for label in sources:
@@ -231,6 +312,8 @@ def main():
             mask = np.isfinite(ig) & (ig >= 0)
             E_m, ig_m = E[mask], ig[mask]
             if E_m.size < 2:
+                continue
+            if not np.any(ig_m > 0):
                 continue
             if args.normalize == "ratesmc":
                 c = cdf_normalized_to_ratesmc(E_m, ig_m, ratesmc_total)
@@ -246,6 +329,9 @@ def main():
                 return f"{v:.3f} MeV" if v is not None else "not reached"
             print(f"{label}  run={run}  T9={args.t9} GK  ->  E5%={fmt(e05)}  "
                   f"E50%={fmt(e50)}  E95%={fmt(e95)}")
+
+    if not any(curves.values()):
+        raise SystemExit('No usable cross-section curves remain in the requested energy range')
 
     # ── Common energy grid for band mode (union of every curve's points) ───
     e_union = set()
