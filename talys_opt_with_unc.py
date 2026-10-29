@@ -294,7 +294,9 @@ def write_talys_files(
     lines.append(f"projectile {cfg['proj']}\n")
     lines.append(f"element    {cfg['tar']}\n")
     lines.append(f"mass       {cfg['A_tar']}\n")
-    lines.append(f"energy     {energies_path}\n")
+    # TALYS runs in workdir and limits input-line length. A relative filename
+    # avoids truncating an otherwise valid energy file in a long scratch path.
+    lines.append("energy     energies.txt\n")
 
     # Fixed TALYS keywords
     for key, val in cfg['talys_fixed'].items():

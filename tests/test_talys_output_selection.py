@@ -142,6 +142,16 @@ class TalysOutputSelectionTest(unittest.TestCase):
                 self.assertEqual(cfg['script']['talys_xs_file'], 'selected.tot')
                 self.assertNotIn('talys_xs_file', cfg['talys_fixed'])
 
+    def test_energy_file_reference_remains_valid_in_a_long_scratch_path(self):
+        directory = self.root / ('scratch_' + 'x' * 140)
+        directory.mkdir()
+        path = optimizer.write_talys_files(str(directory), np.array([]), self.configuration())
+        energy_line = next(line for line in Path(path).read_text().splitlines()
+                           if line.startswith('energy '))
+        self.assertLessEqual(len(energy_line), 132)
+        reference = energy_line.split(maxsplit=1)[1]
+        np.testing.assert_array_equal(np.loadtxt(directory / reference), [2.0, 4.0])
+
     def test_cross_section_execution_selects_channel_and_preserves_energy_frame(self):
         def execute(workdir, input_path):
             energy = np.loadtxt(Path(workdir) / 'energies.txt')
