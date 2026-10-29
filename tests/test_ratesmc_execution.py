@@ -6,6 +6,8 @@ from pathlib import Path
 import shutil
 import subprocess
 import os
+import shlex
+import sys
 
 class RatesMCStepTest(unittest.TestCase):
     FAKE = """#!/bin/sh
@@ -48,28 +50,10 @@ exit 1
 
             out = run_dir / f"{reaction}.out"
             self.assertTrue(out.exists())
-            self.assertEqual(tesseract._ratesmc_rate_rows(out), 2)
+            self.assertEqual(tesseract.count_valid_rate_rows(out), 2)
             self.assertEqual(infile.read_text(), f"{reaction}\nbody\n")  # input untouched
             self.assertTrue((run_dir / "mass_1.mas20").is_symlink())
 
-
-
-class RatesMCValidationTest(unittest.TestCase):
-    def test_diagnostics_and_nonfinite_values_are_not_rate_rows(self):
-        import tesseract
-        with tempfile.TemporaryDirectory() as d:
-            output = Path(d) / 'RatesMC.out'
-            output.write_text('1 diagnostic text only\n'
-                              '0.1 nan 1 2\n0.2 1 inf 2\n-0.3 1 2 3\n'
-                              '0.4 1 2 3\n0.5 0 0 0\n')
-            self.assertEqual(tesseract._ratesmc_rate_rows(output), 2)
-
-    def test_unordered_intervals_are_not_valid_rate_rows(self):
-        import tesseract
-        with tempfile.TemporaryDirectory() as directory:
-            output = Path(directory) / 'RatesMC.out'
-            output.write_text('0.1 3 2 1\n0.2 1 2 3\n')
-            self.assertEqual(tesseract._ratesmc_rate_rows(output), 1)
 
 
 class RatesMCFailureHandlingTest(unittest.TestCase):
@@ -106,7 +90,7 @@ class RatesMCFailureHandlingTest(unittest.TestCase):
         tesseract.step_run_ratesmc({'reaction': reaction},
                                   {'output_dir': str(root / 'outputs')},
                                   {'ratesmc_bin': str(binary)})
-        self.assertEqual(tesseract._ratesmc_rate_rows(output), 2)
+        self.assertEqual(tesseract.count_valid_rate_rows(output), 2)
         self.assertTrue((run / 'RatesMC.stdout').exists())
 
     def test_missing_requested_template_fails_batch(self):
@@ -133,13 +117,17 @@ class BatchRunnerPathTest(unittest.TestCase):
             binary = root / 'install/RatesMC'
             binary.write_text('#!/bin/sh\n'
                               '[ -f mass_1.mas20 ] && [ -f nubase_3.mas20 ] || exit 2\n'
-                              'echo "0.1 1 2 3" > RatesMC.out\nexit 1\n')
+                              'echo "T9 RRate_low Median Rate RRate_high" > RatesMC.out\n'
+                              'echo "0.1 1 2 3" >> RatesMC.out\nexit 1\n')
             binary.chmod(0o755)
             (root / 'tables').mkdir()
             for name in ('mass_1.mas20', 'nubase_3.mas20'):
                 (root / 'tables' / name).write_text('table')
             generator = root / 'generate'
-            generator.write_text('#!/bin/sh\nwhile [ "$#" -gt 0 ]; do\n'
+            generator.write_text('#!/bin/sh\n'
+                                 f'if [ "$1" != {shlex.quote(str(repo / "build_ratesmc_input.py"))} ]; then\n'
+                                 f'exec {shlex.quote(sys.executable)} "$@"\nfi\n'
+                                 'while [ "$#" -gt 0 ]; do\n'
                                  'case "$1" in --output) shift; touch "$1";; esac\n'
                                  'shift\ndone\n')
             generator.chmod(0o755)

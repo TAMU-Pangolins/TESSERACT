@@ -91,6 +91,10 @@ The component commits also identify corrections discovered during verification:
   the process returns success.
 - Retain existing diagnostic files when suppressing future output, validate
   native rate rows, and propagate requested native calculation failures.
+- Reuse main's header-aware RatesMC reader for both driver and batch success
+  checks. Remove their separate positional parsers: those parsers duplicated
+  existing format knowledge and rejected valid classic-format output by
+  treating its classical rate as a quantile. Keep one shared validation policy.
 - Validate fluctuation parameters and partial continuum bins; preserve default
   ground-state behavior instead of silently adopting development's changed
   model and gamma-fluctuation defaults.
@@ -99,7 +103,7 @@ The component commits also identify corrections discovered during verification:
 
 ## Verification scope
 
-Local Python 3.13 verification ran **204 tests: 203 passed and one optional
+Local Python 3.13 verification ran **208 tests: 207 passed and one optional
 fixture test was skipped**. It also checked tracked Python/shell syntax,
 correctness lint, workflow syntax, and a strict documentation build. The GitHub
 workflow uses Python 3.11; its results must still pass after publication.

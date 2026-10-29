@@ -134,21 +134,6 @@ copy_support_files() {
     done
 }
 
-# Number of temperature rows (numeric first column, >= 4 columns) in a RatesMC .out.
-rate_rows() {
-    [ -f "$1" ] || { echo 0; return; }
-    awk '
-        function finite_nonnegative(value) {
-            return value ~ /^[+]?[0-9]*\.?[0-9]+([eE][-+]?[0-9]+)?$/ &&
-                   value + 0 >= 0 && value + 0 <= 1.7976931348623157e308
-        }
-        NF >= 4 && finite_nonnegative($1) && $1 + 0 > 0 &&
-        finite_nonnegative($2) && finite_nonnegative($3) && finite_nonnegative($4) &&
-        $2 + 0 <= $3 + 0 && $3 + 0 <= $4 + 0 { count++ }
-        END { print count + 0 }
-    ' "$1"
-}
-
 n_failed=0
 
 for template in "${templates[@]}"; do
@@ -179,7 +164,7 @@ for template in "${templates[@]}"; do
         rm -f "$run_dir/RatesMC.out"   # never mistake a stale table for this run's
         status=0
         (cd "$run_dir" && ./RatesMC > RatesMC.stdout 2>&1) || status=$?
-        if [ "$(rate_rows "$run_dir/RatesMC.out")" -eq 0 ]; then
+        if ! "$PYTHON_BIN" "$SCRIPT_DIRECTORY/nucres/ratesmc_output.py" "$run_dir/RatesMC.out" > /dev/null; then
             echo "ERROR: RatesMC produced no rates for ${reaction_name} Run ${run_idx} (exit ${status}); see ${run_dir}/RatesMC.stdout" >&2
             n_failed=$((n_failed + 1))
         elif grep -qE "ERROR|WARNING|FATAL" "$run_dir/RatesMC.stdout"; then

@@ -55,6 +55,7 @@ _PYTHON     = None   # set in main() after reading python_exec from [basics]
 
 from extract_resonance_data import load_reaction_params
 from nucres.reaction_names import file_stem
+from nucres.ratesmc_output import count_valid_rate_rows
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -458,30 +459,6 @@ def _find_ratesmc_mass_tables(ratesmc_bin: Path, ratesmc: dict):
 
 
 
-def _ratesmc_rate_rows(out_path: Path) -> int:
-    """Count finite temperature/low/median/high rows in a RatesMC output."""
-    if not out_path.exists():
-        return 0
-    n = 0
-    for line in out_path.read_text(errors="replace").splitlines():
-        parts = line.split()
-        if len(parts) < 4:
-            continue
-        try:
-            temperature, *rates = [float(p) for p in parts[:4]]
-        except ValueError:
-            continue
-        if not (0.0 < temperature < float("inf")):
-            continue
-        if not all(0.0 <= rate < float("inf") for rate in rates):
-            continue
-        if not rates[0] <= rates[1] <= rates[2]:
-            continue
-        n += 1
-    return n
-
-
-
 def _configure_ratesmc_diagnostic(path: Path, keep: bool):
     """Configure a native diagnostic output, returning any archived file path.
 
@@ -558,7 +535,7 @@ def step_run_ratesmc(basics: dict, resonance: dict, ratesmc: dict,
         if not infile.exists():
             sys.exit(f"[ratesmc] Missing [resonance] output for RUN_{j}: {infile}")
 
-        if _ratesmc_rate_rows(outfile) > 0:
+        if count_valid_rate_rows(outfile) > 0:
             n_skipped += 1
             _merge_stage_data(reaction, output_dir, "ratesmc", j, ratesmc_common,
                               {"status": "already had a valid .out file (not re-run)"})
@@ -594,7 +571,7 @@ def step_run_ratesmc(basics: dict, resonance: dict, ratesmc: dict,
                 cwd=run_dir, stdout=log, stderr=subprocess.STDOUT,
             )
 
-        n_rows = _ratesmc_rate_rows(rates_out)
+        n_rows = count_valid_rate_rows(rates_out)
         if n_rows == 0:
             failed_runs.append(j)
             print(f"[ratesmc] WARNING: RatesMC produced no rates for RUN_{j} "
