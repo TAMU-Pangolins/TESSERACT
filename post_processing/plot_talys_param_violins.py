@@ -3,13 +3,16 @@
 plot_talys_param_violins.py
 
 Spread of the TALYS parameters fitted to the ATCS, across all runs: one
-violin per reaction for every fitted parameter.
+panel per fitted parameter, one cluster of points per reaction, each point
+one run's fit, colored by that run's reduced chi-square (shared colorbar
+across the whole figure).
 
 Each run of the ensemble is a different synthetic nucleus, and each run's
 ATCS is fitted separately ([talys] step). If the fitted level-density and
 optical-model parameters were measuring physics, they would cluster; a wide
 or bound-hugging spread means they are absorbing the resonance structure
-instead.
+instead. Coloring by chi2 additionally shows whether the spread is driven
+by poorly-converged fits (high chi2) or is present even among good fits.
 
 Input
 -----
@@ -51,15 +54,18 @@ import matplotlib
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+from matplotlib.cm import ScalarMappable
+from matplotlib.colors import Normalize
 import numpy as np
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.abspath(os.path.join(HERE, "..")))   # nucres, talys_opt_with_unc
-sys.path.insert(0, HERE)                                          # plot_talys_param_grid
+sys.path.insert(0, os.path.abspath(os.path.join(HERE, "..", "scripts")))  # plot_talys_param_grid
 from nucres.reaction_names import file_stem as reaction_stem  # noqa: E402
 from plot_talys_param_grid import parse_talys_optimization  # noqa: E402
 
-COLOURS = ["#2F5D9E", "#B4501F", "#3C8D5A", "#7A4FA0"]
+# Colorblind-safe, perceptually-uniform sequential colormap for reduced chi2.
+CHI2_CMAP = "viridis"
 
 # Display labels for known keywords; anything else is shown as its name.
 LABELS = {
@@ -169,7 +175,13 @@ class FittedParameters:
 # Plot
 # --------------------------------------------------------------------------
 class ViolinGrid:
-    """One panel per parameter, one violin per reaction in each panel."""
+    """
+    One panel per parameter, one cluster of chi2-colored points per reaction
+    in each panel (replaces the earlier violin-body rendering: a violin
+    forces one color per whole distribution, which can't show whether a
+    parameter's spread is driven by poorly-converged, high-chi2 fits or is
+    present even among good ones).
+    """
 
     def __init__(self, fits: list[FittedParameters], ncols: int | None = None,
                  full_range: bool = False):
@@ -185,6 +197,10 @@ class ViolinGrid:
         self.ncols = ncols or min(len(self.params), 5)
         self.nrows = math.ceil(len(self.params) / self.ncols)
 
+        all_chi2 = np.concatenate([f.chi2_red[np.isfinite(f.chi2_red)] for f in fits])
+        self.chi2_norm = Normalize(vmin=float(np.min(all_chi2)), vmax=float(np.max(all_chi2)))
+        self.rng = np.random.default_rng(0)   # fixed seed: reproducible point jitter
+
     def draw(self, out: str) -> None:
         fig, axes = plt.subplots(self.nrows, self.ncols,
                                  figsize=(2.6 * self.ncols + 0.6, 3.6 * self.nrows),
@@ -194,17 +210,22 @@ class ViolinGrid:
         for ax in list(axes.flat)[len(self.params):]:
             ax.set_visible(False)
 
-        handles = [plt.Rectangle((0, 0), 1, 1, color=COLOURS[i % len(COLOURS)], alpha=0.5)
-                   for i in range(len(self.fits))]
-        labels = [f"{f.reaction} ({f.n_fits} fits)" for f in self.fits]
+        handles = []
+        labels = []
         if any(f.bounds for f in self.fits):
             handles += [plt.Line2D([], [], color="0.2", lw=2),
                         plt.Line2D([], [], color="0.4", ls="--", lw=1)]
             labels += ["starting value", "fit bound (shown when reached)"]
-        fig.legend(handles, labels, loc="lower center", ncol=len(labels), frameon=False,
-                   fontsize=9)
-        fig.tight_layout(rect=(0, 0.07, 1, 1))
-        fig.savefig(out, dpi=200)
+        if handles:
+            fig.legend(handles, labels, loc="lower center", ncol=len(labels), frameon=False,
+                       fontsize=9)
+
+        mappable = ScalarMappable(norm=self.chi2_norm, cmap=CHI2_CMAP)
+        mappable.set_array([])
+        cbar = fig.colorbar(mappable, ax=axes, shrink=0.9, pad=0.02)
+        cbar.set_label(r"reduced $\chi^2$", fontsize=10)
+
+        fig.savefig(out, dpi=200, bbox_inches="tight")
         print(f"Saved {out}")
 
     def _panel(self, ax, name: str) -> None:
@@ -213,21 +234,13 @@ class ViolinGrid:
             v = f.values.get(name)
             if v is None:
                 continue
-            v = v[np.isfinite(v)]
-            colour = COLOURS[i % len(COLOURS)]
-            if np.ptp(v) > 0:
-                parts = ax.violinplot(v, positions=[i], widths=0.8, showextrema=False,
-                                      showmedians=True, quantiles=[0.16, 0.84])
-                for body in parts["bodies"]:
-                    body.set_facecolor(colour)
-                    body.set_edgecolor(colour)
-                    body.set_alpha(0.45)
-                for key in ("cmedians", "cquantiles"):
-                    if key in parts:
-                        parts[key].set_color(colour)
-                parts["cmedians"].set_linewidth(2)
-            else:  # every fit returned the same value: a violin cannot be drawn
-                ax.plot([i - 0.3, i + 0.3], [v[0], v[0]], color=colour, lw=2)
+            finite = np.isfinite(v)
+            v, chi2 = v[finite], f.chi2_red[finite]
+
+            jitter = self.rng.uniform(-0.3, 0.3, size=v.size)
+            ax.scatter(i + jitter, v, c=chi2, cmap=CHI2_CMAP, norm=self.chi2_norm,
+                       s=8, alpha=0.7, edgecolors="none")
+            ax.hlines(np.median(v), i - 0.35, i + 0.35, color="0.15", lw=1.5, zorder=5)
 
             b = f.bounds.get(name)
             if b is not None:
