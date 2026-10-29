@@ -204,7 +204,7 @@ class ViolinGrid:
     def draw(self, out: str) -> None:
         fig, axes = plt.subplots(self.nrows, self.ncols,
                                  figsize=(2.6 * self.ncols + 0.6, 3.6 * self.nrows),
-                                 squeeze=False)
+                                 squeeze=False, constrained_layout=True)
         for ax, name in zip(axes.flat, self.params):
             self._panel(ax, name)
         for ax in list(axes.flat)[len(self.params):]:
