@@ -6,7 +6,7 @@ Plots the ratio of TALYS best-fit reaction rate to RatesMC rate (median +
 95% interval, i.e. the 2.5-97.5 percentile band across runs — not
 necessarily a true Gaussian 2-sigma band unless the underlying distribution
 happens to be Gaussian), across one or more bin widths overlaid on the same
-graph. Sized for a Phys. Rev. C single-column figure.
+graph.
 
 All input/output paths are derived from the reaction elements and a base
 outputs directory, following the TESSERACT layout:
@@ -51,12 +51,11 @@ from nucres.ratesmc_output import read_ratesmc_out
 from nucres.talys_output import fit_key, keep_latest
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Phys. Rev. C single-column figure sizing
+# Phys. Rev. C figure sizing
 # ─────────────────────────────────────────────────────────────────────────────
-PRC_COLUMN_WIDTH_IN = 3.375   # APS single-column width
-FIGSIZE = (PRC_COLUMN_WIDTH_IN, 2.5)
-AXIS_LABEL_FONTSIZE = 8
-TICK_LABEL_FONTSIZE = 7
+FIGSIZE = (8, 6)
+AXIS_LABEL_FONTSIZE = 12
+TICK_LABEL_FONTSIZE = 12
 LEGEND_FONTSIZE = 6.5
 
 # Okabe-Ito colorblind-safe qualitative palette (black held back, since it's
