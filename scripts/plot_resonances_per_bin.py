@@ -48,7 +48,8 @@ Optional check against the ATCS files written by [integration]:
 
         --check-csv "path/to/{stem}_integrated_xs_dE_0.2_run{run}.csv"
 
-{stem} becomes e.g. 14O_ap_17F and {run} the RUN_* index. For every run whose
+{stem} becomes e.g. 14O_ap_17F, {reaction} e.g. 14O(a,p)17F, {de} the bin
+width as given to --de (e.g. 0.2) and {run} the RUN_* index. For every run whose
 file exists, the summed per-resonance integrals must reproduce the saved
 bin-averaged cross section; the largest mismatch is reported.
 
@@ -315,12 +316,22 @@ def _process_run(task):
 
 
 def check_against_csv(pattern: str, reaction: str, files: list[str],
-                      averages: list, edges: np.ndarray) -> None:
-    """Compare recomputed bin averages with the ATCS files of [integration]."""
+                      averages: list, edges: np.ndarray, de: float) -> None:
+    """
+    Compare recomputed bin averages with the ATCS files of [integration].
+
+    The pattern may use {stem} (e.g. 14O_ap_17F), {reaction} (e.g.
+    14O(a,p)17F), {de} (the bin width, e.g. 0.2) and {run} (the RUN_* index).
+    """
     centres = 0.5 * (edges[:-1] + edges[1:])
     worst, n_checked = 0.0, 0
     for path, avg in zip(files, averages):
-        csv = pattern.format(stem=reaction_stem(reaction), run=run_index(path))
+        try:
+            csv = pattern.format(stem=reaction_stem(reaction), reaction=reaction,
+                                 de=f"{de:g}", run=run_index(path))
+        except KeyError as exc:
+            raise ValueError(f"--check-csv: unknown placeholder {exc}; use {{stem}}, "
+                             "{reaction}, {de} or {run}.") from None
         if not os.path.isfile(csv):
             continue
         saved = np.loadtxt(csv, delimiter=",", comments="#")
@@ -357,8 +368,9 @@ def main() -> None:
     p.add_argument("--max-runs", type=int, default=None, help="Use only the first N runs (for testing).")
     p.add_argument("--workers", type=int, default=1, help="Parallel processes.")
     p.add_argument("--check-csv", default=None,
-                   help="Pattern of saved ATCS files with {stem} and {run}, e.g. "
-                        "'outputs/integrated/{stem}_integrated_xs_dE_0.2_run{run}.csv'.")
+                   help="Pattern of saved ATCS files; may use {stem}, {reaction}, {de} and {run}, "
+                        "e.g. 'outputs/cross_sections/{stem}/{reaction}/binwidth_{de}/"
+                        "{stem}_integrated_xs_dE_{de}_run{run}.csv'.")
     p.add_argument("--out", default="resonances_per_bin.png")
     args = p.parse_args()
 
@@ -381,7 +393,7 @@ def main() -> None:
         counts = np.array([r[0] for r in results])
         neff = np.array([r[1] for r in results])
         if args.check_csv and args.method == "exact":
-            check_against_csv(args.check_csv, reaction, files, [r[2] for r in results], edges)
+            check_against_csv(args.check_csv, reaction, files, [r[2] for r in results], edges, args.de)
 
         ensemble = EnsembleOccupancy(reaction, counts, neff, edges)
         nuc = load_nuclear_params(files[0])

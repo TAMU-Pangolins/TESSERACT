@@ -1,0 +1,42 @@
+name: Tests
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+    branches: [main]
+  merge_group:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Python tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Install uv and Python
+        uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
+        with:
+          version: "0.11.21"
+          python-version: "3.11"
+          enable-cache: true
+      - name: Install locked dependencies
+        run: uv sync --locked
+      - name: Check Python syntax across tracked code
+        run: uv run --no-sync python .github/scripts/code_checks.py syntax
+      - name: Check Python correctness lint
+        run: uv run --no-sync python .github/scripts/code_checks.py lint
+      - name: Install verified HFB tables for physics tests
+        run: uv run --no-sync python download_data.py --dest data/densities/level-densities-hfb
+      - name: Run targeted and full regression tests
+        env:
+          MPLBACKEND: Agg
+        run: uv run --no-sync python .github/scripts/code_checks.py tests
