@@ -224,7 +224,7 @@ def resonance_to_row(res: Resonance, opts: RatesMCExportOptions) -> RatesMCRow:
         G3=G3,
         DG3=DG3,
         L3=res.L3 if res.L3 is not None else opts.l3,
-        Exf=opts.exf_keV,
+        Exf=res.Exf_keV if res.Exf_keV is not None else opts.exf_keV,
         Int=opts.int_flag,
         corr_frac=opts.corr_frac_value,
     )

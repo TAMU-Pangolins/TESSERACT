@@ -373,7 +373,12 @@ def step1_build_ratesmc(basics: dict, resonance: dict,
                 cmd.extend(["--seed", str(seed_base + j)])
             if _bool(resonance.get('hfb_corrections'), False):
                 cmd.append("--hfb-corrections")
-            for key, flag in (('target_parity', '--target-parity'),
+            for key, flag in (('Gamma_i_dof', '--Gamma-i-dof'),
+                              ('Gamma_o_dof', '--Gamma-o-dof'),
+                              ('exit_width_model', '--exit-width-model'),
+                              ('levels_dir', '--levels-dir'),
+                              ('continuum_dU', '--continuum-dU'),
+                              ('target_parity', '--target-parity'),
                               ('projectile_parity', '--projectile-parity'),
                               ('final_spin', '--final-spin'),
                               ('final_parity', '--final-parity')):

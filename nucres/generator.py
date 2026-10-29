@@ -87,6 +87,9 @@ class HFBSamplerConfig:
         caller converts to partial widths (as `build_ratesmc_input.py` does).
         No cross section is then computed, since summing Breit-Wigner terms
         over reduced widths would be meaningless; `sigma_barns` is None.
+    Gamma_i_dof, Gamma_o_dof : float
+        Degrees of freedom of the mean-preserving chi-square width draws.
+        Positive infinity disables fluctuations.
     use_hfb_corrections : bool
         If true, renormalise the HFB level density with the RIPL-3 `.cor`
         (ctable, ptable) entry for this isotope, when the `.cor` file has
@@ -124,6 +127,8 @@ class HFBSamplerConfig:
     drop_exit_forbidden: bool = True
     spacing_model: str = "poisson"
     widths_are_reduced: bool = False
+    Gamma_i_dof: float = 1.0
+    Gamma_o_dof: float = 1.0
     use_hfb_corrections: bool = False
 
 
@@ -351,6 +356,10 @@ def synthesize_sigma_from_hfb(config: HFBSamplerConfig) -> GeneratedSpectrum:
     resonance energy stored in `resonances` is recorded in eV.
     Missing HFB files propagate as `FileNotFoundError` from the adapter layer.
     """
+    for dof in (config.Gamma_i_dof, config.Gamma_o_dof):
+        if dof != np.inf and (not np.isfinite(dof) or dof <= 0):
+            raise ValueError("Width degrees of freedom must be positive or infinity")
+
     spacing_model = str(config.spacing_model).strip().lower()
     if spacing_model not in {"poisson", "wigner"}:
         raise ValueError(
@@ -511,8 +520,10 @@ def synthesize_sigma_from_hfb(config: HFBSamplerConfig) -> GeneratedSpectrum:
     sigma_tot = np.zeros_like(E_plot_MeV)
     resonances: List[Resonance] = []
 
-    def pt_width(mean_eV: float) -> float:
-        return float(mean_eV * rng.chisquare(df=1))
+    def pt_width(mean_eV: float, dof: float) -> float:
+        if dof == np.inf:
+            return float(mean_eV)
+        return float(mean_eV * rng.chisquare(df=dof) / dof)
 
     choose_L2 = (
         config.exit_kind is not None
@@ -538,8 +549,8 @@ def synthesize_sigma_from_hfb(config: HFBSamplerConfig) -> GeneratedSpectrum:
             s2=config.s2,
             m1=config.m1,
             m2=config.m2,
-            Gamma_i=pt_width(config.Gamma_i_mean_eV),
-            Gamma_o=pt_width(config.Gamma_o_mean_eV),
+            Gamma_i=pt_width(config.Gamma_i_mean_eV, config.Gamma_i_dof),
+            Gamma_o=pt_width(config.Gamma_o_mean_eV, config.Gamma_o_dof),
             L1=L1_val,
             L2=L2_val,
             parity=parity,
@@ -565,6 +576,8 @@ def synthesize_sigma_from_hfb(config: HFBSamplerConfig) -> GeneratedSpectrum:
         "Gamma_i_mean_eV": config.Gamma_i_mean_eV,
         "Gamma_o_mean_eV": config.Gamma_o_mean_eV,
         "widths_are_reduced": config.widths_are_reduced,
+        "Gamma_i_dof": config.Gamma_i_dof,
+        "Gamma_o_dof": config.Gamma_o_dof,
         # Implicit level-density provenance: which files were actually read,
         # which isotope they are tabulated for (per the file's own header),
         # and whether the requested compound nucleus (config.Z/A) matches it.
