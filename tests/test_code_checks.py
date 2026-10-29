@@ -23,7 +23,8 @@ class CodeTestSelectionTest(unittest.TestCase):
         self.assertEqual(selected, ['test_lab_to_cm.py', 'test_talys_statistics.py'])
 
     def test_existing_analysis_tools_select_their_parser_regressions(self):
-        for path in ['scripts/plot_talys_param_grid.py', 'plot_talys_results_new.py']:
+        for path in ['scripts/plot_talys_param_grid.py', 'plot_talys_results_new.py',
+                     'post_processing/plot_talys_results_new.py']:
             with self.subTest(path=path):
                 selected, _ = code_checks.select_tests([path], self.AVAILABLE)
                 self.assertEqual(selected, ['test_talys_statistics.py'])
