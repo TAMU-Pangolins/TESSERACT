@@ -15,21 +15,32 @@ SPECIFICATION.loader.exec_module(code_checks)
 
 
 class CodeTestSelectionTest(unittest.TestCase):
-    AVAILABLE = ['test_build_ratesmc_input.py', 'test_data.py', 'test_lab_to_cm.py',
+    AVAILABLE = ['test_analysis_selection.py', 'test_build_ratesmc_input.py',
+                 'test_data.py', 'test_lab_to_cm.py', 'test_gamow_window.py',
                  'test_ratesmc_export.py', 'test_resonance_sum.py',
-                 'test_talys_output_selection.py', 'test_talys_statistics.py']
+                 'test_ratesmc_execution.py', 'test_ratesmc_templates.py',
+                 'test_talys_fit_records.py', 'test_talys_output_selection.py',
+                 'test_talys_statistics.py', 'test_talys_structure_path.py']
 
     def test_optimizer_selects_statistics_energy_frame_and_channel_tests(self):
         selected, _ = code_checks.select_tests(['talys_opt_with_unc.py'], self.AVAILABLE)
-        self.assertEqual(selected, ['test_lab_to_cm.py', 'test_talys_output_selection.py',
-                                    'test_talys_statistics.py'])
+        self.assertEqual(selected, ['test_lab_to_cm.py', 'test_talys_fit_records.py',
+                                   'test_talys_output_selection.py', 'test_talys_statistics.py',
+                                   'test_talys_structure_path.py'])
 
     def test_existing_analysis_tools_select_their_parser_regressions(self):
         for path in ['scripts/plot_talys_param_grid.py', 'plot_talys_results_new.py',
                      'post_processing/plot_talys_results_new.py']:
             with self.subTest(path=path):
                 selected, _ = code_checks.select_tests([path], self.AVAILABLE)
-                self.assertEqual(selected, ['test_talys_statistics.py'])
+                self.assertEqual(selected, ['test_analysis_selection.py', 'test_talys_statistics.py'])
+
+    def test_conversion_and_gamow_commands_select_their_existing_regressions(self):
+        for path, expected in [('scripts/convert_ratesmc_templates.py', 'test_ratesmc_templates.py'),
+                               ('post_processing/calc_gamow_window_cdf.py', 'test_gamow_window.py')]:
+            with self.subTest(path=path):
+                selected, _ = code_checks.select_tests([path], self.AVAILABLE)
+                self.assertEqual(selected, [expected])
 
     def test_common_and_numerical_package_changes_require_the_full_suite(self):
         for path in ['common/densities_retrieval.py', 'nucres/resonance.py']:
@@ -54,8 +65,9 @@ class CodeTestSelectionTest(unittest.TestCase):
         selected, _ = code_checks.select_tests(
             ['talys_opt_with_unc.py', 'scripts/plot_talys_param_grid.py', 'download_data.py'],
             self.AVAILABLE)
-        self.assertEqual(selected, ['test_data.py', 'test_lab_to_cm.py',
-                                   'test_talys_output_selection.py', 'test_talys_statistics.py'])
+        self.assertEqual(selected, ['test_analysis_selection.py', 'test_data.py', 'test_lab_to_cm.py',
+                                   'test_talys_fit_records.py', 'test_talys_output_selection.py',
+                                   'test_talys_statistics.py', 'test_talys_structure_path.py'])
 
     def test_missing_target_or_unavailable_comparison_requires_the_full_suite(self):
         for paths in [None, ['talys_opt_with_unc.py']]:
@@ -64,7 +76,7 @@ class CodeTestSelectionTest(unittest.TestCase):
                 self.assertEqual(selected, ['test_data.py'])
 
     def test_dependency_reference_data_and_ci_changes_require_the_full_suite(self):
-        for path in ['pyproject.toml', 'uv.lock', 'data/ame20.csv', 'input/reaction.txt',
+        for path in ['pyproject.toml', 'uv.lock', 'data/ame20.csv', 'input/reaction.txt', 'tesseract.py',
                      '.github/workflows/tests.yml', '.github/scripts/code_checks.py']:
             with self.subTest(path=path):
                 selected, _ = code_checks.select_tests([path], self.AVAILABLE)
