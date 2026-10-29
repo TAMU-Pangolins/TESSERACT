@@ -475,6 +475,27 @@ def _ratesmc_rate_rows(out_path: Path) -> int:
 
 
 
+def _configure_ratesmc_diagnostic(path: Path, keep: bool):
+    """Configure a native diagnostic output, returning any archived file path.
+
+    Suppression uses /dev/null. Existing regular files are renamed in the same
+    directory before suppression, so changing this option never deletes data.
+    """
+    backup = None
+    if path.is_symlink():
+        path.unlink()
+    elif path.exists() and not keep:
+        backup = path.with_name(path.name + '.previous')
+        suffix = 1
+        while backup.exists() or backup.is_symlink():
+            backup = path.with_name(f'{path.name}.previous.{suffix}')
+            suffix += 1
+        path.rename(backup)
+    if not keep:
+        path.symlink_to(os.devnull)
+    return backup
+
+
 def step_run_ratesmc(basics: dict, resonance: dict, ratesmc: dict,
                      run_idx: int = None) -> None:
     """Run unmodified RatesMC in each run directory and validate its rate table.
@@ -513,7 +534,9 @@ def step_run_ratesmc(basics: dict, resonance: dict, ratesmc: dict,
         else "auto-resolved from PATH"
     )
     ratesmc_common = {"binary": str(ratesmc_bin), "binary_source": binary_source,
-                      "mass_tables": [str(p) for p in mass_tables or []]}
+                      "mass_tables": [str(p) for p in mass_tables or []],
+                      "keep_integrand": _bool(ratesmc.get('keep_integrand'), False),
+                      "keep_sfactor": _bool(ratesmc.get('keep_sfactor'), False)}
     run_range = [run_idx] if run_idx is not None else range(runs)
     print(f"[ratesmc] using executable: {ratesmc_bin}")
     print(f"[ratesmc] processing run(s): {list(run_range)}")
@@ -545,6 +568,16 @@ def step_run_ratesmc(basics: dict, resonance: dict, ratesmc: dict,
         rates_out = run_dir / "RatesMC.out"
         if rates_out.exists():
             rates_out.unlink()      # never mistake a stale file for this run's output
+
+        # RatesMC writes these optional diagnostic streams even when no later
+        # stage reads them. Suppression avoids their storage and write traffic;
+        # the retention options preserve the ordinary native output behavior.
+        for filename, option in [('RatesMC.integ', 'keep_integrand'),
+                                 ('RatesMC.sfact', 'keep_sfactor')]:
+            backup = _configure_ratesmc_diagnostic(
+                run_dir / filename, ratesmc_common[option])
+            if backup is not None:
+                print(f'[ratesmc] Preserved previous diagnostic: {backup}', flush=True)
 
         # RatesMC writes its own RatesMC.log, so keep console output separate.
         stdout_path = run_dir / "RatesMC.stdout"
