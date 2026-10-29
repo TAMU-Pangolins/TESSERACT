@@ -365,6 +365,8 @@ def step1_build_ratesmc(basics: dict, resonance: dict,
             ]
             if 'U_offset_mev' in resonance:
                 cmd.extend(["--U-offset-mev", resonance['U_offset_mev']])
+            if 'int_width_cutoff' in resonance:
+                cmd.extend(['--int-width-cutoff', resonance['int_width_cutoff']])
             if seed_base is not None:
                 # One base seed for the whole ensemble; each run gets its own
                 # stream (base + j), so runs are reproducible but independent.

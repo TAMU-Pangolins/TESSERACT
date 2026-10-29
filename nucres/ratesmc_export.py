@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from math import isfinite
 from pathlib import Path
 from typing import Iterable, List, Optional, Tuple
 
@@ -25,6 +26,10 @@ class RatesMCExportOptions:
         Excitation energy of the populated final state in keV.
     int_flag : int
         RatesMC integration flag, typically `0` for analytical or `1` for numerical.
+    int_width_cutoff : float or None
+        Optional dimensionless threshold for (Gamma_i + Gamma_o + Gamma_3)/E_r.
+        Above the threshold use numerical integration; otherwise use the
+        analytical narrow-resonance approximation. This is not an error bound.
     include_g3 : bool
         Whether the optional third-width columns should be retained.
     include_corr_frac : bool
@@ -51,6 +56,7 @@ class RatesMCExportOptions:
     exf_keV: float = 0.0
     # Int flag (0 = analytical, 1 = numerical)
     int_flag: int = 1
+    int_width_cutoff: Optional[float] = None
     # Whether to keep G3 columns; when False, G3 and DG3 are zeroed
     include_g3: bool = False
     # Include Corr/Frac column when template expects it.
@@ -63,6 +69,11 @@ class RatesMCExportOptions:
     # Formatting
     precision: int = 3  # decimals for non-Ecm columns
     ecm_decimals: int = 3
+
+    def __post_init__(self):
+        if self.int_width_cutoff is not None:
+            if not isfinite(self.int_width_cutoff) or self.int_width_cutoff < 0:
+                raise ValueError('Integration width cutoff must be finite and nonnegative')
 
 
 @dataclass
@@ -209,6 +220,11 @@ def resonance_to_row(res: Resonance, opts: RatesMCExportOptions) -> RatesMCRow:
         G3 = 0.0
         DG3 = 0.0
 
+    integration_flag = opts.int_flag
+    if opts.int_width_cutoff is not None and res.E_r > 0.0:
+        width_energy_ratio = (G1 + G2 + G3) / res.E_r
+        integration_flag = 1 if width_energy_ratio > opts.int_width_cutoff else 0
+
     return RatesMCRow(
         Ecm=Ecm_keV,
         DEcm=DEcm,
@@ -225,7 +241,7 @@ def resonance_to_row(res: Resonance, opts: RatesMCExportOptions) -> RatesMCRow:
         DG3=DG3,
         L3=res.L3 if res.L3 is not None else opts.l3,
         Exf=res.Exf_keV if res.Exf_keV is not None else opts.exf_keV,
-        Int=opts.int_flag,
+        Int=integration_flag,
         corr_frac=opts.corr_frac_value,
     )
 

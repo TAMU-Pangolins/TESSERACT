@@ -796,6 +796,7 @@ def build_ratesmc_input(args) -> None:
         l3=args.l3,
         exf_keV=args.exf_kev,
         int_flag=args.int_flag,
+        int_width_cutoff=getattr(args, 'int_width_cutoff', None),
         include_g3=args.include_g3,
         include_corr_frac=include_corr_frac,
         corr_frac_value=0,
@@ -1059,6 +1060,11 @@ def parse_args() -> argparse.Namespace:
         choices=(0, 1),
         default=1,
         help="RatesMC integration flag (0 analytical, 1 numerical).",
+    )
+    p.add_argument(
+        '--int-width-cutoff', type=float, default=None,
+        help='Optional width/energy threshold for numerical integration; '
+             'overrides --int-flag for positive-energy resonances. Not an accuracy bound.',
     )
     p.add_argument(
         "--include-g3",
