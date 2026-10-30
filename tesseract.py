@@ -55,6 +55,7 @@ _PYTHON     = None   # set in main() after reading python_exec from [basics]
 
 from extract_resonance_data import load_reaction_params
 from nucres.reaction_names import file_stem
+from nucres.ratesmc_output import count_valid_rate_rows
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -365,6 +366,8 @@ def step1_build_ratesmc(basics: dict, resonance: dict,
             ]
             if 'U_offset_mev' in resonance:
                 cmd.extend(["--U-offset-mev", resonance['U_offset_mev']])
+            if 'int_width_cutoff' in resonance:
+                cmd.extend(['--int-width-cutoff', resonance['int_width_cutoff']])
             if seed_base is not None:
                 # One base seed for the whole ensemble; each run gets its own
                 # stream (base + j), so runs are reproducible but independent.
@@ -373,7 +376,12 @@ def step1_build_ratesmc(basics: dict, resonance: dict,
                 cmd.extend(["--seed", str(seed_base + j)])
             if _bool(resonance.get('hfb_corrections'), False):
                 cmd.append("--hfb-corrections")
-            for key, flag in (('target_parity', '--target-parity'),
+            for key, flag in (('Gamma_i_dof', '--Gamma-i-dof'),
+                              ('Gamma_o_dof', '--Gamma-o-dof'),
+                              ('exit_width_model', '--exit-width-model'),
+                              ('levels_dir', '--levels-dir'),
+                              ('continuum_dU', '--continuum-dU'),
+                              ('target_parity', '--target-parity'),
                               ('projectile_parity', '--projectile-parity'),
                               ('final_spin', '--final-spin'),
                               ('final_parity', '--final-parity')):
@@ -428,45 +436,96 @@ def _resolve_ratesmc_bin(ratesmc: dict):
     return None
 
 
+_RATESMC_MASS_TABLES = ("mass_1.mas20", "nubase_3.mas20")
+
+
+def _find_ratesmc_mass_tables(ratesmc_bin: Path, ratesmc: dict):
+    """
+    Locate AME/NUBASE tables for RatesMC, which reads them from its working
+    directory. Checks mass_dir in [ratesmc], then the executable's directory
+    and its parent (an upstream checkout keeps them beside the source, one
+    level above build/). Returns the list of paths, or None.
+    """
+    dirs = []
+    if ratesmc.get('mass_dir'):
+        dirs.append(Path(os.path.expanduser(ratesmc['mass_dir'])))
+    real_bin = ratesmc_bin.resolve()
+    dirs += [real_bin.parent, real_bin.parent.parent]
+    for d in dirs:
+        paths = [d / name for name in _RATESMC_MASS_TABLES]
+        if all(p.exists() for p in paths):
+            return paths
+    return None
+
+
+
+def _configure_ratesmc_diagnostic(path: Path, keep: bool):
+    """Configure a native diagnostic output, returning any archived file path.
+
+    Suppression uses /dev/null. Existing regular files are renamed in the same
+    directory before suppression, so changing this option never deletes data.
+    """
+    backup = None
+    if path.is_symlink():
+        path.unlink()
+    elif path.exists() and not keep:
+        backup = path.with_name(path.name + '.previous')
+        suffix = 1
+        while backup.exists() or backup.is_symlink():
+            backup = path.with_name(f'{path.name}.previous.{suffix}')
+            suffix += 1
+        path.rename(backup)
+    if not keep:
+        path.symlink_to(os.devnull)
+    return backup
+
+
 def step_run_ratesmc(basics: dict, resonance: dict, ratesmc: dict,
                      run_idx: int = None) -> None:
-    """
-    Execute the compiled RatesMC binary on each RUN_j/{reaction}.in produced by
-    [resonance], matching how RatesMC is actually invoked in practice: run from
-    its own install directory (where it finds its mass-table data files) with
-    the input file's absolute path passed as an argument, producing
-    {reaction}.out beside that input file. Skips a run silently if its .out
-    already exists.
+    """Run unmodified RatesMC in each run directory and validate its rate table.
 
-    If the RatesMC executable can't be resolved, this step prints a warning
-    and returns without error — nothing downstream ([integration]/[talys])
-    depends on RatesMC having actually run.
+    RatesMC reads RatesMC.in and writes RatesMC.out in its working directory.
+    Console output is kept in RatesMC.stdout because RatesMC writes its own log.
+    Upstream 2.3.0 exits with status 1 on success; finite nonnegative ordered
+    rate rows determine success. Invalid cached tables are recomputed, and any
+    requested calculation that produces no valid rates fails the pipeline.
+    An unresolved executable retains the existing optional-stage warning.
     """
     reaction   = basics['reaction']
     output_dir = resonance.get('output_dir', 'outputs/')
     runs       = int(resonance.get('runs',   '1'))
 
-    configured  = ratesmc.get('ratesmc_bin') or os.environ.get('RATESMC_BIN')
     ratesmc_bin = _resolve_ratesmc_bin(ratesmc)
     if ratesmc_bin is None:
+        configured = ratesmc.get('ratesmc_bin') or os.environ.get('RATESMC_BIN')
         where = f" at {configured}" if configured else " (checked ratesmc_bin, $RATESMC_BIN, and $PATH)"
         print(f"[ratesmc] WARNING: RatesMC executable could not be found{where}. "
               "Skipping the [ratesmc] step.", flush=True)
         _merge_stage_data(reaction, output_dir, "ratesmc", "_unresolved",
                           {"binary": None, "status": f"not found{where}"}, {})
         return
+    ratesmc_bin = ratesmc_bin.resolve()
+
+    mass_tables = _find_ratesmc_mass_tables(ratesmc_bin, ratesmc)
+    if mass_tables is None:
+        print("[ratesmc] WARNING: mass_1.mas20 / nubase_3.mas20 not found beside the "
+              "executable (set mass_dir in [ratesmc]); RatesMC 2.2+ needs them.",
+              flush=True)
 
     binary_source = (
-        f"explicit (ratesmc_bin={ratesmc['ratesmc_bin']!r} in [ratesmc])" if ratesmc.get('ratesmc_bin')
-        else "environment variable RATESMC_BIN" if os.environ.get('RATESMC_BIN')
-        else "auto-resolved from $PATH (RatesMC / ratesmc)"
+        "explicit ratesmc_bin" if ratesmc.get("ratesmc_bin")
+        else "environment variable RATESMC_BIN" if os.environ.get("RATESMC_BIN")
+        else "auto-resolved from PATH"
     )
-    ratesmc_common = {"binary": str(ratesmc_bin), "binary_source": binary_source}
-
+    ratesmc_common = {"binary": str(ratesmc_bin), "binary_source": binary_source,
+                      "mass_tables": [str(p) for p in mass_tables or []],
+                      "keep_integrand": _bool(ratesmc.get('keep_integrand'), False),
+                      "keep_sfactor": _bool(ratesmc.get('keep_sfactor'), False)}
     run_range = [run_idx] if run_idx is not None else range(runs)
     print(f"[ratesmc] using executable: {ratesmc_bin}")
     print(f"[ratesmc] processing run(s): {list(run_range)}")
 
+    failed_runs = []
     n_skipped = 0
     for j in run_range:
         run_dir = Path(output_dir) / reaction / f"RUN_{j}"
@@ -476,38 +535,66 @@ def step_run_ratesmc(basics: dict, resonance: dict, ratesmc: dict,
         if not infile.exists():
             sys.exit(f"[ratesmc] Missing [resonance] output for RUN_{j}: {infile}")
 
-        if outfile.exists():
+        if count_valid_rate_rows(outfile) > 0:
             n_skipped += 1
             _merge_stage_data(reaction, output_dir, "ratesmc", j, ratesmc_common,
-                              {"status": "already had a .out file (not re-run)"})
+                              {"status": "already had a valid .out file (not re-run)"})
             continue
 
         print(f"[ratesmc] RUN_{j} ...", flush=True)
-        log_path = run_dir / "RatesMC.log"
-        with open(log_path, "w") as log:
+        shutil.copyfile(infile, run_dir / "RatesMC.in")
+        for table in mass_tables or []:
+            link = run_dir / table.name
+            if link.is_symlink() and not link.exists():
+                link.unlink()
+            if not link.exists():
+                link.symlink_to(table)
+        rates_out = run_dir / "RatesMC.out"
+        if rates_out.exists():
+            rates_out.unlink()      # never mistake a stale file for this run's output
+
+        # RatesMC writes these optional diagnostic streams even when no later
+        # stage reads them. Suppression avoids their storage and write traffic;
+        # the retention options preserve the ordinary native output behavior.
+        for filename, option in [('RatesMC.integ', 'keep_integrand'),
+                                 ('RatesMC.sfact', 'keep_sfactor')]:
+            backup = _configure_ratesmc_diagnostic(
+                run_dir / filename, ratesmc_common[option])
+            if backup is not None:
+                print(f'[ratesmc] Preserved previous diagnostic: {backup}', flush=True)
+
+        # RatesMC writes its own RatesMC.log, so keep console output separate.
+        stdout_path = run_dir / "RatesMC.stdout"
+        with open(stdout_path, "w") as log:
             result = subprocess.run(
-                [str(ratesmc_bin), str(infile.resolve())],
-                cwd=ratesmc_bin.parent, stdout=log, stderr=subprocess.STDOUT,
+                [str(ratesmc_bin)],
+                cwd=run_dir, stdout=log, stderr=subprocess.STDOUT,
             )
 
-        if result.returncode != 0:
-            status = f"RatesMC exited with code {result.returncode}"
-            print(f"[ratesmc] WARNING: {status} for RUN_{j}; see {log_path}.", flush=True)
+        n_rows = count_valid_rate_rows(rates_out)
+        if n_rows == 0:
+            failed_runs.append(j)
+            print(f"[ratesmc] WARNING: RatesMC produced no rates for RUN_{j} "
+                  f"(exit code {result.returncode}); see {stdout_path}.", flush=True)
             _merge_stage_data(reaction, output_dir, "ratesmc", j, ratesmc_common,
-                              {"status": status, "log": str(log_path)})
+                              {"status": "no valid rates produced", "returncode": result.returncode,
+                               "log": str(stdout_path)})
             continue
-
-        log_text = log_path.read_text(errors="replace")
-        status = "ok"
-        if re.search(r"ERROR|WARNING|FATAL", log_text):
-            status = "completed, but RatesMC.log reports ERROR/WARNING/FATAL"
-            print(f"[ratesmc] WARNING: RatesMC reported issues for RUN_{j}; "
-                  f"see {log_path}.", flush=True)
+        shutil.copyfile(rates_out, outfile)
         _merge_stage_data(reaction, output_dir, "ratesmc", j, ratesmc_common,
-                          {"status": status, "log": str(log_path)})
+                          {"status": "ok", "returncode": result.returncode, "rate_rows": n_rows,
+                           "log": str(stdout_path)})
+
+        log_text = stdout_path.read_text(errors="replace")
+        if re.search(r"ERROR|WARNING|FATAL", log_text):
+            print(f"[ratesmc] WARNING: RatesMC reported issues for RUN_{j}; "
+                  f"see {stdout_path}.", flush=True)
 
     if n_skipped:
         print(f"[ratesmc] {n_skipped}/{runs} run(s) already had a .out file — skipped.")
+
+    if failed_runs:
+        raise RuntimeError(f"RatesMC produced no valid rates for run(s): {failed_runs}")
 
 
 # ─────────────────────────────────────────────────────────────────────────────

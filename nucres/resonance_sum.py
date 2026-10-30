@@ -149,6 +149,15 @@ class ResonanceSum:
         self.pi_lambda2_b_mev = np.pi * HBARC_MEV_FM**2 / (2 * rx.mu_u * AMU_MEV) / 100.0
         self.M_res = rx.M_proj + rx.M_targ - rx.M_exit
         self.Z_res = rx.Z_proj + rx.Z_targ - rx.Z_exit
+        self._exit_offsets: Dict[int, set[float]] = {}
+        for row in self.rows:
+            for channel, width, angular_momentum, final_energy in (
+                (1, row.G1, row.L1, row.Exf),
+                (2, row.G2, row.L2, 0.0),
+            ):
+                if width > 0.0 and channel != rx.gamma_channel - 1:
+                    offset = rx.S_proj_mev - rx.S_exit_mev - final_energy
+                    self._exit_offsets.setdefault(angular_momentum, set()).add(offset)
 
     # -- penetrabilities ----------------------------------------------------
     def _entrance_log(self, l: int) -> Callable:
@@ -170,16 +179,54 @@ class ResonanceSum:
         return self._logP[key]
 
     def _exit_log(self, l: int, offset: float) -> Callable:
-        """Log P_l as a function of the exit-channel energy."""
-        key = ("out", l, round(offset, 9))
+        """Share log P_l tables across final states without a transmission floor.
+
+        A single final-state offset retains the existing grid exactly. For
+        multiple offsets, share their combined domain. Split that domain at
+        powers of ten: one uniform Sommerfeld-parameter grid extending down
+        to 1 eV would otherwise undersample the MeV region. Each energy band
+        receives npts samples; threshold masks and log-width ratios are
+        unchanged. Include the domain in the cache key because different
+        realizations can contain different final states.
+        """
+        offsets = self._exit_offsets.get(l, set()) | {offset}
+        lo = max(self.E_min * 0.5 + min(offsets), 1e-6)
+        hi = max(self.E_max * 1.5 + max(offsets), lo * 1.01)
+        boundaries = [lo, hi]
+        if len(offsets) > 1:
+            # Cover the requested range and reference energies. Applying the
+            # old entrance-energy margin before a negative exit offset can
+            # unnecessarily extend a wholly open channel down to 1 eV.
+            reference_energies = [self.E_min] + [row.E_r for row in self.rows]
+            lo = max(0.5 * (min(reference_energies) + min(offsets)), 1e-6)
+            first_power = int(np.floor(np.log10(lo))) + 1
+            last_power = int(np.ceil(np.log10(hi)))
+            boundaries = [lo] + [10.0**power for power in range(first_power, last_power)] + [hi]
+        key = ("out", l, tuple(boundaries))
         if key not in self._logP:
             rx = self.reaction
-            lo = max(self.E_min * 0.5 + offset, 1e-6)
-            hi = self.E_max * 1.5 + offset
-            self._logP[key] = make_log_penetrability_interp(
-                l, rx.Z_exit, self.Z_res, rx.M_exit, self.M_res,
-                r0=rx.R0_fm, Emin_mev=lo, Emax_mev=max(hi, lo * 1.01), npts=self.npts,
-            )
+            tables = [
+                make_log_penetrability_interp(
+                    l, rx.Z_exit, self.Z_res, rx.M_exit, self.M_res,
+                    r0=rx.R0_fm, Emin_mev=lower, Emax_mev=upper, npts=self.npts,
+                )
+                for lower, upper in zip(boundaries[:-1], boundaries[1:])
+            ]
+            if len(tables) == 1:
+                self._logP[key] = tables[0]
+            else:
+                def log_penetrability(energy):
+                    energies = np.asarray(energy, dtype=float)
+                    result = np.full_like(energies, np.nan)
+                    for index, table in enumerate(tables):
+                        lower = -np.inf if index == 0 else boundaries[index]
+                        upper = np.inf if index == len(tables) - 1 else boundaries[index + 1]
+                        mask = (energies >= lower) & (energies < upper)
+                        if np.any(mask):
+                            result[mask] = table(energies[mask])
+                    return result
+
+                self._logP[key] = log_penetrability
         return self._logP[key]
 
     def _log_scaled(self, channel: int, G: float, L: int, Exf: float, E, E_r) -> np.ndarray:

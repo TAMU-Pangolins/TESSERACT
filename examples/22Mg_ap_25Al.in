@@ -37,6 +37,8 @@ unint_output_dir = outputs/example_22Mg_ap_25Al/cross_sections
 dE = 0.2           # one bin width keeps this example to one TALYS fit per run
 
 [talys]
+# Population cutoff for small fitted cross sections.
+popeps          = 1.e-20
 talys_output_dir = outputs/example_22Mg_ap_25Al/talys
 ldmodel      = 1
 alphaomp     = 6

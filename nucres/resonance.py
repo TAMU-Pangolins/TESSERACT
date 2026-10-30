@@ -114,6 +114,7 @@ class Resonance:
     L2: Optional[int] = None
     L3: Optional[int] = None
     parity: Optional[int] = None
+    Exf_keV: Optional[float] = None  # populated final-state excitation energy, keV
 
 
 def channel_radius_fm(A1, A2, r0=1.25):

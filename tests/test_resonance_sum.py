@@ -123,6 +123,76 @@ class TransmissionUnderflowTest(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "closed channel"):
                 rs._log_scaled(1, 0.2, 1, 0.002, np.array([0.003]), self.row.E_r)
 
+class SharedExitPenetrabilityTest(unittest.TestCase):
+    def setUp(self):
+        self.reaction = ReactionParams(
+            Z_proj=2, Z_targ=12, Z_exit=1, M_proj=4.0, M_targ=22.0, M_exit=1.0,
+            J_proj=0.0, J_targ=0.0, S_proj_mev=9.0, S_exit_mev=5.0,
+            R0_fm=1.25, gamma_channel=3,
+        )
+        self.rows = [
+            ResonanceRow(E_r=2.0, J=1, G0=1, L0=0, G1=0.2, L1=1,
+                         G2=0, L2=0, Exf=final_energy)
+            for final_energy in (0.0, 2.0, 4.25)
+        ]
+
+    def test_final_states_share_tables_and_keep_separate_reference_widths(self):
+        from nucres.resonance import make_log_penetrability_interp
+
+        with patch("nucres.resonance_sum.make_log_penetrability_interp",
+                   wraps=make_log_penetrability_interp) as build:
+            cross_sections = ResonanceSum(self.reaction, self.rows, 1.0, 3.0, npts=64)
+            functions = [cross_sections._exit_log(1, 4.0 - row.Exf) for row in self.rows]
+            self.assertTrue(all(function is functions[0] for function in functions))
+            self.assertEqual(build.call_count, 2)  # Shared domain is 0.375 to 8.5 MeV.
+            for row in self.rows:
+                width = cross_sections._log_scaled(1, row.G1, row.L1, row.Exf,
+                                                   row.E_r, row.E_r)
+                self.assertAlmostEqual(float(width), np.log(row.G1), places=12)
+
+    def test_shared_domain_matches_direct_coulomb_ratios_across_energy_bands(self):
+        cross_sections = ResonanceSum(self.reaction, self.rows, 1.0, 3.0, npts=256)
+        table = cross_sections._exit_log(1, 4.0)
+        reduced_mass = 25.0 / 26.0
+        radius = 1.25 * (1.0 + 25.0 ** (1 / 3))
+
+        def direct_log(energy):
+            rho = 0.218735 * radius * np.sqrt(reduced_mass * energy)
+            eta = 0.157489 * 13 * np.sqrt(reduced_mass / energy)
+            return float(mp.log(rho / (mp.coulombf(1, eta, rho)**2 +
+                                      mp.coulombg(1, eta, rho)**2)))
+
+        energies = np.array([0.375, 0.4, 0.75, 0.99, 1.0, 1.01, 8.0])
+        np.testing.assert_allclose(table(energies), [direct_log(e) for e in energies],
+                                   rtol=0, atol=3e-4)
+        self.assertTrue(np.isneginf(table(0.0)))
+        for row in self.rows:
+            energy = row.E_r + 0.1
+            offset = 4.0 - row.Exf
+            actual = cross_sections._log_scaled(1, row.G1, row.L1, row.Exf, energy, row.E_r)
+            expected = np.log(row.G1) + direct_log(energy + offset) - direct_log(row.E_r + offset)
+            self.assertAlmostEqual(float(actual), expected, delta=3e-4)
+
+    def test_external_cache_distinguishes_final_state_domains(self):
+        cache = {}
+        narrow = ResonanceSum(self.reaction, self.rows[:1], 1.0, 3.0,
+                             penetrability_cache=cache, npts=16)
+        wide = ResonanceSum(self.reaction, self.rows, 1.0, 3.0,
+                           penetrability_cache=cache, npts=16)
+        self.assertIsNot(narrow._exit_log(1, 4.0), wide._exit_log(1, 4.0))
+
+    def test_domain_crossing_threshold_keeps_low_energy_coverage(self):
+        # Inspect the costly near-threshold grid independently of Coulomb
+        # evaluation; direct numerical accuracy is checked above and by the
+        # underflow tests. No 5-keV lower bound from development is retained.
+        rows = [self.rows[0], replace(self.rows[-1], Exf=5.0)]
+        with patch("nucres.resonance_sum.make_log_penetrability_interp") as build:
+            cross_sections = ResonanceSum(self.reaction, rows, 1.0, 3.0)
+            cross_sections._exit_log(1, 4.0)
+        self.assertEqual(build.call_args_list[0].kwargs['Emin_mev'], 1e-6)
+        self.assertEqual(build.call_args_list[-1].kwargs['Emax_mev'], 8.5)
+
+
 class ReactionNamesTest(unittest.TestCase):
     def test_file_stem_matches_old_ap_convention(self):
         from nucres.reaction_names import file_stem

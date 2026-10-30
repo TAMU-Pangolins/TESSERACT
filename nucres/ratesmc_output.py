@@ -95,6 +95,25 @@ def read_ratesmc_out(path: str | Path) -> Dict[str, np.ndarray]:
     return {name: table[:, i] for i, name in enumerate(columns)}
 
 
+def count_valid_rate_rows(path: str | Path) -> int:
+    """Count usable rate rows using the header-defined columns of either format.
+
+    A usable row has finite positive temperature (GK), finite nonnegative
+    rates, and low <= median <= high. Missing or unreadable files and tables
+    without the required header/columns return zero. This check establishes
+    usable output, not completeness or agreement with a particular input.
+    """
+    try:
+        table = read_ratesmc_out(path)
+    except (OSError, ValueError):
+        return 0
+    valid = np.isfinite(table['T9']) & (table['T9'] > 0)
+    for name in ('low', 'median', 'high'):
+        valid &= np.isfinite(table[name]) & (table[name] >= 0)
+    valid &= (table['low'] <= table['median']) & (table['median'] <= table['high'])
+    return int(np.count_nonzero(valid))
+
+
 # Run-directory layouts written by TESSERACT:
 #   tesseract.py [ratesmc]      <root>/<reaction>/RUN_<j>/<reaction>.out
 #   run_ratesmc_batches.sh      <root>/<reaction>/Run_<NN>/RatesMC.out
@@ -132,3 +151,14 @@ def iter_reaction_dirs(root: str | Path, reaction: Optional[str] = None) -> Iter
     for d in sorted(root.iterdir()) if root.is_dir() else []:
         if d.is_dir():
             yield d
+
+
+if __name__ == '__main__':
+    import argparse
+
+    parser = argparse.ArgumentParser(description='Validate a native RatesMC output table.')
+    parser.add_argument('output', type=Path, help='RatesMC output file to validate.')
+    arguments = parser.parse_args()
+    count = count_valid_rate_rows(arguments.output)
+    print(count)
+    raise SystemExit(0 if count > 0 else 1)

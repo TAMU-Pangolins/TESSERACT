@@ -12,17 +12,23 @@ from documentation_changes import changed_paths
 
 
 TARGETED_TESTS = {
-    'talys_opt_with_unc.py': ('test_talys_statistics.py', 'test_lab_to_cm.py'),
-    'plot_talys_results_new.py': ('test_talys_statistics.py',),
-    'post_processing/plot_talys_results_new.py': ('test_talys_statistics.py',),
-    'build_ratesmc_input.py': ('test_build_ratesmc_input.py', 'test_ratesmc_export.py'),
+    'talys_opt_with_unc.py': ('test_talys_statistics.py', 'test_lab_to_cm.py',
+                            'test_talys_output_selection.py', 'test_talys_fit_records.py',
+                            'test_talys_structure_path.py'),
+    'plot_talys_results_new.py': ('test_talys_statistics.py', 'test_analysis_selection.py'),
+    'post_processing/plot_talys_results_new.py': ('test_talys_statistics.py', 'test_analysis_selection.py'),
+    'post_processing/calc_gamow_window_cdf.py': ('test_gamow_window.py',),
+    'build_ratesmc_input.py': ('test_build_ratesmc_input.py', 'test_ratesmc_export.py',
+                             'test_final_states.py', 'test_ratesmc_integration_selection.py'),
+    'run_ratesmc_batches.sh': ('test_ratesmc_execution.py',),
+    'scripts/convert_ratesmc_templates.py': ('test_ratesmc_templates.py',),
     'generate_cross_sections_vectorized.py': ('test_resonance_sum.py',),
     'extract_resonance_data.py': ('test_resonance_sum.py',),
     'download_data.py': ('test_data.py',),
-    'scripts/plot_talys_param_grid.py': ('test_talys_statistics.py',),
+    'scripts/plot_talys_param_grid.py': ('test_talys_statistics.py', 'test_analysis_selection.py'),
     'scripts/plot_rate_ratio_wide.py': ('test_talys_statistics.py',),
 }
-SHARED_FILES = {'pyproject.toml', 'uv.lock', '.github/workflows/tests.yml'}
+SHARED_FILES = {'pyproject.toml', 'uv.lock', '.github/workflows/tests.yml', 'tesseract.py'}
 SHARED_DIRECTORIES = ('common/', 'nucres/', '.github/scripts/')
 
 

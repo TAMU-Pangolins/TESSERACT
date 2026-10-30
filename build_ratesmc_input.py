@@ -21,7 +21,7 @@ from nucres.read_qvals import (
     mass_from_token,
     split_nuclide_token,
 )
-from nucres.resonance import penetrability_P_l_mev
+from nucres.resonance import make_penetrability_interp, penetrability_P_l_mev
 
 
 def _find_resonant_block(lines: List[str]) -> Tuple[int, int, int]:
@@ -423,6 +423,8 @@ def _exit_channel_settings(metadata: TemplateMetadata, args) -> dict:
         return {"exit_kind": None}
 
     settings: dict = {"exit_kind": kind}
+    dof = getattr(args, "Gamma_o_dof", None)
+    settings["Gamma_o_dof"] = float(dof) if dof is not None else 1.0
     if not getattr(args, "auto_l2", True):
         settings["exit_kind"] = None
         return settings
@@ -450,6 +452,9 @@ def _exit_channel_settings(metadata: TemplateMetadata, args) -> dict:
         final_nucleus = residual
     else:
         final_nucleus = _infer_compound_nucleus(metadata)
+
+    if getattr(args, "exit_width_model", "ground-state") == "summed":
+        return settings
 
     J_f = getattr(args, "final_spin", None)
     pi_f = getattr(args, "final_parity", None)
@@ -479,6 +484,74 @@ def _exit_channel_settings(metadata: TemplateMetadata, args) -> dict:
     return settings
 
 
+def _final_state_model(metadata: TemplateMetadata, args, exit_settings: dict,
+                       compound: Tuple[int, int], template_path: Path):
+    """
+    FinalStateModel for summing exit widths over discrete levels (TALYS/RIPL
+    level files) and the HFB continuum of the final nucleus.
+    """
+    import numpy as np
+    from extract_resonance_data import load_reaction_params
+    from nucres.final_states import (
+        FinalStateModel, default_levels_dir, discrete_final_states, hfb_continuum,
+    )
+    from nucres.hfb_adapter import load_hfb_record, resolve_density_paths
+
+    kind = exit_settings.get("exit_kind")
+    if kind is None:
+        raise ValueError("--exit-width-model summed needs a particle or gamma exit channel.")
+    levels_dir = getattr(args, "levels_dir", None) or default_levels_dir()
+    if levels_dir is None:
+        raise ValueError(
+            "--exit-width-model summed needs discrete levels: give --levels-dir "
+            "(TALYS structure/levels/final), set TALYS_LEVELS, or put talys on PATH."
+        )
+    rx = load_reaction_params(template_path)
+    if kind == "particle":
+        _, _, residual = _parse_reaction_channels(metadata.reaction)
+        final_Z, final_A = residual
+    else:
+        final_Z, final_A = compound
+    tab, cor = resolve_density_paths(final_Z, data_root=args.data_root)
+    record = load_hfb_record(str(tab), str(cor) if cor else None, A=final_A,
+                             use_corrections=getattr(args, "hfb_corrections", False),
+                             warn_if_ignored=False)
+    levels, E_cut = discrete_final_states(str(levels_dir), final_Z, final_A,
+                                          str(cor) if cor else None)
+    E_r_max = float(args.E_max_mev)
+    if kind == "particle":
+        U_max = E_r_max + rx.S_proj_mev - rx.S_exit_mev
+    else:
+        U_max = E_r_max + rx.S_proj_mev
+    continuum = hfb_continuum(record, final_A, E_cut, U_max, float(getattr(args, "continuum_dU", 0.1)))
+
+    common = dict(kind=kind, final_Z=final_Z, final_A=final_A, levels=levels,
+                  continuum=continuum, S_proj=rx.S_proj_mev, S_exit=rx.S_exit_mev)
+    if kind == "particle":
+        M_res = rx.M_proj + rx.M_targ - rx.M_exit
+        Z_res = rx.Z_proj + rx.Z_targ - rx.Z_exit
+        cache = {}
+
+        def pen(l):
+            if l not in cache:
+                cache[l] = make_penetrability_interp(
+                    l, rx.Z_exit, Z_res, rx.M_exit, M_res, r0=rx.R0_fm,
+                    Emin_mev=5e-3, Emax_mev=max(U_max + E_cut, 1.0) + 1.0, npts=400)
+            return cache[l]
+
+        model = FinalStateModel(
+            **common, ejectile_spin=exit_settings["ejectile_spin"],
+            ejectile_parity=exit_settings["ejectile_parity"], pen=pen,
+            gamma2_mean_eV=float(args.Gamma_o_mean_eV))
+    else:
+        model = FinalStateModel(**common, compound_record=record, compound_A=final_A)
+    print(f"Summed exit widths: {len(levels)} discrete levels of Z={final_Z} A={final_A} "
+          f"up to {E_cut:.3f} MeV, HFB continuum above "
+          f"({continuum.U.size} bins of {getattr(args, 'continuum_dU', 0.1)} MeV).")
+    return model
+
+
+
 def _convert_reduced_to_partial_widths(
     resonances,
     metadata: TemplateMetadata,
@@ -487,11 +560,13 @@ def _convert_reduced_to_partial_widths(
     r0: float = 1.25,
     Q_mev: float = 0.0,
     Exf_mev: float = 0.0,
+    convert_exit: Optional[bool] = None,
 ):
     projectile = (metadata.proj_Z, _mass_number_from_token(metadata.proj_A_token))
     target = (metadata.Z, _mass_number_from_token(metadata.targ_A_token))
     _, ejectile, residual = _parse_reaction_channels(metadata.reaction)
-    convert_exit = _reaction_exit_symbol(metadata.reaction) in _PARTICLE_EXIT_CHANNELS
+    if convert_exit is None:
+        convert_exit = _reaction_exit_symbol(metadata.reaction) in _PARTICLE_EXIT_CHANNELS
     converted = []
     for res in resonances:
         er_mev = max(res.E_r, 0.0) * 1e-6
@@ -668,7 +743,11 @@ def build_ratesmc_input(args) -> None:
         getattr(args, "target_parity", None),
         s2_val,
     )
+    summed = getattr(args, "exit_width_model", "ground-state") == "summed"
+    if summed and not getattr(args, "auto_l2", True):
+        raise ValueError("The summed exit-width model requires auto_l2; use --exit-width-model ground-state with --no-auto-l2.")
     exit_settings = _exit_channel_settings(metadata, args)
+    gen_exit = {"exit_kind": None} if summed else exit_settings
 
     cfg = HFBSamplerConfig(
         Z=Z_val,
@@ -681,7 +760,8 @@ def build_ratesmc_input(args) -> None:
         projectile_parity=projectile_parity,
         target_parity=target_parity,
         drop_forbidden=getattr(args, "drop_forbidden", True),
-        **exit_settings,
+        **gen_exit,
+        Gamma_i_dof=float(getattr(args, "Gamma_i_dof", 1.0)),
         m1=m1_val,
         m2=m2_val,
         Gamma_i_mean_eV=args.Gamma_i_mean_eV,
@@ -716,6 +796,7 @@ def build_ratesmc_input(args) -> None:
         l3=args.l3,
         exf_keV=args.exf_kev,
         int_flag=args.int_flag,
+        int_width_cutoff=getattr(args, 'int_width_cutoff', None),
         include_g3=args.include_g3,
         include_corr_frac=include_corr_frac,
         corr_frac_value=0,
@@ -749,13 +830,33 @@ def build_ratesmc_input(args) -> None:
     Q_mev = (S_proj - S_exit) * 1e-3 if (S_proj is not None and S_exit is not None) else 0.0
     print(f"Q-value: {Q_mev*1e3:.2f} keV  (S_proj={S_proj}, S_exit={S_exit})")
 
+    resonances = generated.resonances
+    n_closed = 0
+    if summed:
+        import numpy as np
+        model = _final_state_model(metadata, args, exit_settings,
+                                   (Z_val, A_val), template_path)
+        rng = np.random.default_rng(None if args.seed is None else [int(args.seed), 1])
+        summed_res = []
+        for res in resonances:
+            ew = model.exit_width(res.E_r * 1e-6, res.J, res.parity or 1, rng)
+            if ew.Gamma_eV <= 0.0:
+                n_closed += 1   # no open final state: contributes nothing
+                continue
+            summed_res.append(replace(res, Gamma_o=ew.Gamma_eV, L2=ew.L,
+                                      Exf_keV=ew.Exf_MeV * 1e3))
+        resonances = summed_res
+        if n_closed:
+            print(f"Dropped {n_closed} resonances with no open final state.")
+
     export_resonances = _convert_reduced_to_partial_widths(
-        generated.resonances,
+        resonances,
         metadata,
         l1_default=args.l1,
         l2_default=args.l2,
         Q_mev=Q_mev,
         Exf_mev=args.exf_kev * 1e-3,
+        convert_exit=False if summed else None,
     )
     rows, widths = render_rows(export_resonances, opts)
     header_line = resonant_header_line(widths, opts)
@@ -801,6 +902,9 @@ def build_ratesmc_input(args) -> None:
     implicit_meta = {
         "reaction": reaction_line,
         "common": {
+            "exit_width_model": "summed" if summed else "ground-state",
+            "levels_dir": str(args.levels_dir) if getattr(args, "levels_dir", None) is not None else None,
+            "continuum_dU": getattr(args, "continuum_dU", 0.1),
             "compound_nucleus": {
                 "Z": Z_val,
                 "Z_source": "explicit (--Z)" if args.Z is not None else "auto-inferred from template",
@@ -860,6 +964,7 @@ def build_ratesmc_input(args) -> None:
             "level_density": level_density,
         },
         "run": {
+            "n_closed_final_states": n_closed,
             "seed": args.seed,
             "n_resonances_generated": count,
             "n_drawn": level_density_run["n_drawn"],
@@ -955,6 +1060,11 @@ def parse_args() -> argparse.Namespace:
         choices=(0, 1),
         default=1,
         help="RatesMC integration flag (0 analytical, 1 numerical).",
+    )
+    p.add_argument(
+        '--int-width-cutoff', type=float, default=None,
+        help='Optional width/energy threshold for numerical integration; '
+             'overrides --int-flag for positive-energy resonances. Not an accuracy bound.',
     )
     p.add_argument(
         "--include-g3",
@@ -1174,6 +1284,50 @@ def parse_args() -> argparse.Namespace:
         dest="auto_l1",
         action="store_false",
         help="Disable auto L1 and use the fixed --l1 value instead.",
+    )
+
+    p.add_argument(
+        "--Gamma-i-dof",
+        type=float,
+        default=1.0,
+        help="Degrees of freedom of the chi^2 fluctuation of the entrance width (default 1, Porter-Thomas).",
+    )
+
+    p.add_argument(
+        "--Gamma-o-dof",
+        type=float,
+        default=None,
+        help=(
+            "Degrees of freedom of the chi^2 fluctuation of the exit width "
+            "(default: 1, preserving Porter-Thomas fluctuations). "
+            "Use inf for no fluctuation."
+        ),
+    )
+
+    p.add_argument(
+        "--exit-width-model",
+        choices=("summed", "ground-state"),
+        default="ground-state",
+        help=(
+            "summed (opt-in): exit width = sum of Porter-Thomas draws over all "
+            "open final states (discrete levels, then the HFB continuum); "
+            "ground-state (default): one width to the ground state (or --final-spin/parity)."
+        ),
+    )
+
+    p.add_argument(
+        "--levels-dir",
+        type=Path,
+        default=None,
+        help="TALYS/RIPL discrete-level directory (structure/levels/final); "
+             "default $TALYS_LEVELS or next to talys on PATH.",
+    )
+
+    p.add_argument(
+        "--continuum-dU",
+        type=float,
+        default=0.1,
+        help="Bin width (MeV) of the HFB continuum of final states (default 0.1).",
     )
 
     return p.parse_args()

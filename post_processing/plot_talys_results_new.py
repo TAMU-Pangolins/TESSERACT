@@ -463,6 +463,16 @@ def report_skipped_runs(failures, no_overlap, n_total):
 # ─────────────────────────────────────────────────────────────────────────────
 # Main
 # ─────────────────────────────────────────────────────────────────────────────
+def ratio_plot_name(reaction_slug: str, bin_widths: list[str], suffix: str = '') -> str:
+    """
+    File name of the ratio plot for the bin widths actually plotted:
+    22Mg_ap_25Al_bw_0.2.png, or 22Mg_ap_25Al_bw_0.2_0.5.png for several.
+    """
+    label = "_".join(str(bw) for bw in bin_widths)
+    return f"{reaction_slug}_bw_{label}{suffix}.png"
+
+
+
 def main():
     parser = argparse.ArgumentParser(description="Plot TALYS optimisation results")
     parser.add_argument("--target",     required=True, help="Target nucleus, e.g. 22Mg")
@@ -557,9 +567,8 @@ def main():
     ax.legend(fontsize=LEGEND_FONTSIZE, frameon=False)
     fig.tight_layout()
 
-    bw_label = bin_widths[0] if len(results) == 1 else ""
     suffix = "_no_band" if args.no_band else ""
-    out_main = output_dir / f"{reaction_slug}_bw_{bw_label}{suffix}.png"
+    out_main = output_dir / ratio_plot_name(reaction_slug, list(results), suffix)
     fig.savefig(out_main, dpi=300, bbox_inches="tight")
     print(f"Saved: {out_main}")
     plt.show()
@@ -602,7 +611,8 @@ def main():
                   transform=ax2.transAxes, ha="right", va="center",
                   rotation="vertical", fontsize=28, fontname="serif")
 
-        out_no_axes = output_dir / f"{reaction_slug}_no_axes.png"
+        out_no_axes = output_dir / ratio_plot_name(
+            reaction_slug, list(results), suffix + '_no_axes')
         fig2.savefig(out_no_axes, dpi=600, bbox_inches="tight")
         print(f"Saved: {out_no_axes}")
         plt.show()

@@ -17,6 +17,7 @@
 1.0 ! Minimum energy for numerical integration (keV)
 8000 ! Number of random samples (>5000 for better statistics )
 0 ! =0 for rate output at all temperatures; =NT for rate output at selected temperatures
+0 0 ! (Res, E) =0 for no correlation. =1 for correlation
 *************************************************** *************************************************** **********
 Non-resonant contribution
 S(keVb) S’(b) S’’(b/keV) fracErr Cutoff Energy (keV)
@@ -26,26 +27,26 @@ S(keVb) S’(b) S’’(b/keV) fracErr Cutoff Energy (keV)
 Resonant Contribution
 Note: G1 = entrance channel, G2 = exit channel, G3 = spectator channel !! Ecm, Exf in (keV); wg, Gx in (eV) !!
 Note: if Er<0, theta^2=C2S*theta_sp^2 must be entered inst ead of entrance channel partial width
-Ecm DEcm wg Dwg J G1 DG1 L1 G2 DG2 L2 G3 DG3 L3 Exf Int
--764.0 3.0 0 0 2 0.10 0.05 0 7.3e-3 3.7e-3 1 0 0 0 425.8 1
--324.0 3.0 0 0 2 0.045 0.022 0 2.5e-3 1.3e-3 1 0 0 0 1088.2 1
-473.0 3.0 0 0 3 0.17 0.07 2 0.033 0.0165 1 0 0 0 500.1 1
-651.0 4.0 0 0 4 1.1 0.4 2 0.053 0.0265 1 0 0 0 0 1
-919.0 4.0 0 0 2 2.0e3 8.0e2 0 0.083 0.0415 1 0 0 0 500.1 1
-1001.0 4.0 0 0 3 2.3e1 9.2 2 0.014 0.007 1 0 0 0 1107.9 1
+Ecm DEcm wg Dwg J G1 DG1 L1 G2 DG2 L2 G3 DG3 L3 Exf Int Corr/Frac
+-764.0 3.0 0 0 2 0.10 0.05 0 7.3e-3 3.7e-3 1 0 0 0 425.8 1 0
+-324.0 3.0 0 0 2 0.045 0.022 0 2.5e-3 1.3e-3 1 0 0 0 1088.2 1 0
+473.0 3.0 0 0 3 0.17 0.07 2 0.033 0.0165 1 0 0 0 500.1 1 0
+651.0 4.0 0 0 4 1.1 0.4 2 0.053 0.0265 1 0 0 0 0 1 0
+919.0 4.0 0 0 2 2.0e3 8.0e2 0 0.083 0.0415 1 0 0 0 500.1 1 0
+1001.0 4.0 0 0 3 2.3e1 9.2 2 0.014 0.007 1 0 0 0 1107.9 1 0
 *************************************************** *************************************************** **********
 Upper Limits of Resonances
 Note: enter partial width upper limit by chosing non-zero va lue for PT, where PT=<theta^2> for particles and...
 Note: ...PT=<B> for g-rays [enter: "upper_limit 0.0"]; for each resonance: # upper limits < # open channels!
-Ecm DEcm Jr G1 DG1 L1 PT G2 DG2 L2 PT G3 DG3 L3 PT Exf Int
-!0.0 0.0 0.0 0.0 0.0 0 0 0.0 0.0 0 0 0.0 0.0 0 0 0.0 0
+Ecm DEcm Jr G1 DG1 L1 PT DPT G2 DG2 L2 PT DPT G3 DG3 L3 PT DPT Exf Int
+!0.0 0.0 0.0 0.0 0.0 0 0 0 0.0 0.0 0 0 0 0.0 0.0 0 0 0 0.0 0
 *************************************************** *************************************************** **********
 Interference between Resonances [numerical integration o nly]
 Note: + for positive, - for negative interference; +- if inte rference sign is unknown
-Ecm DEcm Jr G1 DG1 L1 PT G2 DG2 L2 PT G3 DG3 L3 PT Exf
+Ecm DEcm Jr G1 DG1 L1 PT DPT G2 DG2 L2 PT DPT G3 DG3 L3 PT DPT Exf
 !+-
-0.0 0.0 0.0 0.0 0.0 0 0 0.0 0.0 0 0 0.0 0.0 0 0 0.0
-0.0 0.0 0.0 0.0 0.0 0 0 0.0 0.0 0 0 0.0 0.0 0 0 0.0
+0.0 0.0 0.0 0.0 0.0 0 0 0 0.0 0.0 0 0 0 0.0 0.0 0 0 0 0.0
+0.0 0.0 0.0 0.0 0.0 0 0 0 0.0 0.0 0 0 0 0.0 0.0 0 0 0 0.0
 *************************************************** *************************************************** **********
 Comments:
 1. Resonance energies deduced from Ex (Visser et al. 2007, Vi sser et al. 2008, Lotay et al. 2008).
