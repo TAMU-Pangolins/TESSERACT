@@ -559,7 +559,8 @@ def main():
 
     ax.axhline(1.0, color="k", lw=1.0, linestyle="--")
     ax.set_xlabel(r"$T_9$ (GK)", fontsize=AXIS_LABEL_FONTSIZE)
-    ax.set_xlim(0., 2.1)
+    ax.set_xlim(0.2, 2.1)
+    ax.set_ylim(1e-2)
     ax.set_ylabel(r"$RR_{\mathrm{TALYS}} / RR_{\mathrm{RMC}}$", fontsize=AXIS_LABEL_FONTSIZE)
     ax.set_yscale("log")
     ax.tick_params(axis="both", which="major", labelsize=TICK_LABEL_FONTSIZE)
