@@ -50,7 +50,6 @@ nav:
     - Data & Inputs: data-inputs.md
     - Workflows: workflows.md
     - Configuration: configuration.md
-    - Development Integration: development-integration.md
     - Examples: examples.md
     - Documentation Deployment: deployment.md
     - API Reference:
