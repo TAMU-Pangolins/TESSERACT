@@ -11,12 +11,24 @@ Reads tesseract.in and runs any combination of:
 Rules:
   • [basics]  is mandatory.
   • Every other section is optional.
-  • If a section IS present  → its step is executed for all runs.
+  • If a section IS present  → its step is executed for all runs, and by
+      default OVERWRITES any existing output for that step.
   • If a section is ABSENT   → its outputs are assumed to already exist.
       The pipeline checks for those output files before proceeding and
       exits with a clear error if any are missing.
-  • All skip/resume decisions are file-existence checks — no interactive
-      prompts, safe for nohup / background execution.
+  • To instead preserve existing outputs for one or more active steps
+      (skip regenerating them, rather than overwrite), set
+          no_overwrite = resonance,ratesmc,integration,talys
+      in [basics] — a comma-separated subset of those four step names.
+      For each run where a no_overwrite step's expected output file is
+      found, that run is skipped; if it's missing, the file paths for
+      every such missing run across the whole step are collected and
+      reported together, then the pipeline exits with an error (it does
+      not fall back to generating them).
+  • All skip/resume/overwrite decisions are automatic (no interactive
+      prompts, safe for nohup / background execution): a bare file-existence
+      check for [resonance]/[integration]/[talys], and a check that the
+      existing output actually contains a valid rate table for [ratesmc].
   • [ratesmc] is the one exception: nothing downstream ([integration]/
       [talys]) reads RatesMC's own output, so if the RatesMC executable
       can't be resolved this step is skipped with a warning instead of
@@ -297,11 +309,14 @@ def compute_gamma(rxn, mean_i: float, mean_o: float):
 # Step 1 — [resonance]
 # ─────────────────────────────────────────────────────────────────────────────
 def step1_build_ratesmc(basics: dict, resonance: dict,
-                        run_idx: int = None) -> None:
+                        run_idx: int = None, no_overwrite: bool = False) -> None:
     """
-    Run build_ratesmc_input.py for each RUN_j.
-    Skips a run silently if its .in file already exists.
-    If run_idx is given, only process that single run.
+    Run build_ratesmc_input.py for each RUN_j, overwriting any existing
+    .in file. If run_idx is given, only process that single run.
+
+    If no_overwrite is True, existing .in files are preserved instead
+    (not regenerated); the pipeline exits with an error listing every
+    run whose .in file is missing, rather than generating it.
     """
     reaction   = basics['reaction']
     E_min      = basics.get('E_min_mev',  '0.1')
@@ -336,11 +351,18 @@ def step1_build_ratesmc(basics: dict, resonance: dict,
     print(f"[resonance] processing run(s): {list(run_range)}")
 
     n_skipped = 0
+    missing   = []
     for j in run_range:
         run_dir   = Path(output_dir) / reaction / f"RUN_{j}"
         output_in = run_dir / f"{reaction}.in"
 
-        if not output_in.exists():
+        if no_overwrite:
+            if output_in.exists():
+                n_skipped += 1
+            else:
+                missing.append(output_in)
+                continue
+        else:
             run_dir.mkdir(parents=True, exist_ok=True)
 
             cmd = [
@@ -402,17 +424,20 @@ def step1_build_ratesmc(basics: dict, resonance: dict,
             result = subprocess.run(cmd)
             if result.returncode != 0:
                 sys.exit(f"[resonance] build_ratesmc_input.py failed for RUN_{j}.")
-        else:
-            n_skipped += 1            # already done — no prompt, just skip
 
         # Merge this run's implicit-value JSON into the one consolidated
         # <reaction>_meta.json, whether it was just generated above or was
-        # already there from an earlier invocation.
+        # preserved from an earlier invocation (no_overwrite).
         _merge_stage_run_meta(reaction, output_dir, "resonance", j,
                                run_dir / f"{reaction}_meta.json")
 
+    if missing:
+        sys.exit(
+            "[resonance] no_overwrite is set, but these expected .in files were not found:\n"
+            + "\n".join(f"  {p}" for p in missing)
+        )
     if n_skipped:
-        print(f"[resonance] {n_skipped}/{runs} run(s) already existed — skipped.")
+        print(f"[resonance] {n_skipped}/{runs} run(s) preserved (no_overwrite) — not regenerated.")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -481,7 +506,7 @@ def _configure_ratesmc_diagnostic(path: Path, keep: bool):
 
 
 def step_run_ratesmc(basics: dict, resonance: dict, ratesmc: dict,
-                     run_idx: int = None) -> None:
+                     run_idx: int = None, no_overwrite: bool = False) -> None:
     """Run unmodified RatesMC in each run directory and validate its rate table.
 
     RatesMC reads RatesMC.in and writes RatesMC.out in its working directory.
@@ -490,6 +515,12 @@ def step_run_ratesmc(basics: dict, resonance: dict, ratesmc: dict,
     rate rows determine success. Invalid cached tables are recomputed, and any
     requested calculation that produces no valid rates fails the pipeline.
     An unresolved executable retains the existing optional-stage warning.
+
+    By default every run is (re)executed, overwriting any existing .out file.
+    If no_overwrite is True, a run whose .out file already has a valid rate
+    table is preserved instead (not re-run); the pipeline exits with an
+    error listing every run whose .out file is missing or invalid, rather
+    than running RatesMC for it.
     """
     reaction   = basics['reaction']
     output_dir = resonance.get('output_dir', 'outputs/')
@@ -527,6 +558,7 @@ def step_run_ratesmc(basics: dict, resonance: dict, ratesmc: dict,
 
     failed_runs = []
     n_skipped = 0
+    missing   = []
     for j in run_range:
         run_dir = Path(output_dir) / reaction / f"RUN_{j}"
         infile  = run_dir / f"{reaction}.in"
@@ -535,10 +567,13 @@ def step_run_ratesmc(basics: dict, resonance: dict, ratesmc: dict,
         if not infile.exists():
             sys.exit(f"[ratesmc] Missing [resonance] output for RUN_{j}: {infile}")
 
-        if count_valid_rate_rows(outfile) > 0:
-            n_skipped += 1
-            _merge_stage_data(reaction, output_dir, "ratesmc", j, ratesmc_common,
-                              {"status": "already had a valid .out file (not re-run)"})
+        if no_overwrite:
+            if count_valid_rate_rows(outfile) > 0:
+                n_skipped += 1
+                _merge_stage_data(reaction, output_dir, "ratesmc", j, ratesmc_common,
+                                  {"status": "already had a valid .out file (preserved, no_overwrite)"})
+            else:
+                missing.append(outfile)
             continue
 
         print(f"[ratesmc] RUN_{j} ...", flush=True)
@@ -590,8 +625,13 @@ def step_run_ratesmc(basics: dict, resonance: dict, ratesmc: dict,
             print(f"[ratesmc] WARNING: RatesMC reported issues for RUN_{j}; "
                   f"see {stdout_path}.", flush=True)
 
+    if missing:
+        sys.exit(
+            "[ratesmc] no_overwrite is set, but these expected .out files were not found:\n"
+            + "\n".join(f"  {p}" for p in missing)
+        )
     if n_skipped:
-        print(f"[ratesmc] {n_skipped}/{runs} run(s) already had a .out file — skipped.")
+        print(f"[ratesmc] {n_skipped}/{runs} run(s) preserved (no_overwrite) — not re-run.")
 
     if failed_runs:
         raise RuntimeError(f"RatesMC produced no valid rates for run(s): {failed_runs}")
@@ -601,16 +641,20 @@ def step_run_ratesmc(basics: dict, resonance: dict, ratesmc: dict,
 # Step 2 — [integration]
 # ─────────────────────────────────────────────────────────────────────────────
 def step2_generate_xs(basics: dict, resonance: dict, integration: dict, runs: int,
-                      run_idx: int = None) -> None:
+                      run_idx: int = None, no_overwrite: bool = False) -> None:
     """
-    Run generate_cross_sections_vectorized.py once per run index j = 0..runs-1.
-    If run_idx is given, only process that single run.
+    Run generate_cross_sections_vectorized.py once per run index j = 0..runs-1,
+    overwriting any existing unintegrated/integrated outputs. If run_idx is
+    given, only process that single run.
 
     Output filenames encode the run index via --tag:
       unintegrated : {reaction}_xs_unintegrated_parallel_{base_tag}_run{j}.txt
       integrated   : {target}_{proj}{ejec}_{residual}_integrated_xs_dE_{dE}_{base_tag}_run{j}.csv
 
-    Skips a (run, file) silently if the outputs already exist.
+    If no_overwrite is True, a run whose outputs (unintegrated file and
+    every integrated-dE file) all already exist is preserved instead (not
+    regenerated); the pipeline exits with an error listing every missing
+    file across every such run, rather than generating them.
     """
     reaction      = basics['reaction']
     E_min         = basics.get('E_min_mev', '0.1')
@@ -627,6 +671,7 @@ def step2_generate_xs(basics: dict, resonance: dict, integration: dict, runs: in
 
     run_range = [run_idx] if run_idx is not None else range(runs)
     n_skipped = 0
+    missing   = []
     for j in run_range:
         tag_j       = f"{base_tag}_run{j}"
         tag_clean_j = tag_j.lstrip('_')
@@ -638,8 +683,14 @@ def step2_generate_xs(basics: dict, resonance: dict, integration: dict, runs: in
             Path(int_output_dir) / f"{stem}_integrated_xs_dE_{dE}{tag_suffix}.csv"
             for dE in dE_lst
         ]
-        all_exist = unint.exists() and all(f.exists() for f in int_files)
-        if not all_exist:
+
+        if no_overwrite:
+            run_missing = [p for p in (unint, *int_files) if not p.exists()]
+            if run_missing:
+                missing.extend(run_missing)
+            else:
+                n_skipped += 1
+        else:
             cmd = [
                 _PYTHON, str(_SCRIPT_DIR / "generate_cross_sections_vectorized.py"),
                 "--reaction",               reaction,
@@ -653,19 +704,10 @@ def step2_generate_xs(basics: dict, resonance: dict, integration: dict, runs: in
                 "--output-dir",             int_output_dir,
                 "--unint-dir",              unint_dir,
             ]
-            # Skip sub-steps whose files already exist
-            if unint.exists():
-                cmd.append("--skip-unintegrated")
-            existing_int = [f for f in int_files if f.exists()]
-            if len(existing_int) == len(int_files):
-                cmd.append("--skip-integrated")
-
             print(f"[integration] run {j}/{runs-1} ...", flush=True)
             result = subprocess.run(cmd)
             if result.returncode != 0:
                 sys.exit(f"[integration] generate_cross_sections_vectorized.py failed for run {j}.")
-        else:
-            n_skipped += 1
 
         # generate_cross_sections_vectorized.py always writes its implicit-value
         # JSON next to the unintegrated file (even when both sub-steps above
@@ -673,19 +715,28 @@ def step2_generate_xs(basics: dict, resonance: dict, integration: dict, runs: in
         metadata_file = Path(str(unint).replace(".txt", "_metadata.json"))
         _merge_stage_run_meta(reaction, res_output_dir, "integration", j, metadata_file)
 
+    if missing:
+        sys.exit(
+            "[integration] no_overwrite is set, but these expected files were not found:\n"
+            + "\n".join(f"  {p}" for p in missing)
+        )
     if n_skipped:
-        print(f"[integration] {n_skipped}/{runs} run(s) already existed — skipped.")
+        print(f"[integration] {n_skipped}/{runs} run(s) preserved (no_overwrite) — not regenerated.")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Step 3 — [talys]
 # ─────────────────────────────────────────────────────────────────────────────
 def step3_talys_opt(talys: dict, exp_files: list, input_path: str,
-                    run_idx: int = None) -> None:
+                    run_idx: int = None, no_overwrite: bool = False) -> None:
     """
-    Invoke talys_opt_with_unc.py once for every file in *exp_files*.
-    Skips a file silently if its results .npz already exists.
-    If run_idx is given, only process files whose name contains _run{run_idx}.
+    Invoke talys_opt_with_unc.py once for every file in *exp_files*,
+    overwriting any existing results .npz. If run_idx is given, only
+    process files whose name contains _run{run_idx}.
+
+    If no_overwrite is True, a file whose results .npz already exists is
+    preserved instead (not re-fit); the pipeline exits with an error
+    listing every missing .npz, rather than fitting them.
 
     exp_files : list of Path — the integrated XS files to fit
     """
@@ -703,10 +754,15 @@ def step3_talys_opt(talys: dict, exp_files: list, input_path: str,
         )
 
     n_skipped = 0
+    missing   = []
     for exp_file in exp_files:
         npz = _talys_npz_path(exp_file, out_root=talys_out_dir)
-        if npz.exists():
-            n_skipped += 1
+
+        if no_overwrite:
+            if npz.exists():
+                n_skipped += 1
+            else:
+                missing.append(npz)
             continue
 
         print(f"[talys] Fitting {exp_file.name} ...", flush=True)
@@ -721,8 +777,13 @@ def step3_talys_opt(talys: dict, exp_files: list, input_path: str,
             # Log and continue — one failed fit should not abort the whole loop
             print(f"[talys] WARNING: optimisation failed for {exp_file.name}.", flush=True)
 
+    if missing:
+        sys.exit(
+            "[talys] no_overwrite is set, but these expected results .npz files were not found:\n"
+            + "\n".join(f"  {p}" for p in missing)
+        )
     if n_skipped:
-        print(f"[talys] {n_skipped}/{len(exp_files)} file(s) already had results — skipped.")
+        print(f"[talys] {n_skipped}/{len(exp_files)} file(s) preserved (no_overwrite) — not re-fit.")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -770,6 +831,20 @@ def main():
     integration = raw.get('integration', {})
     talys       = raw.get('talys',       {})
 
+    # ── no_overwrite: comma-separated subset of step names in [basics] ───────
+    # By default every active step overwrites its own existing outputs; a
+    # step named here instead preserves existing outputs (skip-if-exists,
+    # error if missing) for that step only.
+    _VALID_NO_OVERWRITE = {'resonance', 'ratesmc', 'integration', 'talys'}
+    no_overwrite_raw = basics.get('no_overwrite', '')
+    no_overwrite_stages = {s.strip().lower() for s in no_overwrite_raw.split(',') if s.strip()}
+    unknown = no_overwrite_stages - _VALID_NO_OVERWRITE
+    if unknown:
+        sys.exit(
+            f"[basics] no_overwrite names unknown step(s) {sorted(unknown)}; "
+            f"valid names are {sorted(_VALID_NO_OVERWRITE)}."
+        )
+
     # output_dir and runs are needed for path checks even when [resonance] absent
     output_dir = resonance.get('output_dir', 'outputs/')
     runs       = int(resonance.get('runs',   '1'))
@@ -804,7 +879,8 @@ def main():
     # ── Step 1: [resonance] ───────────────────────────────────────────────────
     if has_resonance:
         _banner("resonance", "start")
-        step1_build_ratesmc(basics, resonance, run_idx=run_idx)
+        step1_build_ratesmc(basics, resonance, run_idx=run_idx,
+                           no_overwrite='resonance' in no_overwrite_stages)
         _banner("resonance", "end")
     elif has_ratesmc or has_integration or has_talys:
         _check_resonance_outputs(reaction, output_dir, runs,
@@ -822,7 +898,8 @@ def main():
 
         def _ratesmc():
             try:
-                step_run_ratesmc(basics, resonance, ratesmc, run_idx=run_idx)
+                step_run_ratesmc(basics, resonance, ratesmc, run_idx=run_idx,
+                                no_overwrite='ratesmc' in no_overwrite_stages)
                 _banner("ratesmc", "end")
             except BaseException as exc:   # sys.exit() raises SystemExit
                 ratesmc_error.append(exc)
@@ -843,7 +920,8 @@ def main():
         if 'dE' not in integration:
             sys.exit("Missing 'dE' in [integration] section.")
         _banner("integration", "start")
-        step2_generate_xs(basics, resonance, integration, runs, run_idx=run_idx)
+        step2_generate_xs(basics, resonance, integration, runs, run_idx=run_idx,
+                         no_overwrite='integration' in no_overwrite_stages)
         _banner("integration", "end")
     elif has_talys:
         _check_integration_outputs(talys.get('exp_file', ''))
@@ -886,7 +964,8 @@ def main():
                 exp_files = [Path(exp_tmpl)]
 
         _banner("talys", "start")
-        step3_talys_opt(talys, exp_files, args.input, run_idx=run_idx)
+        step3_talys_opt(talys, exp_files, args.input, run_idx=run_idx,
+                       no_overwrite='talys' in no_overwrite_stages)
         _banner("talys", "end")
 
     if ratesmc_thread is not None:
