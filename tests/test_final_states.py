@@ -82,6 +82,16 @@ class FinalStatesTest(unittest.TestCase):
         far = FinalStateModel("particle", 13, 25, [Level(9.0, 0.5, 1, True)], Continuum(np.zeros(0), J, np.zeros((0, 3)), np.zeros((0, 3))),
                               S_proj=9.166, S_exit=5.514, pen=lambda l: P[l], gamma2_mean_eV=100.0)
         self.assertEqual(far.exit_width(1.0, 2.0, 1, rng).Gamma_eV, 0.0)
+        # unitarity limit: every final state's mean is capped at T D / (2 pi)
+        D_eV, T = 1.0, 0.5
+        cap = T * D_eV / (2.0 * np.pi)
+        capped = [m.exit_width(1.0, 2.0, 1, rng, D_eV=D_eV, unitarity_limit=T).Gamma_eV
+                  for _ in range(20000)]
+        expect_capped = min(2 * 100.0 * 1e-2, cap) + min(2 * 100.0 * 1e-4, cap) + 4 * min(2 * 100.0 * 1e-2, cap)
+        self.assertAlmostEqual(np.mean(capped) / expect_capped, 1.0, delta=0.03)
+        # a spacing so wide that nothing reaches the cap leaves the widths unchanged
+        same = [m.exit_width(1.0, 2.0, 1, np.random.default_rng(7), D_eV=1e12, unitarity_limit=T).Gamma_eV]
+        self.assertEqual(same, [m.exit_width(1.0, 2.0, 1, np.random.default_rng(7)).Gamma_eV])
 
 
 class FinalStateContinuumTest(unittest.TestCase):

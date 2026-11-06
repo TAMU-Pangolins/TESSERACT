@@ -378,6 +378,7 @@ def step1_build_ratesmc(basics: dict, resonance: dict,
                 cmd.append("--hfb-corrections")
             for key, flag in (('Gamma_i_dof', '--Gamma-i-dof'),
                               ('Gamma_o_dof', '--Gamma-o-dof'),
+                              ('unitarity_limit', '--unitarity-limit'),
                               ('exit_width_model', '--exit-width-model'),
                               ('levels_dir', '--levels-dir'),
                               ('continuum_dU', '--continuum-dU'),

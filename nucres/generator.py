@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 
@@ -153,6 +153,9 @@ class GeneratedSpectrum:
     metadata : dict
         Auxiliary scalar information such as expected level count, sample size,
         widths, and masses used by downstream consumers.
+    channel_rho : dict or None
+        Level density (levels/MeV) on `rho_energy_MeV` of each sampled
+        (J, parity) sequence, for spacings D_Jpi = 1/rho_Jpi.
     """
 
     energy_MeV: np.ndarray
@@ -161,6 +164,7 @@ class GeneratedSpectrum:
     rho_energy_MeV: np.ndarray
     rho_levels_per_MeV: np.ndarray
     metadata: Dict[str, Any]
+    channel_rho: Optional[Dict[Tuple[float, int], np.ndarray]] = None
 
     @property
     def energy_eV(self) -> np.ndarray:
@@ -609,4 +613,5 @@ def synthesize_sigma_from_hfb(config: HFBSamplerConfig) -> GeneratedSpectrum:
         rho_energy_MeV=E_mev,
         rho_levels_per_MeV=rho_per_mev,
         metadata=metadata,
+        channel_rho={ch: rho_matrix[:, c] for c, ch in enumerate(channels)},
     )

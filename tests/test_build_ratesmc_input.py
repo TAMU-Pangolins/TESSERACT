@@ -246,6 +246,35 @@ class BuildRatesMCInputTest(unittest.TestCase):
         self.assertAlmostEqual(converted.Gamma_i, 2.0 * resonance.Gamma_i * p1)
         self.assertAlmostEqual(converted.Gamma_o, 2.0 * resonance.Gamma_o * p2)
 
+    def test_unitarity_limit_scales_the_mean_only_above_the_cap(self):
+        import numpy as np
+
+        metadata = _parse_template_metadata(TEMPLATE_TEXT.splitlines())
+        resonance = Resonance(E_r=1.0e6, J=1.0, s1=0.0, s2=0.0, m1=1.0, m2=1.0,
+                              Gamma_i=2.5, Gamma_o=4.0, L1=0, L2=1)
+        p1 = penetrability_P_l_mev(0, 2, 12, 4, 22, 1.0)
+        mean_i = 1.0e3
+
+        def convert(D_eV):
+            return _convert_reduced_to_partial_widths(
+                [resonance], metadata, l1_default=0, l2_default=1, convert_exit=False,
+                unitarity_limit=1.0, spacing_eV=lambda res: D_eV, gamma_i_mean_eV=mean_i)[0]
+
+        # Wide spacing: transmission 4 pi P <gamma^2> / D stays below 1, width unchanged.
+        D_wide = 100.0 * 4.0 * np.pi * p1 * mean_i
+        self.assertAlmostEqual(convert(D_wide).Gamma_i, 2.0 * resonance.Gamma_i * p1)
+        # Dense levels: the mean is scaled so the transmission is exactly the limit,
+        # and the sampled width keeps its ratio to the mean.
+        D_dense = 0.01 * 4.0 * np.pi * p1 * mean_i
+        scaled = convert(D_dense)
+        self.assertAlmostEqual(scaled.Gamma_i, 2.0 * resonance.Gamma_i * p1 * 0.01)
+        mean_gamma = 2.0 * mean_i * p1 * 0.01
+        self.assertAlmostEqual(2.0 * np.pi * mean_gamma / D_dense, 1.0)
+        # No limit: identical to the plain conversion.
+        plain = _convert_reduced_to_partial_widths(
+            [resonance], metadata, l1_default=0, l2_default=1, convert_exit=False)[0]
+        self.assertAlmostEqual(plain.Gamma_i, 2.0 * resonance.Gamma_i * p1)
+
 
 class ClearUpperLimitsTest(unittest.TestCase):
     def test_single_section_is_cleared(self):

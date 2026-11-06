@@ -7,6 +7,8 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import List, Optional, Tuple
 
+import numpy as np
+
 from nucres.generator import HFBSamplerConfig, synthesize_sigma_from_hfb
 from nucres.physics import MASS_PROTON
 from nucres.ratesmc_export import (
@@ -561,13 +563,36 @@ def _convert_reduced_to_partial_widths(
     Q_mev: float = 0.0,
     Exf_mev: float = 0.0,
     convert_exit: Optional[bool] = None,
+    unitarity_limit: Optional[float] = None,
+    spacing_eV=None,
+    gamma_i_mean_eV: Optional[float] = None,
+    gamma_o_mean_eV: Optional[float] = None,
 ):
+    """
+    Partial widths Gamma = 2 gamma^2 P_l(E) from the sampled reduced widths.
+
+    With `unitarity_limit` T, the mean reduced width of a channel is scaled
+    down where the input mean would give a transmission 2 pi <Gamma> / D above
+    T: <gamma^2> -> min(<gamma^2>, T D / (4 pi P_l)), D being the spacing of the
+    resonance's own J^pi sequence (`spacing_eV(res)`). Each sampled width is
+    scaled by the same factor, so its Porter-Thomas fluctuation is kept. At low
+    energies (small P_l, large D) the input mean is used unchanged.
+    """
     projectile = (metadata.proj_Z, _mass_number_from_token(metadata.proj_A_token))
     target = (metadata.Z, _mass_number_from_token(metadata.targ_A_token))
     _, ejectile, residual = _parse_reaction_channels(metadata.reaction)
     if convert_exit is None:
         convert_exit = _reaction_exit_symbol(metadata.reaction) in _PARTICLE_EXIT_CHANNELS
+    def unitarity_factor(P, mean_eV, res):
+        if not (unitarity_limit and spacing_eV is not None and mean_eV and P > 0.0):
+            return 1.0
+        D = spacing_eV(res)
+        if not np.isfinite(D):
+            return 1.0
+        return min(1.0, unitarity_limit * D / (4.0 * np.pi * P * mean_eV))
+
     converted = []
+    n_scaled_in = n_scaled_out = 0
     for res in resonances:
         er_mev = max(res.E_r, 0.0) * 1e-6
         g1 = res.Gamma_i
@@ -579,17 +604,39 @@ def _convert_reduced_to_partial_widths(
         zt, at = target
         if None not in (z1, a1, zt, at):
             p1 = penetrability_P_l_mev(l1, z1, zt, a1, at, er_mev, r0)
-            g1 = 2.0 * g1 * p1
+            f1 = unitarity_factor(p1, gamma_i_mean_eV, res)
+            n_scaled_in += f1 < 1.0
+            g1 = 2.0 * g1 * p1 * f1
 
         z2, a2 = ejectile
         zr, ar = residual
         if convert_exit and None not in (z2, a2, zr, ar):
             e2_mev = max(er_mev + Q_mev - Exf_mev, 0.0)
             p2 = penetrability_P_l_mev(l2, z2, zr, a2, ar, e2_mev, r0)
-            g2 = 2.0 * g2 * p2
+            f2 = unitarity_factor(p2, gamma_o_mean_eV, res)
+            n_scaled_out += f2 < 1.0
+            g2 = 2.0 * g2 * p2 * f2
 
         converted.append(replace(res, Gamma_i=g1, Gamma_o=g2))
+    if unitarity_limit:
+        print(f"Unitarity limit T <= {unitarity_limit:g}: scaled the mean reduced width of "
+              f"{n_scaled_in} of {len(converted)} entrance channels"
+              + (f" and {n_scaled_out} exit channels." if convert_exit else "."))
     return converted
+
+
+def _spacing_lookup(generated):
+    """Callable res -> D (eV) of the resonance's own J^pi sequence at E_r (inf if unknown)."""
+    E_grid = generated.rho_energy_MeV
+    channel_rho = generated.channel_rho or {}
+
+    def spacing_eV(res) -> float:
+        rho = channel_rho.get((float(res.J), int(res.parity or 1)))
+        if rho is None:
+            return float("inf")
+        r = float(np.interp(res.E_r * 1e-6, E_grid, rho))
+        return 1e6 / r if r > 0.0 else float("inf")
+    return spacing_eV
 
 
 def _parse_template_metadata(lines: List[str]) -> TemplateMetadata:
@@ -831,15 +878,20 @@ def build_ratesmc_input(args) -> None:
     print(f"Q-value: {Q_mev*1e3:.2f} keV  (S_proj={S_proj}, S_exit={S_exit})")
 
     resonances = generated.resonances
+    unitarity_limit = getattr(args, "unitarity_limit", None)
+    if unitarity_limit is not None and not unitarity_limit > 0.0:
+        raise ValueError("--unitarity-limit must be positive.")
     n_closed = 0
     if summed:
         import numpy as np
         model = _final_state_model(metadata, args, exit_settings,
                                    (Z_val, A_val), template_path)
         rng = np.random.default_rng(None if args.seed is None else [int(args.seed), 1])
+        spacing = _spacing_lookup(generated) if unitarity_limit else None
         summed_res = []
         for res in resonances:
-            ew = model.exit_width(res.E_r * 1e-6, res.J, res.parity or 1, rng)
+            cap = dict(D_eV=spacing(res), unitarity_limit=unitarity_limit) if spacing else {}
+            ew = model.exit_width(res.E_r * 1e-6, res.J, res.parity or 1, rng, **cap)
             if ew.Gamma_eV <= 0.0:
                 n_closed += 1   # no open final state: contributes nothing
                 continue
@@ -857,6 +909,10 @@ def build_ratesmc_input(args) -> None:
         Q_mev=Q_mev,
         Exf_mev=args.exf_kev * 1e-3,
         convert_exit=False if summed else None,
+        unitarity_limit=unitarity_limit,
+        spacing_eV=_spacing_lookup(generated) if unitarity_limit else None,
+        gamma_i_mean_eV=float(args.Gamma_i_mean_eV),
+        gamma_o_mean_eV=float(args.Gamma_o_mean_eV),
     )
     rows, widths = render_rows(export_resonances, opts)
     header_line = resonant_header_line(widths, opts)
@@ -903,6 +959,7 @@ def build_ratesmc_input(args) -> None:
         "reaction": reaction_line,
         "common": {
             "exit_width_model": "summed" if summed else "ground-state",
+            "unitarity_limit": unitarity_limit,
             "levels_dir": str(args.levels_dir) if getattr(args, "levels_dir", None) is not None else None,
             "continuum_dU": getattr(args, "continuum_dU", 0.1),
             "compound_nucleus": {
@@ -1060,6 +1117,13 @@ def parse_args() -> argparse.Namespace:
         choices=(0, 1),
         default=1,
         help="RatesMC integration flag (0 analytical, 1 numerical).",
+    )
+    p.add_argument(
+        '--unitarity-limit', type=float, default=None,
+        help='Cap the mean particle width of each channel so its transmission '
+             '2*pi*<Gamma>/D (D: spacing of the resonance J^pi sequence) is at most this '
+             'value; the input mean reduced width is kept where it is below the cap. '
+             'Default: no cap.',
     )
     p.add_argument(
         '--int-width-cutoff', type=float, default=None,

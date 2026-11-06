@@ -306,8 +306,16 @@ class FinalStateModel:
         m = np.where(E > 0.0, 2.0 * self.g2 * self.pen(l)(np.clip(E, 1e-9, None)), 0.0)
         return m, l
 
-    def exit_width(self, E_r: float, J: float, pi: int, rng) -> ExitWidth:
-        """Summed exit width of a resonance at E_r (MeV, CM) with J^pi."""
+    def exit_width(self, E_r: float, J: float, pi: int, rng, D_eV: Optional[float] = None,
+                   unitarity_limit: Optional[float] = None) -> ExitWidth:
+        """Summed exit width of a resonance at E_r (MeV, CM) with J^pi.
+
+        With `unitarity_limit` T and the resonance's level spacing `D_eV` (its
+        own J^pi sequence), each particle final state's mean width is capped at
+        T D / (2 pi), so its transmission 2 pi <Gamma_f> / D stays <= T.
+        """
+        cap = (unitarity_limit * D_eV / (2.0 * np.pi)
+               if (self.kind != "gamma" and unitarity_limit and D_eV and np.isfinite(D_eV)) else None)
         D = None
         if self.kind == "gamma":
             rho = level_density_Jpi(self.cn, self.cn_A, E_r + self.S_proj, J, pi)
@@ -318,6 +326,8 @@ class FinalStateModel:
             m, L = self._means(J, pi, lv.J, lv.parity, lv.E, E_r, D)
             if m is None or float(m) <= 0.0:
                 continue
+            if cap is not None:
+                m = np.minimum(m, cap)
             g = float(m) * rng.chisquare(1)
             total += g
             n_open += 1
@@ -333,6 +343,8 @@ class FinalStateModel:
                     m, L = self._means(J, pi, float(J_f), parity, c.U, E_r, D)
                     if m is None:
                         continue
+                    if cap is not None:
+                        m = np.minimum(m, cap)
                     ok = (m > 0.0) & (n > 1e-6)
                     if not np.any(ok):
                         continue
