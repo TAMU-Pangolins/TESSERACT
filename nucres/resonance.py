@@ -434,11 +434,83 @@ def _P_grid_cached(l, Z1, Z2, A1, A2, r0, Emin_mev, Emax_mev, npts):
     eta_grid = np.linspace(const / np.sqrt(Emax_mev), const / np.sqrt(Emin_mev), int(npts))
     Es = (const / eta_grid) ** 2
     logPs = np.array(
-        [log_penetrability_P_l_mev(l, Z1, Z2, A1, A2, float(e), r0)
+        [_log_penetrability_P_l_tabulated(l, Z1, Z2, A1, A2, float(e), r0)
          for e in Es],
         dtype=float,
     )
     return eta_grid, logPs, const
+
+
+# Below this rho/eta the tables use the large-eta Bessel form of the Coulomb
+# functions instead of mpmath: deep below the barrier (eta of hundreds to
+# thousands at keV-eV energies) mpmath's series take seconds to minutes per
+# point. The form is calibrated against mpmath at two points of this channel,
+# leaving an error of order (rho/eta)^3 (below 1e-7 in ln P).
+_LARGE_ETA_RHO_OVER_ETA = 2e-3
+
+
+def _log_penetrability_large_eta(l, eta, rho):
+    r"""
+    Leading large-`eta` form of \(\ln P_\ell\) at fixed \(\eta\rho\):
+    \(F_\ell = a\sqrt{2\eta\rho}\,I_{2\ell+1}(x)\) and
+    \(G_\ell = \sqrt{2\eta\rho}\,K_{2\ell+1}(x)/(a\eta)\), with
+    \(x = \sqrt{8\eta\rho}\) and \(a = C_\ell(\eta)(2\ell+1)!/(2\eta)^{\ell+1}\),
+    which gives \(F_\ell \to C_\ell\rho^{\ell+1}\) at small `rho` and the
+    Wronskian \(F'G - FG' = 1\). Its error is of order `rho/eta`.
+    """
+    from scipy.special import gammaln, ive, kve, loggamma
+
+    x = math.sqrt(8.0 * eta * rho)
+    nu = 2 * l + 1
+    ln_C = (l * math.log(2.0) - 0.5 * math.pi * eta
+            + float(np.real(loggamma(l + 1 + 1j * eta))) - gammaln(2 * l + 2))
+    ln_a = ln_C + gammaln(2 * l + 2) - (l + 1) * math.log(2.0 * eta)
+    half = 0.5 * math.log(2.0 * eta * rho)
+    ln_F = ln_a + half + math.log(ive(nu, x)) + x
+    ln_G = -ln_a - math.log(eta) + half + math.log(kve(nu, x)) - x
+    return math.log(rho) - (2.0 * ln_G + math.log1p(math.exp(2.0 * (ln_F - ln_G))))
+
+
+def _rho_eta_mev(Z1, Z2, A1, A2, E_mev, r0):
+    """(rho, eta) of a channel at E_mev, as in log_penetrability_P_l_mev."""
+    a_fm = channel_radius_fm(A1, A2, r0)
+    mu_amu = (A1 * A2) / (A1 + A2)
+    rho = 0.218735 * a_fm * (mu_amu * E_mev) ** 0.5
+    return rho, float(sommerfeld_eta_mev(Z1, Z2, A1, A2, E_mev))
+
+
+@lru_cache(maxsize=512)
+def _large_eta_correction(l, Z1, Z2, A1, A2, r0):
+    """
+    Coefficients (c1, c2) of ln P_exact - ln P_large_eta = c1 s + c2 s^2,
+    s = rho/eta, from mpmath at s = s_max and s_max/2. For one channel
+    eta*rho does not depend on the energy, so they hold at every lower energy.
+    """
+    s_per_mev = _rho_eta_mev(Z1, Z2, A1, A2, 1.0, r0)
+    s_per_mev = s_per_mev[0] / s_per_mev[1]   # rho/eta is proportional to E
+    points = []
+    for s in (_LARGE_ETA_RHO_OVER_ETA, 0.5 * _LARGE_ETA_RHO_OVER_ETA):
+        E = s / s_per_mev
+        rho, eta = _rho_eta_mev(Z1, Z2, A1, A2, E, r0)
+        diff = (log_penetrability_P_l_mev(l, Z1, Z2, A1, A2, E, r0)
+                - _log_penetrability_large_eta(l, eta, rho))
+        points.append((rho / eta, diff))
+    (s1, d1), (s2, d2) = points
+    c2 = (d1 / s1 - d2 / s2) / (s1 - s2)
+    c1 = d1 / s1 - c2 * s1
+    return c1, c2
+
+
+def _log_penetrability_P_l_tabulated(l, Z1, Z2, A1, A2, E_mev, r0=1.25):
+    """ln P_l for interpolation tables: mpmath, or the calibrated large-eta form deep below the barrier."""
+    if E_mev <= 0.0 or Z1 * Z2 == 0:
+        return log_penetrability_P_l_mev(l, Z1, Z2, A1, A2, E_mev, r0)
+    rho, eta = _rho_eta_mev(Z1, Z2, A1, A2, E_mev, r0)
+    s = rho / eta
+    if s >= _LARGE_ETA_RHO_OVER_ETA:
+        return log_penetrability_P_l_mev(l, Z1, Z2, A1, A2, E_mev, r0)
+    c1, c2 = _large_eta_correction(l, Z1, Z2, A1, A2, float(r0))
+    return _log_penetrability_large_eta(l, eta, rho) + c1 * s + c2 * s * s
 
 
 def make_penetrability_interp(

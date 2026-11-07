@@ -196,6 +196,27 @@ class PenetrabilityInterpolationTest(unittest.TestCase):
         P = make_penetrability_interp(0, 2, 12, 4, 22, Emin_mev=0.1, Emax_mev=10.0, npts=50)
         self.assertTrue(np.all(P(np.array([0.0, -1.0])) == 0.0))
 
+    def test_deep_sub_barrier_tabulation_matches_mpmath(self):
+        from nucres.resonance import (
+            _LARGE_ETA_RHO_OVER_ETA,
+            _log_penetrability_P_l_tabulated,
+            _rho_eta_mev,
+            log_penetrability_P_l_mev,
+        )
+
+        # p + 25Al and alpha + 22Mg at keV energies (eta ~ 40-500), where the
+        # tables use the calibrated large-eta Bessel form instead of mpmath.
+        for Z1, Z2, A1, A2 in ((1, 13, 1.008, 25), (2, 12, 4.0026, 22)):
+            for l in (0, 3, 8):
+                for E in (2e-4, 1e-3, 2.5e-3):
+                    rho, eta = _rho_eta_mev(Z1, Z2, A1, A2, E, 1.25)
+                    self.assertLess(rho / eta, _LARGE_ETA_RHO_OVER_ETA)
+                    self.assertAlmostEqual(
+                        _log_penetrability_P_l_tabulated(l, Z1, Z2, A1, A2, E),
+                        log_penetrability_P_l_mev(l, Z1, Z2, A1, A2, E),
+                        delta=1e-8,
+                    )
+
 
 class JWKBInterpolationTest(unittest.TestCase):
     def test_sub_barrier_interpolation_is_accurate(self):
