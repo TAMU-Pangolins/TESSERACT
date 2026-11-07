@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import re
 from dataclasses import dataclass, replace
 from pathlib import Path
@@ -625,6 +626,27 @@ def _convert_reduced_to_partial_widths(
     return converted
 
 
+def _exf_open_as_written(E_r_keV: float, Exf_keV: float, q_keV: float, opts) -> float:
+    """
+    Exf (keV) to write so that an exit channel open at E_r stays open in the
+    rounded row: E_r is written to `ecm_decimals` and Exf to `precision`
+    decimals, and a final state opening within that rounding of E_r would
+    otherwise read back as closed (exit energy E_r + Q - Exf <= 0), which the
+    cross-section integration rejects. Exf is lowered by at most one unit of
+    its last written decimal.
+    """
+    if E_r_keV + q_keV - Exf_keV <= 0.0:
+        return Exf_keV   # genuinely closed: leave it for the caller to report
+    E_r_written = round(E_r_keV, opts.ecm_decimals)
+    if E_r_written + q_keV - round(Exf_keV, opts.precision) > 0.0:
+        return Exf_keV
+    unit = 10.0 ** -opts.precision
+    exf = math.floor((E_r_written + q_keV) / unit) * unit
+    if E_r_written + q_keV - round(exf, opts.precision) <= 0.0:
+        exf -= unit
+    return max(exf, 0.0)
+
+
 def _spacing_lookup(generated):
     """Callable res -> D (eV) of the resonance's own J^pi sequence at E_r (inf if unknown)."""
     E_grid = generated.rho_energy_MeV
@@ -888,6 +910,12 @@ def build_ratesmc_input(args) -> None:
                                    (Z_val, A_val), template_path)
         rng = np.random.default_rng(None if args.seed is None else [int(args.seed), 1])
         spacing = _spacing_lookup(generated) if unitarity_limit else None
+        # Exit energy at E_r is E_r + exit_q - Exf, from the template's own
+        # separation energies (keV), as the cross-section integration reads them.
+        if exit_settings.get("exit_kind") == "gamma":
+            exit_q_keV = S_proj
+        else:
+            exit_q_keV = S_proj - S_exit if None not in (S_proj, S_exit) else None
         summed_res = []
         for res in resonances:
             cap = dict(D_eV=spacing(res), unitarity_limit=unitarity_limit) if spacing else {}
@@ -895,8 +923,10 @@ def build_ratesmc_input(args) -> None:
             if ew.Gamma_eV <= 0.0:
                 n_closed += 1   # no open final state: contributes nothing
                 continue
-            summed_res.append(replace(res, Gamma_o=ew.Gamma_eV, L2=ew.L,
-                                      Exf_keV=ew.Exf_MeV * 1e3))
+            exf_keV = ew.Exf_MeV * 1e3
+            if exit_q_keV is not None:
+                exf_keV = _exf_open_as_written(res.E_r * 1e-3, exf_keV, exit_q_keV, opts)
+            summed_res.append(replace(res, Gamma_o=ew.Gamma_eV, L2=ew.L, Exf_keV=exf_keV))
         resonances = summed_res
         if n_closed:
             print(f"Dropped {n_closed} resonances with no open final state.")

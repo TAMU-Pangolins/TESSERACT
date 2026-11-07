@@ -449,5 +449,44 @@ class ReactionTokenTest(unittest.TestCase):
         self.assertEqual((proj, ejec, res), ((2, 4), (1, 1), (15, 29)))
 
 
+class ExitOpenAsWrittenTest(unittest.TestCase):
+    """19F(a,n): a final state (22Na 4+, 890.8 keV) opening ~0.3 eV below E_r."""
+
+    Q_KEV = 10467.32427 - 12419.78058
+
+    def test_rounding_no_longer_closes_an_open_channel(self):
+        import numpy as np
+        from build_ratesmc_input import _exf_open_as_written
+        from nucres.ratesmc_export import RatesMCExportOptions
+        from nucres.resonance_sum import ReactionParams, ResonanceRow, ResonanceSum
+
+        opts = RatesMCExportOptions()
+        E_r_keV = 2843.2664
+        exf_true = E_r_keV + self.Q_KEV - 0.0001    # open by 0.1 eV
+        # Rounded as before, the row reads back with a negative exit energy.
+        self.assertLessEqual(round(E_r_keV, 3) + self.Q_KEV - round(exf_true, 3), 0.0)
+        exf = _exf_open_as_written(E_r_keV, exf_true, self.Q_KEV, opts)
+        self.assertLessEqual(abs(exf - exf_true), 10.0 ** -opts.precision)
+        E_r_w, exf_w = round(E_r_keV, opts.ecm_decimals), round(exf, opts.precision)
+        self.assertGreater(E_r_w + self.Q_KEV - exf_w, 0.0)
+
+        rx = ReactionParams(Z_proj=2, Z_targ=9, Z_exit=0, M_proj=4.003, M_targ=19.0, M_exit=1.009,
+                            J_proj=0.0, J_targ=0.5, S_proj_mev=10.46732427, S_exit_mev=12.41978058,
+                            R0_fm=1.25, gamma_channel=3)
+        row = ResonanceRow(E_r=E_r_w * 1e-3, J=4.5, G0=36.75, L0=4, G1=2476.0, L1=0, G2=0.0, L2=0,
+                           Exf=exf_w * 1e-3)
+        sigma = ResonanceSum(rx, [row], 2.5, 3.2).sigma(np.array([2.8, 2.85, 3.0]))
+        self.assertTrue(np.all(np.isfinite(sigma)))
+
+    def test_open_and_closed_channels_are_left_alone(self):
+        from build_ratesmc_input import _exf_open_as_written
+        from nucres.ratesmc_export import RatesMCExportOptions
+
+        opts = RatesMCExportOptions()
+        self.assertEqual(_exf_open_as_written(2843.2664, 500.0, self.Q_KEV, opts), 500.0)
+        closed = 2843.2664 + self.Q_KEV + 0.5
+        self.assertEqual(_exf_open_as_written(2843.2664, closed, self.Q_KEV, opts), closed)
+
+
 if __name__ == "__main__":
     unittest.main()
