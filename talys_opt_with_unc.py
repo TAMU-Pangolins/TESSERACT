@@ -50,6 +50,7 @@ _SCRIPT_KEYS = frozenset({
     'debug_every', 'exp_file', 'output_file', 'rates_mc_file',
     'rate_xmin', 'rate_xmax', 'plot_log_y_xs', 'plot_log_y_rate',
     'talys_output_dir', 'exp_energy_frame', 'talys_xs_file', 'talys_points_per_bin', 'exp_bin_width',
+    'talys_grid_step',
     # least_squares-only settings
     'gtol', 'lsq_diff_step', 'lsq_workers',
 })
@@ -529,6 +530,91 @@ def talys_bin_average(y_sub: np.ndarray, weights: np.ndarray) -> np.ndarray:
     return np.asarray(y_sub, dtype=float).reshape(-1, len(weights)) @ weights
 
 
+def talys_fixed_grid(nodes: np.ndarray, step: float) -> np.ndarray:
+    """
+    Uniform energies from the lowest to the highest bin quadrature node,
+    spaced at most `step` MeV apart (talys_grid_step). TALYS runs here once
+    per evaluation, whatever the data bin width.
+    """
+    lo, hi = float(np.min(nodes)), float(np.max(nodes))
+    n = max(int(np.ceil((hi - lo) / float(step) - 1e-9)), 1)
+    return np.linspace(lo, hi, n + 1)
+
+
+def interp_cross_section(E_grid: np.ndarray, y_grid: np.ndarray, E: np.ndarray) -> np.ndarray:
+    """
+    TALYS cross section interpolated from E_grid to E (MeV, E > 0).
+
+    ln(sigma) is interpolated linearly in E^-1/2: below the Coulomb barrier
+    sigma ~ exp(-2 pi eta)/E with eta proportional to E^-1/2, so this removes
+    the dominant curvature that linear interpolation in E would miss on a
+    coarse grid. Where a neighbouring value is zero (below a threshold),
+    sigma itself is interpolated linearly instead.
+    """
+    Eg = np.asarray(E_grid, dtype=float)
+    yg = np.asarray(y_grid, dtype=float)
+    E = np.asarray(E, dtype=float)
+    i = np.clip(np.searchsorted(Eg, E, side="right") - 1, 0, len(Eg) - 2)
+    u0, u1 = Eg[i] ** -0.5, Eg[i + 1] ** -0.5
+    t = (E ** -0.5 - u0) / (u1 - u0)
+    y0, y1 = yg[i], yg[i + 1]
+    positive = (y0 > 0.0) & (y1 > 0.0)
+    l0 = np.log(np.where(positive, y0, 1.0))
+    l1 = np.log(np.where(positive, y1, 1.0))
+    return np.where(positive, np.exp(l0 + t * (l1 - l0)), np.maximum(y0 + t * (y1 - y0), 0.0))
+
+
+def configure_talys_energies(cfg: dict, x_centres: np.ndarray, width: float,
+                             n_per_bin: int, grid_step: Optional[float] = None) -> str:
+    """
+    Choose where TALYS runs and how it is averaged over the data bins.
+
+    Without grid_step, TALYS runs at n_per_bin Gauss-Legendre energies in
+    every bin (bin centres for n_per_bin = 1). With grid_step (MeV), it runs
+    once on a fixed grid of that spacing and is interpolated to the same
+    per-bin nodes, so the cost of an evaluation no longer grows as the bins
+    get narrower. Sets the cfg entries read by write_talys_files and
+    talys_to_bins; returns a description for the log.
+    """
+    if grid_step:
+        nodes, weights = talys_bin_grid(x_centres, width, n_per_bin)
+        cfg['_talys_grid'] = talys_fixed_grid(nodes, grid_step)
+        cfg['_talys_E_cm'] = cfg['_talys_grid']
+        cfg['_bin_nodes'] = nodes
+        cfg['_bin_weights'] = weights
+        return (f"on a fixed {grid_step:g} MeV grid ({len(cfg['_talys_grid'])} energies), "
+                f"averaged over {n_per_bin} point(s) per bin")
+    if n_per_bin > 1:
+        nodes, weights = talys_bin_grid(x_centres, width, n_per_bin)
+        cfg['_talys_E_cm'] = nodes
+        cfg['_bin_weights'] = weights
+    return f"at {n_per_bin} point(s) per bin"
+
+
+def talys_to_bins(y_t: np.ndarray, cfg: dict, n_bins: int) -> Optional[np.ndarray]:
+    """
+    Bin averages of raw TALYS cross sections, or None if TALYS returned a
+    different number of energies than it was given.
+
+    Three layouts, set up in main():
+      fixed grid  (cfg['_talys_grid']): interpolate to each bin's quadrature
+                  nodes (cfg['_bin_nodes']), then average with cfg['_bin_weights'];
+      per bin     (cfg['_bin_weights'] only): TALYS ran at the nodes; average;
+      bin centres (neither): compare TALYS to the data directly.
+    """
+    y_t = np.asarray(y_t, dtype=float)
+    weights = cfg.get('_bin_weights')
+    grid = cfg.get('_talys_grid')
+    if grid is not None:
+        if len(y_t) != len(grid):
+            return None
+        return talys_bin_average(interp_cross_section(grid, y_t, cfg['_bin_nodes']), weights)
+    n_sub = 1 if weights is None else len(weights)
+    if len(y_t) != n_bins * n_sub:
+        return None
+    return y_t if weights is None else talys_bin_average(y_t, weights)
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Checkpoints: one checkpoint.json per run directory, one entry per fit
 # ─────────────────────────────────────────────────────────────────────────────
@@ -649,10 +735,9 @@ def make_objective(cfg: dict, x_exp: np.ndarray, y_exp: np.ndarray,
         rel = np.asarray(y_err, dtype=float) / np.asarray(y_exp, dtype=float)
     sigma_ln = np.where(np.isfinite(rel) & (rel > 0.0), rel, EXP_REL_ERR)[mask]
 
-    # TALYS is run at cfg['_talys_E_cm'] (several points per bin) and
-    # averaged over each bin with cfg['_bin_weights']; without them, TALYS
-    # is compared at the bin centres directly (the previous behaviour).
-    bin_weights = cfg.get('_bin_weights')
+    # TALYS is run at cfg['_talys_E_cm'] (several points per bin, or a fixed
+    # grid) and averaged over each bin by talys_to_bins; without bin weights,
+    # TALYS is compared at the bin centres directly (the previous behaviour).
 
     # Prior width per parameter (None → no prior term)
     prior_sigma = (PRIOR_STD * np.maximum(np.abs(X0), PRIOR_FLOOR)
@@ -716,12 +801,9 @@ def make_objective(cfg: dict, x_exp: np.ndarray, y_exp: np.ndarray,
         out = run_talys_get_xs(params, cfg)
         if out is None:
             return None, BIG
-        _, y_t = out
-        n_sub = 1 if bin_weights is None else len(bin_weights)
-        if len(y_t) != len(y_exp) * n_sub:
+        y_t = talys_to_bins(out[1], cfg, len(y_exp))
+        if y_t is None:
             return None, BIG
-        if bin_weights is not None:
-            y_t = talys_bin_average(y_t, bin_weights)
 
         residual_vector, total, parts = _residual_statistics(params, y_t)
         chi2, chi2_red, prior = parts['chi2'], parts['chi2_red'], parts['prior']
@@ -769,12 +851,9 @@ def make_objective(cfg: dict, x_exp: np.ndarray, y_exp: np.ndarray,
         grid. A mismatched sample count raises ValueError. No native run or
         best-trial state update is performed.
         """
-        values = np.asarray(model_cross_sections, dtype=float)
-        points_per_bin = 1 if bin_weights is None else len(bin_weights)
-        if values.size != len(y_exp) * points_per_bin:
+        values = talys_to_bins(model_cross_sections, cfg, len(y_exp))
+        if values is None:
             raise ValueError('TALYS output does not match the experimental bin grid')
-        if bin_weights is not None:
-            values = talys_bin_average(values, bin_weights)
         return _residual_statistics(np.asarray(params, dtype=float), values)[2]
 
     objective.statistics = statistics
@@ -1059,7 +1138,9 @@ def write_optimization_output(
                      f"(chi2 = {info['chi2']:.6g}, prior = {info['prior']:.6g}, dof = {info['dof']})\n")
         if all(key in info for key in ['e_fit_min', 'talys_points_per_bin', 'bin_width']):
             window = _fit_window_text(info['e_fit_min'], info.get('e_fit_max', np.inf))
-            lines.append(f"Fit window  : {window}; TALYS averaged over "
+            grid = (f"; TALYS on a fixed {info['talys_grid_step']:g} MeV grid"
+                    if info.get('talys_grid_step') else "")
+            lines.append(f"Fit window  : {window}{grid}; TALYS averaged over "
                          f"{info['talys_points_per_bin']} point(s) per {info['bin_width']:g} MeV bin\n")
     lines.append("-" * 72 + "\n")
     lines.append("Optimized parameters:\n")
@@ -1396,12 +1477,10 @@ def main():
     # exactly the effect a bin-width study is trying to measure.
     N_PER_BIN = int(script.get('talys_points_per_bin', '3'))
     BIN_WIDTH = exp_bin_width(exp_file, x_exp, script)
-    if N_PER_BIN > 1:
-        E_sub, w_sub = talys_bin_grid(x_exp, BIN_WIDTH, N_PER_BIN)
-        cfg['_talys_E_cm'] = E_sub
-        cfg['_bin_weights'] = w_sub
-    print(f"[talys_opt] data bins: width {BIN_WIDTH:g} MeV; TALYS at {N_PER_BIN} "
-          f"point(s) per bin; fit window {_fit_window_text(E_FIT_MIN, E_FIT_MAX)}")
+    GRID_STEP = float(script['talys_grid_step']) if script.get('talys_grid_step') else None
+    talys_where = configure_talys_energies(cfg, x_exp, BIN_WIDTH, N_PER_BIN, GRID_STEP)
+    print(f"[talys_opt] data bins: width {BIN_WIDTH:g} MeV; TALYS {talys_where}; "
+          f"fit window {_fit_window_text(E_FIT_MIN, E_FIT_MAX)}")
 
     # ── Debug mode: one verbose TALYS call at x0, then exit ──────────────────
     if args.debug_talys:
@@ -1494,10 +1573,9 @@ def main():
     fit_info = obj.statistics(params_best, y_t)
     fit_info.update(optimizer_objective=float(res.fun), e_fit_min=E_FIT_MIN, e_fit_max=E_FIT_MAX,
                     talys_points_per_bin=N_PER_BIN, bin_width=BIN_WIDTH)
-    if cfg.get('_bin_weights') is not None:
-        y_bin = talys_bin_average(y_t, cfg['_bin_weights'])
-    else:
-        y_bin = np.asarray(y_t, dtype=float)
+    if GRID_STEP:
+        fit_info.update(talys_grid_step=GRID_STEP)
+    y_bin = talys_to_bins(y_t, cfg, len(y_exp))
     print(f"Objective chi2 + prior = {fit_info['objective']:.6g} "
           f"(chi2 = {fit_info['chi2']:.6g}, prior = {fit_info['prior']:.6g})")
     print(f"Min reduced chi-square = {fit_info['chi2_red']:.6g} (dof = {fit_info['dof']})")
