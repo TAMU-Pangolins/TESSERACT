@@ -46,7 +46,7 @@ from nucres.read_qvals import atomic_mass_u
 # ─────────────────────────────────────────────────────────────────────────────
 _SCRIPT_KEYS = frozenset({
     'method', 'maxiter', 'xtol', 'ftol', 'xatol', 'fatol',
-    'exp_rel_err', 'e_fit_min', 'prior_rel_std', 'prior_abs_floor',
+    'exp_rel_err', 'e_fit_min', 'e_fit_max', 'prior_rel_std', 'prior_abs_floor',
     'debug_every', 'exp_file', 'output_file', 'rates_mc_file',
     'rate_xmin', 'rate_xmax', 'plot_log_y_xs', 'plot_log_y_rate',
     'talys_output_dir', 'exp_energy_frame', 'talys_xs_file', 'talys_points_per_bin', 'exp_bin_width',
@@ -886,11 +886,18 @@ def run_least_squares(obj, x0: np.ndarray, cfg: dict):
     )
 
 
+def _fit_window_text(e_min: float, e_max: float = np.inf) -> str:
+    """'E >= a MeV' or 'a <= E <= b MeV' for logs and summaries."""
+    if e_max is None or not np.isfinite(e_max):
+        return f"E >= {e_min} MeV"
+    return f"{e_min} <= E <= {e_max} MeV"
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Plotting
 # ─────────────────────────────────────────────────────────────────────────────
 def plot_best_fit_xs(cfg, x_exp, y_exp, x_t, y_t, params_best, y_err=None, out_dir=".",
-                     y_bin=None, e_fit_min=None):
+                     y_bin=None, e_fit_min=None, e_fit_max=None):
     script      = cfg['script']
     EXP_REL_ERR = float(script.get('exp_rel_err', '0.10'))
     log_y       = script.get('plot_log_y_xs', 'true').lower() == 'true'
@@ -911,6 +918,9 @@ def plot_best_fit_xs(cfg, x_exp, y_exp, x_t, y_t, params_best, y_err=None, out_d
     if e_fit_min is not None:
         plt.axvline(e_fit_min, color='grey', linestyle=':', linewidth=1,
                     label=f'Fit window E >= {e_fit_min:g} MeV')
+    if e_fit_max is not None and np.isfinite(e_fit_max):
+        plt.axvline(e_fit_max, color='grey', linestyle=':', linewidth=1,
+                    label=f'Fit window E <= {e_fit_max:g} MeV')
     plt.xlabel("Energy [MeV]")
     plt.ylabel("Cross section [mb]")
     if log_y:
@@ -1048,7 +1058,8 @@ def write_optimization_output(
         lines.append(f"Objective   : chi2 + prior = {objective_value:.6g} "
                      f"(chi2 = {info['chi2']:.6g}, prior = {info['prior']:.6g}, dof = {info['dof']})\n")
         if all(key in info for key in ['e_fit_min', 'talys_points_per_bin', 'bin_width']):
-            lines.append(f"Fit window  : E >= {info['e_fit_min']} MeV; TALYS averaged over "
+            window = _fit_window_text(info['e_fit_min'], info.get('e_fit_max', np.inf))
+            lines.append(f"Fit window  : {window}; TALYS averaged over "
                          f"{info['talys_points_per_bin']} point(s) per {info['bin_width']:g} MeV bin\n")
     lines.append("-" * 72 + "\n")
     lines.append("Optimized parameters:\n")
@@ -1107,7 +1118,8 @@ def replot(npz_path: str, tesseract_path: str = "tesseract.in",
     plot_best_fit_xs(cfg, x_exp_, y_exp_, x_xs, y_xs, params_best, y_err=y_err_,
                      out_dir=out_dir,
                      y_bin=d['y_xs_binned'] if 'y_xs_binned' in d else None,
-                     e_fit_min=float(d['e_fit_min']) if 'e_fit_min' in d else None)
+                     e_fit_min=float(d['e_fit_min']) if 'e_fit_min' in d else None,
+                     e_fit_max=float(d['e_fit_max']) if 'e_fit_max' in d else None)
 
     rmc = ratesmc_path or cfg['script'].get('rates_mc_file', 'RatesMC.out')
     plot_reaction_rate(cfg, x_rate, y_rate, ratesmc_xy=read_ratesmc_file(rmc),
@@ -1364,7 +1376,10 @@ def main():
     EXP_REL_ERR = float(script.get('exp_rel_err', '0.10'))
     y_err       = (exp_table[:, 2] if exp_table.shape[1] >= 3 else EXP_REL_ERR * y_exp)
     E_FIT_MIN   = float(script.get('e_fit_min', '2.0'))
-    mask        = (y_exp > 1e-10) & (x_exp >= E_FIT_MIN)
+    # Optional upper edge, e.g. to leave out energies where the sampled
+    # resonance cross section is not physical (overlapping resonances).
+    E_FIT_MAX   = float(script['e_fit_max']) if script.get('e_fit_max') else np.inf
+    mask        = (y_exp > 1e-10) & (x_exp >= E_FIT_MIN) & (x_exp <= E_FIT_MAX)
 
     if np.any(~np.isfinite(y_exp)):
         raise ValueError("Experimental y contains non-finite values.")
@@ -1386,7 +1401,7 @@ def main():
         cfg['_talys_E_cm'] = E_sub
         cfg['_bin_weights'] = w_sub
     print(f"[talys_opt] data bins: width {BIN_WIDTH:g} MeV; TALYS at {N_PER_BIN} "
-          f"point(s) per bin; fit window E >= {E_FIT_MIN} MeV")
+          f"point(s) per bin; fit window {_fit_window_text(E_FIT_MIN, E_FIT_MAX)}")
 
     # ── Debug mode: one verbose TALYS call at x0, then exit ──────────────────
     if args.debug_talys:
@@ -1477,7 +1492,7 @@ def main():
     # At a finite evaluation limit, a trial probe can differ from the returned
     # parameters. Associate diagnostics with the parameters and curve we save.
     fit_info = obj.statistics(params_best, y_t)
-    fit_info.update(optimizer_objective=float(res.fun), e_fit_min=E_FIT_MIN,
+    fit_info.update(optimizer_objective=float(res.fun), e_fit_min=E_FIT_MIN, e_fit_max=E_FIT_MAX,
                     talys_points_per_bin=N_PER_BIN, bin_width=BIN_WIDTH)
     if cfg.get('_bin_weights') is not None:
         y_bin = talys_bin_average(y_t, cfg['_bin_weights'])
@@ -1487,7 +1502,7 @@ def main():
           f"(chi2 = {fit_info['chi2']:.6g}, prior = {fit_info['prior']:.6g})")
     print(f"Min reduced chi-square = {fit_info['chi2_red']:.6g} (dof = {fit_info['dof']})")
     plot_best_fit_xs(cfg, x_exp, y_exp, x_t, y_t, params_best, y_err=y_err,
-                     out_dir=run_dir, y_bin=y_bin, e_fit_min=E_FIT_MIN)
+                     out_dir=run_dir, y_bin=y_bin, e_fit_min=E_FIT_MIN, e_fit_max=E_FIT_MAX)
 
     # ── Reaction rate at best fit ─────────────────────────────────────────────
     x_rate: np.ndarray = np.array([])

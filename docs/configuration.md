@@ -139,6 +139,7 @@ log-posterior up to a constant); chi^2/dof is reported and written as
 | `talys_points_per_bin` | `3` | Gauss-Legendre energies per bin at which TALYS runs; TALYS is averaged over the same bins as the data. `1` = bin centres. |
 | `exp_bin_width` | from the file | Bin width (MeV); else the `dE=` in the file header, the `_dE_<w>` in its name, or the median spacing. |
 | `e_fit_min` | `2.0` | Only bins with E >= e_fit_min (MeV) enter chi^2. |
+| `e_fit_max` | unset | Only bins with E <= e_fit_max (MeV) enter chi^2, e.g. to leave out energies where the sampled resonances overlap strongly. Unset: no upper limit. |
 | `exp_rel_err` | `0.10` | Relative uncertainty of points without one (the data file's third column, an absolute uncertainty, is used where present). |
 | `prior_rel_std` | `0.15` | Relative prior width; `0` disables the prior. |
 | `prior_abs_floor` | `0.01` | Floor on \|x0\| in the prior width. |

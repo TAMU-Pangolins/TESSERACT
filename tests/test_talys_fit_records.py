@@ -52,7 +52,7 @@ class TalysFitRecordTest(unittest.TestCase):
         energy = np.array([1.0, 2.0])
         predictions = np.array([3.0, 4.0])
         info = {'objective': 7.0, 'chi2': 6.0, 'prior': 1.0, 'chi2_red': 6.0,
-                'dof': 1, 'e_fit_min': 1.5, 'bin_width': 0.2, 'talys_points_per_bin': 3}
+                'dof': 1, 'e_fit_min': 1.5, 'e_fit_max': 6.0, 'bin_width': 0.2, 'talys_points_per_bin': 3}
         with tempfile.TemporaryDirectory() as directory:
             optimizer.save_results(configuration, energy, predictions, np.ones(2),
                                    energy, predictions, energy, predictions, np.array([1.0]),
@@ -69,3 +69,9 @@ class TalysFitRecordTest(unittest.TestCase):
                 optimizer.replot(str(path))
             np.testing.assert_array_equal(plot.call_args.kwargs['y_bin'], predictions)
             self.assertEqual(plot.call_args.kwargs['e_fit_min'], 1.5)
+            self.assertEqual(plot.call_args.kwargs['e_fit_max'], 6.0)
+
+    def test_fit_window_text(self):
+        self.assertEqual(optimizer._fit_window_text(2.0), "E >= 2.0 MeV")
+        self.assertEqual(optimizer._fit_window_text(2.0, float('inf')), "E >= 2.0 MeV")
+        self.assertEqual(optimizer._fit_window_text(1.0, 4.0), "1.0 <= E <= 4.0 MeV")
