@@ -45,6 +45,7 @@ import re
 import shutil
 import sys
 import subprocess
+import tempfile
 import threading
 from pathlib import Path
 
@@ -481,6 +482,19 @@ def _configure_ratesmc_diagnostic(path: Path, keep: bool):
     return backup
 
 
+def _copy_tail(src: Path, dst: Path, max_bytes: int = 200_000) -> None:
+    """Copy src to dst, keeping only its last max_bytes (console logs can reach 15 MB)."""
+    if not src.exists():
+        dst.write_text("")
+        return
+    size = src.stat().st_size
+    with open(src, "rb") as fin, open(dst, "wb") as fout:
+        if size > max_bytes:
+            fin.seek(size - max_bytes)
+            fout.write(f"[... first {size - max_bytes} bytes of RatesMC output omitted ...]\n".encode())
+        shutil.copyfileobj(fin, fout)
+
+
 def step_run_ratesmc(basics: dict, resonance: dict, ratesmc: dict,
                      run_idx: int = None) -> None:
     """Run unmodified RatesMC in each run directory and validate its rate table.
@@ -543,34 +557,47 @@ def step_run_ratesmc(basics: dict, resonance: dict, ratesmc: dict,
             continue
 
         print(f"[ratesmc] RUN_{j} ...", flush=True)
-        shutil.copyfile(infile, run_dir / "RatesMC.in")
-        for table in mass_tables or []:
-            link = run_dir / table.name
-            if link.is_symlink() and not link.exists():
-                link.unlink()
-            if not link.exists():
-                link.symlink_to(table)
         rates_out = run_dir / "RatesMC.out"
         if rates_out.exists():
             rates_out.unlink()      # never mistake a stale file for this run's output
-
-        # RatesMC writes these optional diagnostic streams even when no later
-        # stage reads them. Suppression avoids their storage and write traffic;
-        # the retention options preserve the ordinary native output behavior.
-        for filename, option in [('RatesMC.integ', 'keep_integrand'),
-                                 ('RatesMC.sfact', 'keep_sfactor')]:
-            backup = _configure_ratesmc_diagnostic(
-                run_dir / filename, ratesmc_common[option])
-            if backup is not None:
-                print(f'[ratesmc] Preserved previous diagnostic: {backup}', flush=True)
-
-        # RatesMC writes its own RatesMC.log, so keep console output separate.
         stdout_path = run_dir / "RatesMC.stdout"
-        with open(stdout_path, "w") as log:
-            result = subprocess.run(
-                [str(ratesmc_bin)],
-                cwd=run_dir, stdout=log, stderr=subprocess.STDOUT,
-            )
+
+        # RatesMC writes its log, contour and sample files line by line into its
+        # working directory (tens of MB per run); hundreds of concurrent runs
+        # doing that on a shared file system overload it. Run it in a scratch
+        # directory ($TMPDIR, node-local on a cluster) and copy back only the
+        # rate tables, the kept diagnostics and the tail of the console output.
+        scratch = Path(tempfile.mkdtemp(prefix="ratesmc_", dir=os.environ.get("TMPDIR") or None))
+        try:
+            shutil.copyfile(infile, scratch / "RatesMC.in")
+            for table in mass_tables or []:
+                (scratch / table.name).symlink_to(table)
+            # RatesMC writes these optional diagnostic streams even when no later
+            # stage reads them. Suppression avoids their storage and write traffic;
+            # the retention options preserve the ordinary native output behavior.
+            for filename, option in [('RatesMC.integ', 'keep_integrand'),
+                                     ('RatesMC.sfact', 'keep_sfactor')]:
+                backup = _configure_ratesmc_diagnostic(
+                    run_dir / filename, ratesmc_common[option])
+                if backup is not None:
+                    print(f'[ratesmc] Preserved previous diagnostic: {backup}', flush=True)
+                if not ratesmc_common[option]:
+                    (scratch / filename).symlink_to(os.devnull)
+            # RatesMC writes its own RatesMC.log, so keep console output separate.
+            with open(scratch / "RatesMC.stdout", "w") as log:
+                result = subprocess.run(
+                    [str(ratesmc_bin)],
+                    cwd=scratch, stdout=log, stderr=subprocess.STDOUT,
+                )
+            keep = ["RatesMC.out", "RatesMC.full", "RatesMC.latex", "RatesMC.samp"]
+            keep += [f for f, o in [('RatesMC.integ', 'keep_integrand'),
+                                    ('RatesMC.sfact', 'keep_sfactor')] if ratesmc_common[o]]
+            for name in keep:
+                if (scratch / name).is_file() and not (scratch / name).is_symlink():
+                    shutil.copyfile(scratch / name, run_dir / name)
+            _copy_tail(scratch / "RatesMC.stdout", stdout_path)
+        finally:
+            shutil.rmtree(scratch, ignore_errors=True)
 
         n_rows = count_valid_rate_rows(rates_out)
         if n_rows == 0:
