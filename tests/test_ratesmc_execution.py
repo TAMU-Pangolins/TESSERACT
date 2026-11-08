@@ -22,7 +22,7 @@ echo " 0.020   1.0e-60   1.0e-60   1.0e-60   1.0e+00" >> RatesMC.out
 exit 1
 """
 
-    def test_runs_in_run_dir_without_arguments_and_ignores_exit_code(self):
+    def test_runs_in_scratch_without_arguments_and_ignores_exit_code(self):
         import os
         import tesseract
 
@@ -52,7 +52,12 @@ exit 1
             self.assertTrue(out.exists())
             self.assertEqual(tesseract.count_valid_rate_rows(out), 2)
             self.assertEqual(infile.read_text(), f"{reaction}\nbody\n")  # input untouched
-            self.assertTrue((run_dir / "mass_1.mas20").is_symlink())
+            # RatesMC runs in a scratch directory: its tables and console tail are
+            # copied back, its working files and mass-table links are not.
+            self.assertTrue((run_dir / "RatesMC.out").exists())
+            self.assertTrue((run_dir / "RatesMC.stdout").exists())
+            self.assertFalse((run_dir / "mass_1.mas20").exists())
+            self.assertFalse((run_dir / "RatesMC.in").exists())
 
 
 
