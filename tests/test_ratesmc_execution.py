@@ -59,6 +59,24 @@ exit 1
             self.assertFalse((run_dir / "mass_1.mas20").exists())
             self.assertFalse((run_dir / "RatesMC.in").exists())
 
+    def test_condensed_contributions_keep_median_fractions_above_threshold(self):
+        import tesseract
+
+        with tempfile.TemporaryDirectory() as d:
+            src, dst = Path(d) / "RatesMC.cont", Path(d) / "RatesMC.cont.top"
+            src.write_text(
+                "#Temp   A-Rate-1   A-Rate-1   A-Rate-1   Res1   Res1   Res1   Res2   Res2   Res2\n"
+                " 0.12 0.000e+00 0.000e+00 0.000e+00 1.0e-05 2.0e-05 3.0e-05 9.0e-01 9.9e-01 1.0e+00\n"
+                " 1.00 1.000e-02 2.000e-02 3.000e-02 4.0e-01 5.0e-01 6.0e-01 4.0e-01 4.8e-01 5.0e-01\n")
+            tesseract._condense_contributions(src, dst)
+            rows = [line.split() for line in dst.read_text().splitlines() if not line.startswith("#")]
+            self.assertEqual(rows, [["0.12", "Res2", "9.9e-01"],
+                                    ["1.00", "A-Rate-1", "2.000e-02"],
+                                    ["1.00", "Res1", "5.0e-01"],
+                                    ["1.00", "Res2", "4.8e-01"]])
+            tesseract._condense_contributions(Path(d) / "missing", Path(d) / "none")
+            self.assertFalse((Path(d) / "none").exists())
+
 
 
 class RatesMCFailureHandlingTest(unittest.TestCase):

@@ -495,6 +495,29 @@ def _copy_tail(src: Path, dst: Path, max_bytes: int = 200_000) -> None:
         shutil.copyfileobj(fin, fout)
 
 
+def _condense_contributions(src: Path, dst: Path, threshold: float = 1e-4) -> None:
+    """Write the RatesMC.cont entries whose median fractional contribution is at least threshold.
+
+    RatesMC.cont (~17 MB) has one row per temperature and a (low, median, high)
+    triplet per rate component (A-Rate-n, Resn). The condensed file keeps one
+    line per (temperature, component) above threshold: T9, component, median.
+    """
+    if not src.is_file():
+        return
+    with open(src) as fin, open(dst, "w") as fout:
+        names = fin.readline().split()[1:][1::3]
+        fout.write(f"# from RatesMC.cont: median fractional contribution >= {threshold:g}\n"
+                   "# T9 component fraction\n")
+        for line in fin:
+            cols = line.split()
+            if len(cols) < 2:
+                continue
+            medians = cols[1:][1::3]
+            for name, value in zip(names, medians):
+                if float(value) >= threshold:
+                    fout.write(f"{cols[0]} {name} {value}\n")
+
+
 def step_run_ratesmc(basics: dict, resonance: dict, ratesmc: dict,
                      run_idx: int = None) -> None:
     """Run unmodified RatesMC in each run directory and validate its rate table.
@@ -596,6 +619,7 @@ def step_run_ratesmc(basics: dict, resonance: dict, ratesmc: dict,
                 if (scratch / name).is_file() and not (scratch / name).is_symlink():
                     shutil.copyfile(scratch / name, run_dir / name)
             _copy_tail(scratch / "RatesMC.stdout", stdout_path)
+            _condense_contributions(scratch / "RatesMC.cont", run_dir / "RatesMC.cont.top")
         finally:
             shutil.rmtree(scratch, ignore_errors=True)
 
