@@ -899,6 +899,14 @@ def build_ratesmc_input(args) -> None:
     Q_mev = (S_proj - S_exit) * 1e-3 if (S_proj is not None and S_exit is not None) else 0.0
     print(f"Q-value: {Q_mev*1e3:.2f} keV  (S_proj={S_proj}, S_exit={S_exit})")
 
+    # Exit energy at E_r is E_r + exit_q - Exf, from the template's own
+    # separation energies (keV), as RatesMC and the cross-section integration read them.
+    if exit_settings.get("exit_kind") == "gamma":
+        exit_q_keV = S_proj
+    else:
+        exit_q_keV = S_proj - S_exit if None not in (S_proj, S_exit) else None
+    opts = replace(opts, exit_q_keV=exit_q_keV)
+
     resonances = generated.resonances
     unitarity_limit = getattr(args, "unitarity_limit", None)
     if unitarity_limit is not None and not unitarity_limit > 0.0:
@@ -910,12 +918,6 @@ def build_ratesmc_input(args) -> None:
                                    (Z_val, A_val), template_path)
         rng = np.random.default_rng(None if args.seed is None else [int(args.seed), 1])
         spacing = _spacing_lookup(generated) if unitarity_limit else None
-        # Exit energy at E_r is E_r + exit_q - Exf, from the template's own
-        # separation energies (keV), as the cross-section integration reads them.
-        if exit_settings.get("exit_kind") == "gamma":
-            exit_q_keV = S_proj
-        else:
-            exit_q_keV = S_proj - S_exit if None not in (S_proj, S_exit) else None
         summed_res = []
         for res in resonances:
             cap = dict(D_eV=spacing(res), unitarity_limit=unitarity_limit) if spacing else {}

@@ -58,7 +58,7 @@ template's Resonant Contribution table, once per run.
 | `Gamma_i_dof` | `1` | chi^2 degrees of freedom of the entrance-width fluctuation (1 = Porter-Thomas). |
 | `Gamma_o_dof` | `1` for every exit | chi^2 degrees of freedom of the exit-width fluctuation; `inf` for none. Ground-state model only: the summed model draws one Porter-Thomas width per final state. |
 | `n_random_samples` | `1` | Overrides the template's number of RatesMC samples. 1 on purpose: the sampled resonances are treated as perfectly known, so there is no experimental uncertainty to sample. |
-| `default_frac_unc` | `0.001` | Fractional uncertainty written for Ecm and widths. |
+| `default_frac_unc` | `0.001` | Fractional uncertainty written for Ecm and widths. DEcm is capped at one tenth of the resonance's exit energy (E_r + Q - E_xf, from the template's separation energies), since RatesMC samples Ecm from a Gaussian and a sample that closes the exit channel makes it write a zero rate at every temperature. |
 | `int_flag` | `1` | RatesMC integration flag (0 analytic, 1 numerical). |
 | `int_width_cutoff` | unset | Set the flag per resonance instead: numerical where Γ_tot/E_r exceeds this value, analytic below it. Overrides `int_flag`. Numerically integrating many narrow resonances is what makes RatesMC slow; This width/energy threshold is a heuristic, not an error bound. Native comparison on a small two-resonance fixture differed from all-numerical rates by up to 1.41% over 0.1–3 GK; establish an error budget on the intended workload before using it. |
 | `precision` | `3` | Mantissa digits of the non-Ecm columns. |
@@ -78,7 +78,7 @@ Optional step 1b. For each run it copies `RUN_j/<reaction>.in` to
 `RUN_j/RatesMC.in`, links `mass_1.mas20` and `nubase_3.mas20` into `RUN_j`,
 runs RatesMC there with no arguments (no release accepts an input path), and
 copies `RatesMC.out` to `<reaction>.out`. A run succeeds when `RatesMC.out`
-contains finite, nonnegative, ordered rate rows; the exit code is ignored (the verified 2.3.0 release returns 1 on
+contains finite, nonnegative, ordered rate rows, not all zero; the exit code is ignored (the verified 2.3.0 release returns 1 on
 success). Console output goes to `RUN_j/RatesMC.stdout`, since RatesMC writes
 its own `RatesMC.log`. Nothing downstream reads RatesMC's output, so if no
 executable is found the step is skipped with a warning, and by default

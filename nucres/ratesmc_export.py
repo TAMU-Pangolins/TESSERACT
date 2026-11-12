@@ -36,6 +36,15 @@ class RatesMCExportOptions:
         Whether to emit the `Corr/Frac` column.
     corr_frac_value : int
         Integer value written to the `Corr/Frac` column when enabled.
+    exit_q_keV : float or None
+        Exit-channel Q value (keV) as RatesMC reads it from the template
+        (S_proj - S_exit for particle exits, S_proj for gamma exits). When set,
+        each row's DEcm is capped at its exit energy (Ecm + Q - Exf) divided by
+        `min_exit_sigmas`, so RatesMC's Gaussian sampling of Ecm cannot close
+        the exit channel (which makes RatesMC report a zero rate at every
+        temperature).
+    min_exit_sigmas : float
+        Minimum exit energy in units of DEcm when `exit_q_keV` is set.
     j_proj, j_targ : float or None
         Optional spin overrides used in the statistical factor.
     precision : int
@@ -63,6 +72,9 @@ class RatesMCExportOptions:
     include_corr_frac: bool = False
     # Value for Corr/Frac column (0 = no correlation by default).
     corr_frac_value: int = 0
+    # Exit-channel Q value (keV); caps DEcm so sampled Ecm keeps the exit open
+    exit_q_keV: Optional[float] = None
+    min_exit_sigmas: float = 10.0
     # Optional override of projectile/target spins used in the statistical factor
     j_proj: Optional[float] = None
     j_targ: Optional[float] = None
@@ -200,6 +212,11 @@ def resonance_to_row(res: Resonance, opts: RatesMCExportOptions) -> RatesMCRow:
     """
     Ecm_keV = res.E_r * 1e-3
     DEcm = _frac_unc(Ecm_keV, opts.default_frac_unc)
+    Exf_keV = res.Exf_keV if res.Exf_keV is not None else opts.exf_keV
+    if opts.exit_q_keV is not None and DEcm > 0.0:
+        exit_energy_keV = Ecm_keV + opts.exit_q_keV - Exf_keV
+        if exit_energy_keV > 0.0:
+            DEcm = min(DEcm, exit_energy_keV / opts.min_exit_sigmas)
 
     if opts.use_strength:
         wg_val = omega_gamma(res, opts.j_proj, opts.j_targ)
@@ -240,7 +257,7 @@ def resonance_to_row(res: Resonance, opts: RatesMCExportOptions) -> RatesMCRow:
         G3=G3,
         DG3=DG3,
         L3=res.L3 if res.L3 is not None else opts.l3,
-        Exf=res.Exf_keV if res.Exf_keV is not None else opts.exf_keV,
+        Exf=Exf_keV,
         Int=integration_flag,
         corr_frac=opts.corr_frac_value,
     )

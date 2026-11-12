@@ -99,8 +99,9 @@ def count_valid_rate_rows(path: str | Path) -> int:
     """Count usable rate rows using the header-defined columns of either format.
 
     A usable row has finite positive temperature (GK), finite nonnegative
-    rates, and low <= median <= high. Missing or unreadable files and tables
-    without the required header/columns return zero. This check establishes
+    rates, and low <= median <= high. Missing or unreadable files, tables
+    without the required header/columns, and tables whose median rate is zero
+    in every usable row (RatesMC's output after a failed calculation) return zero. This check establishes
     usable output, not completeness or agreement with a particular input.
     """
     try:
@@ -111,6 +112,8 @@ def count_valid_rate_rows(path: str | Path) -> int:
     for name in ('low', 'median', 'high'):
         valid &= np.isfinite(table[name]) & (table[name] >= 0)
     valid &= (table['low'] <= table['median']) & (table['median'] <= table['high'])
+    if not np.any(valid & (table['median'] > 0)):
+        return 0   # all-zero table: RatesMC failed (e.g. a rate it could not take the log of)
     return int(np.count_nonzero(valid))
 
 

@@ -81,6 +81,17 @@ class RatesMCOutputValidationTest(unittest.TestCase):
                                '0.4 1 2 3\n0.5 0 0 0\n')
         self.assertEqual(count_valid_rate_rows(self.output), 2)
 
+    def test_all_zero_table_is_not_success(self):
+        from nucres.ratesmc_output import count_valid_rate_rows
+
+        # RatesMC 2.3.0 writes zeros at every temperature after "Something went
+        # wrong in logarithm, negative or zero rate?!"; a cache must not accept it.
+        self.output.write_text(RATESMC_23_OUT.replace('1.000e-87       2.000e-87       3.000e-87',
+                                                      '0.000e+00       0.000e+00       0.000e+00')
+                               .replace('1.000e-06       2.000e-06       3.000e-06',
+                                        '0.000e+00       0.000e+00       0.000e+00'))
+        self.assertEqual(count_valid_rate_rows(self.output), 0)
+
     def test_unordered_intervals_are_not_valid_rate_rows(self):
         from nucres.ratesmc_output import count_valid_rate_rows
 
