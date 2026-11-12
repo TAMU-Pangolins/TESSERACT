@@ -23,6 +23,7 @@ Resonance, integration, and TALYS steps reuse existing outputs, run by run. Rate
 | `E_min_mev`, `E_max_mev` | `0.1`, `10.0` | Centre-of-mass energy range (MeV) for resonance sampling and step 2. |
 | `python_exec` | current interpreter | Python used for the sub-steps (useful under condor). |
 | `projectile_Z`, `projectile_A`, `target_Z`, `target_A`, `ejectile_Z`, `ejectile_A`, `residual_Z`, `residual_A` | required by `[talys]` | Nuclear identity written to `talys.inp`, and the masses for the CM/lab conversion. |
+| `no_overwrite` | unset | Comma-separated subset of `resonance`, `ratesmc`, `integration`, `talys`. By default every active step overwrites its own existing outputs on a re-run; a step named here instead preserves its existing outputs (skip if present), and the pipeline exits with an error listing every run whose expected output is missing, rather than generating it. |
 
 ## [resonance]
 
