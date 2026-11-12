@@ -23,7 +23,7 @@ output_dir = outputs/example_22Mg_ap_25Al/resonances
 runs      = 10     # small ensemble for a quick first run; scale up later
 samples   = 1000   # HFB density sampling points (default is 5000)
 seed      = 1      # each run gets seed+run_index, so all 10 are reproducible but distinct
-mean_i    = 0.010
+mean_i = 0.018
 mean_o    = 0.0045
 
 [ratesmc]
