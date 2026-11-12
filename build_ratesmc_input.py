@@ -1216,11 +1216,14 @@ def parse_args() -> argparse.Namespace:
     )
     p.add_argument(
         "--hfb-corrections",
-        action="store_true",
-        default=False,
+        action=argparse.BooleanOptionalAction,
+        default=True,
         help=(
             "Renormalise the HFB level densities with the RIPL-3 .cor "
-            "(ctable, ptable) entry of the compound nucleus."
+            "(ctable, ptable) entry of the compound nucleus (default). The raw "
+            "tables overestimate natural-parity level counts in A=28-36 by ~6x "
+            "relative to the observed sequences of Pogrebnyak et al., PRC 88, "
+            "015808 (2013)."
         ),
     )
     p.add_argument(

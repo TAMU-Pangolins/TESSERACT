@@ -312,7 +312,7 @@ def step1_build_ratesmc(basics: dict, resonance: dict,
     n_samples  = resonance.get('samples',    '5000')
     runs       = int(resonance.get('runs',   '1'))
     seed       = resonance.get('seed',       None)
-    mean_i     = resonance.get('mean_i',     '0.010')
+    mean_i     = resonance.get('mean_i',     '0.018')
     mean_o     = resonance.get('mean_o',     '0.0045')
 
     seed_base = None
@@ -375,8 +375,8 @@ def step1_build_ratesmc(basics: dict, resonance: dict,
                 # numpy's SeedSequence hashes the seed, so adjacent integers
                 # give uncorrelated streams.
                 cmd.extend(["--seed", str(seed_base + j)])
-            if _bool(resonance.get('hfb_corrections'), False):
-                cmd.append("--hfb-corrections")
+            cmd.append("--hfb-corrections" if _bool(resonance.get('hfb_corrections'), True)
+                       else "--no-hfb-corrections")
             for key, flag in (('Gamma_i_dof', '--Gamma-i-dof'),
                               ('Gamma_o_dof', '--Gamma-o-dof'),
                               ('unitarity_limit', '--unitarity-limit'),
