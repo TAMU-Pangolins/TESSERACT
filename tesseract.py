@@ -377,6 +377,9 @@ def step1_build_ratesmc(basics: dict, resonance: dict,
                 cmd.extend(["--seed", str(seed_base + j)])
             cmd.append("--hfb-corrections" if _bool(resonance.get('hfb_corrections'), True)
                        else "--no-hfb-corrections")
+            if resonance.get('hfb_correction'):
+                cmd.extend(["--hfb-correction",
+                            *[v.strip() for v in resonance['hfb_correction'].replace(',', ' ').split()]])
             for key, flag in (('Gamma_i_dof', '--Gamma-i-dof'),
                               ('Gamma_o_dof', '--Gamma-o-dof'),
                               ('unitarity_limit', '--unitarity-limit'),

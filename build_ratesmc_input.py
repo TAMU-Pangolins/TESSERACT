@@ -849,6 +849,8 @@ def build_ratesmc_input(args) -> None:
         # partial widths below, so the generator must not build sigma from them.
         widths_are_reduced=True,
         use_hfb_corrections=getattr(args, "hfb_corrections", False),
+        hfb_correction=(tuple(args.hfb_correction)
+                        if getattr(args, "hfb_correction", None) else None),
     )
     try:
         generated = synthesize_sigma_from_hfb(cfg)
@@ -1224,6 +1226,18 @@ def parse_args() -> argparse.Namespace:
             "tables overestimate natural-parity level counts in A=28-36 by ~6x "
             "relative to the observed sequences of Pogrebnyak et al., PRC 88, "
             "015808 (2013)."
+        ),
+    )
+    p.add_argument(
+        "--hfb-correction",
+        nargs=2,
+        type=float,
+        metavar=("CTABLE", "PTABLE"),
+        default=None,
+        help=(
+            "Explicit (ctable, ptable) level-density correction for the compound "
+            "nucleus, used instead of its RIPL-3 .cor entry, e.g. interpolated "
+            "from neighbours for an isotope the .cor file does not list."
         ),
     )
     p.add_argument(

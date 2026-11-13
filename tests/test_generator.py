@@ -128,6 +128,29 @@ class HfbCorrectionsConfigTest(unittest.TestCase):
             np.max(np.abs(spec_on.rho_levels_per_MeV - spec_off.rho_levels_per_MeV)), 0.0
         )
 
+    def test_explicit_correction_equal_to_the_table_entry_reproduces_it(self):
+        import numpy as np
+        from common.densities_retrieval import read_hfb_cor
+        from nucres.hfb_adapter import resolve_density_paths
+
+        _, cor = resolve_density_paths(9, data_root=DATA_ROOT)
+        entry = read_hfb_cor(str(cor))[(9, 17)]
+        spec_table = synthesize_sigma_from_hfb(self._cfg(use_hfb_corrections=True))
+        spec_override = synthesize_sigma_from_hfb(
+            self._cfg(use_hfb_corrections=False, hfb_correction=entry))
+        np.testing.assert_allclose(spec_override.rho_levels_per_MeV, spec_table.rho_levels_per_MeV)
+        self.assertTrue(spec_override.metadata["hfb_corrections_applied"])
+        self.assertEqual(spec_override.metadata["hfb_correction_override"], list(entry))
+
+    def test_explicit_correction_overrides_the_table_entry(self):
+        import numpy as np
+
+        spec_table = synthesize_sigma_from_hfb(self._cfg(use_hfb_corrections=True))
+        spec_shift = synthesize_sigma_from_hfb(
+            self._cfg(use_hfb_corrections=True, hfb_correction=(0.0, 2.0)))
+        # A larger pairing shift moves the density to higher U: fewer levels.
+        self.assertLess(np.sum(spec_shift.rho_levels_per_MeV), np.sum(spec_table.rho_levels_per_MeV))
+
 
 class SelectedParitiesTest(unittest.TestCase):
     def test_zero_means_both(self):

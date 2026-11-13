@@ -6,7 +6,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 
-from common.densities_retrieval import J_index, read_hfb_cor, spin_grid
+from common.densities_retrieval import J_index, apply_hfb_corrections, read_hfb_cor, spin_grid
 
 from .hfb_adapter import load_hfb_record, resolve_density_paths
 from .physics import MASS_PROTON
@@ -94,6 +94,10 @@ class HFBSamplerConfig:
         If true, renormalise the HFB level density with the RIPL-3 `.cor`
         (ctable, ptable) entry for this isotope, when the `.cor` file has
         one; isotopes without an entry keep the raw table.
+    hfb_correction : (float, float) or None
+        Explicit (ctable, ptable) for the compound nucleus, used instead of
+        the `.cor` entry (e.g. interpolated from neighbours for an isotope
+        RIPL-3 does not list). Applied whenever it is set.
     """
 
     Z: int
@@ -130,6 +134,7 @@ class HFBSamplerConfig:
     Gamma_i_dof: float = 1.0
     Gamma_o_dof: float = 1.0
     use_hfb_corrections: bool = False
+    hfb_correction: Optional[Tuple[float, float]] = None
 
 
 @dataclass
@@ -387,13 +392,18 @@ def synthesize_sigma_from_hfb(config: HFBSamplerConfig) -> GeneratedSpectrum:
         tab_path=str(tab_p),
         cor_path=(str(cor_p) if cor_p is not None else None),
         A=config.A,
-        use_corrections=config.use_hfb_corrections,
+        use_corrections=(config.use_hfb_corrections and config.hfb_correction is None),
         warn_if_ignored=False,
     )
-    hfb_corrections_applied = bool(
-        config.use_hfb_corrections and cor_p is not None
-        and (record.header.Z, record.header.A) in read_hfb_cor(str(cor_p))
-    )
+    if config.hfb_correction is not None:
+        key = (record.header.Z, record.header.A)
+        record = apply_hfb_corrections(record, {key: tuple(map(float, config.hfb_correction))})
+        hfb_corrections_applied = True
+    else:
+        hfb_corrections_applied = bool(
+            config.use_hfb_corrections and cor_p is not None
+            and (record.header.Z, record.header.A) in read_hfb_cor(str(cor_p))
+        )
 
     # ── Spin/parity-resolved densities rho_{J pi}(E) on the energy grid ──────
     E_mev = np.linspace(config.E_min_mev, config.E_max_mev, config.n_density_points)
@@ -590,6 +600,8 @@ def synthesize_sigma_from_hfb(config: HFBSamplerConfig) -> GeneratedSpectrum:
         "hfb_tab_path": str(tab_p),
         "hfb_cor_path": (str(cor_p) if cor_p is not None else None),
         "hfb_corrections_applied": hfb_corrections_applied,
+        "hfb_correction_override": (list(map(float, config.hfb_correction))
+                                    if config.hfb_correction is not None else None),
         "hfb_header_Z": record.header.Z,
         "hfb_header_A": record.header.A,
         "hfb_Z_mismatch": record.header.Z != config.Z,
