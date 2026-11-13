@@ -10,7 +10,7 @@ density table of the compound nucleus — no RatesMC/TALYS run needed.
 
 Usage:
     python scripts/diagnostics.py [data_dir] --target T --projectile P \\
-        --ejectile E --residual R [--out-dir DIR]
+        --ejectile E --residual R [--out-dir DIR] [--n-bands 50 90 95]
 
     --target/--projectile/--ejectile/--residual label the reaction (e.g.
     14O a p 17F for 14O(a,p)17F) and are mandatory: they name the output
@@ -21,6 +21,8 @@ Usage:
     copy of a subset of runs) instead of that cluster path. Plots are
     written to diagnostic_plots/ (one level above scripts/), or --out-dir
     if given, as <target>_<projectile><ejectile>_<residual>_<check>.png.
+    --n-bands selects which percentile bands check 3 plots (50/90/95);
+    default is N95 only -- pass e.g. --n-bands 50 95 to add N50.
 """
 from __future__ import annotations
 
@@ -203,10 +205,17 @@ def check1_sampled_density_vs_hfb(all_runs, header, record, Z, A, j1, j2, pi_int
           f"(formable-only comparison; should be ~1 if sampling matches the table it was drawn from)")
 
 
-def check3_effective_n_resonances(all_runs, header, g_table, out_dir, reaction_slug):
-    """Per T9: N50/N90/N95 resonances needed to reach that fraction of the rate, median+95% band across runs."""
+def check3_effective_n_resonances(all_runs, header, g_table, out_dir, reaction_slug, n_bands=(95,)):
+    """
+    Per T9: N<band> resonances needed to reach that fraction of the rate,
+    for each percentile band in n_bands (e.g. (95,) or (50, 90, 95)),
+    median + 95% interval across runs. n_bands defaults to N95 only; pass
+    additional bands (50 and/or 90) via --n-bands on the CLI to plot them
+    too.
+    """
     T9_values = np.array([0.1, 0.2, 0.3, 0.5, 0.7, 1.0, 1.5, 2.0, 3.0])
-    fracs = [0.5, 0.9, 0.95]
+    bands = sorted(set(int(b) for b in n_bands))
+    fracs = [b / 100.0 for b in bands]
     # shape: (n_runs, n_T9, n_fracs)
     N_needed = np.full((len(all_runs), len(T9_values), len(fracs)), np.nan)
 
@@ -224,26 +233,28 @@ def check3_effective_n_resonances(all_runs, header, g_table, out_dir, reaction_s
                 N_needed[ridx, tidx, fidx] = hit
 
     fig, ax = plt.subplots(figsize=(8, 5))
-    colors = ["C0", "C1", "C2"]
-    for fidx, frac in enumerate(fracs):
+    for fidx, band in enumerate(bands):
         med = np.nanmedian(N_needed[:, :, fidx], axis=0)
         lo = np.nanpercentile(N_needed[:, :, fidx], 2.5, axis=0)
         hi = np.nanpercentile(N_needed[:, :, fidx], 97.5, axis=0)
-        ax.plot(T9_values, med, color=colors[fidx], marker="o", label=f"N{int(frac*100)}")
-        ax.fill_between(T9_values, lo, hi, color=colors[fidx], alpha=0.2)
+        ax.plot(T9_values, med, color=f"C{fidx}", marker="o", label=f"N{band}")
+        ax.fill_between(T9_values, lo, hi, color=f"C{fidx}", alpha=0.2)
     ax.set_xlabel("$T_9$ (GK)")
     ax.set_ylabel("number of resonances")
     ax.set_yscale("log")
-    ax.set_title("Check 3: effective number of contributing resonances\n(median + 95% interval across runs)")
+    band_label = "/".join(f"N{b}" for b in bands)
+    ax.set_title(f"Check 3: effective number of contributing resonances ({band_label})\n"
+                f"(median + 95% interval across runs)")
     ax.legend()
     fig.tight_layout()
     fig.savefig(out_dir / f"{reaction_slug}_check3_effective_n_resonances.png", dpi=150)
     plt.close(fig)
 
-    med_N90 = np.nanmedian(N_needed[:, :, 1], axis=0)
-    print("[check 3] median N90 (resonances needed for 90% of rate) vs T9:")
-    for t9, n in zip(T9_values, med_N90):
-        print(f"           T9={t9:>4}: N90={n:.0f}")
+    for fidx, band in enumerate(bands):
+        med = np.nanmedian(N_needed[:, :, fidx], axis=0)
+        print(f"[check 3] median N{band} (resonances needed for {band}% of rate) vs T9:")
+        for t9, n in zip(T9_values, med):
+            print(f"           T9={t9:>4}: N{band}={n:.0f}")
     return T9_values, N_needed
 
 
@@ -456,6 +467,8 @@ def main():
     p.add_argument("--residual", required=True, help="residual nuclide label, e.g. 17F")
     p.add_argument("--out-dir", type=Path, default=None,
                   help="default: diagnostic_plots/ next to scripts/ (one level above this file's directory)")
+    p.add_argument("--n-bands", nargs="+", type=int, default=[95], choices=[50, 90, 95],
+                  help="check 3 percentile bands to plot (e.g. --n-bands 50 90 95); default: 95 only")
     args = p.parse_args()
 
     reaction_slug = f"{args.target}_{args.projectile}{args.ejectile}_{args.residual}"
@@ -512,7 +525,8 @@ def main():
     check1_sampled_density_vs_hfb(all_runs, header, record, Z, A, j1, j2, pi_intrinsic,
                                  U_of_Ecm_keV, out_dir, reaction_slug)
     print()
-    T9_values, _ = check3_effective_n_resonances(all_runs, header, g_table, out_dir, reaction_slug)
+    T9_values, _ = check3_effective_n_resonances(all_runs, header, g_table, out_dir, reaction_slug,
+                                                 n_bands=args.n_bands)
     print()
     check4_width_distribution(all_runs, out_dir, reaction_slug)
     print()
