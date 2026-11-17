@@ -269,10 +269,17 @@ AMU_MEV = 931.49410242
 
 
 def _wigner_limit_ev(m1_u: float, m2_u: float, r0_fm: float) -> float:
-    """Wigner limit 3 hbar^2 / (2 mu R^2) in eV, R = r0 (m1^1/3 + m2^1/3)."""
+    """
+    Wigner limit gamma_W^2 = hbar^2 / (mu R^2) in eV, R = r0 (m1^1/3 + m2^1/3).
+
+    This is the convention of Pogrebnyak et al., PRC 88, 015808 (2013), eq. 1,
+    and of RatesMC (Gamma = 2 P theta^2 hbar^2 / (mu R^2)), in which the mean
+    reduced widths mean_i = 0.018 and mean_o = 0.0045 are quoted; the
+    3 hbar^2 / (2 mu R^2) form is 1.5x larger.
+    """
     mu = m1_u * m2_u / (m1_u + m2_u) * AMU_MEV
     R = r0_fm * (m1_u ** (1 / 3) + m2_u ** (1 / 3))
-    return 3.0 * HBARC_MEV_FM ** 2 / (2.0 * mu * R ** 2) * 1e6
+    return HBARC_MEV_FM ** 2 / (mu * R ** 2) * 1e6
 
 
 def compute_gamma(rxn, mean_i: float, mean_o: float):

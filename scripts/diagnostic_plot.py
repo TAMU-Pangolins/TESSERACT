@@ -139,8 +139,9 @@ def _extract_resonant_block(lines: list[str]) -> pd.DataFrame:
 
 
 def _wigner_limit_eV(mu_kg: float, a1: int, a2: int, r0_fm: float) -> float:
+    # hbar^2 / (mu R^2), the convention RatesMC and tesseract.py use for theta^2.
     r_m = (r0_fm * 1e-15) * ((a1 ** (1 / 3)) + (a2 ** (1 / 3)))
-    wigner_j = (3.0 * HBAR**2) / (2.0 * mu_kg * r_m**2)
+    wigner_j = HBAR**2 / (mu_kg * r_m**2)
     return wigner_j / EV_TO_J
 
 

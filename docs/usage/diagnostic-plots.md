@@ -30,4 +30,4 @@ python scripts/diagnostic_plot.py --output outputs/diagnostics/custom.png --no-s
 **Notes**
 
 - `S(E)` uses `S(E) = E_keV * sigma(E) * exp(2*pi*eta)` with `sigma(E)` in barns.
-- `theta^2` is computed from the entrance width and the Wigner limit.
+- `theta^2` is computed from the entrance width and the Wigner limit hbar^2 / (mu R^2), as in RatesMC.
