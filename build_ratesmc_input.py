@@ -518,7 +518,9 @@ def _final_state_model(metadata: TemplateMetadata, args, exit_settings: dict,
     tab, cor = resolve_density_paths(final_Z, data_root=args.data_root)
     record = load_hfb_record(str(tab), str(cor) if cor else None, A=final_A,
                              use_corrections=getattr(args, "hfb_corrections", False),
-                             warn_if_ignored=False)
+                             warn_if_ignored=False,
+                             level_density_jpi=getattr(args, "level_density_jpi", "hfb"),
+                             spin_cutoff_sigma2=getattr(args, "spin_cutoff_sigma2", None))
     levels, E_cut = discrete_final_states(str(levels_dir), final_Z, final_A,
                                           str(cor) if cor else None)
     E_r_max = float(args.E_max_mev)
@@ -873,6 +875,8 @@ def build_ratesmc_input(args) -> None:
         use_hfb_corrections=getattr(args, "hfb_corrections", False),
         hfb_correction=(tuple(args.hfb_correction)
                         if getattr(args, "hfb_correction", None) else None),
+        level_density_jpi=getattr(args, "level_density_jpi", "hfb"),
+        spin_cutoff_sigma2=getattr(args, "spin_cutoff_sigma2", None),
         **_cluster_settings(args),
     )
     try:
@@ -1263,6 +1267,24 @@ def parse_args() -> argparse.Namespace:
             "nucleus, used instead of its RIPL-3 .cor entry, e.g. interpolated "
             "from neighbours for an isotope the .cor file does not list."
         ),
+    )
+    p.add_argument(
+        "--level-density-jpi",
+        choices=("hfb", "equilibrated"),
+        default="hfb",
+        help=(
+            "J^pi split of the HFB densities (compound ladder, spacings for "
+            "--unitarity-limit, and the summed-exit continuum): 'hfb' (default) "
+            "the table's own; 'equilibrated' 1/2 rho_tot(U) P(J; sigma^2(U)) of "
+            "the (corrected) table total, with the RIPL-3 BSFG spin cutoff."
+        ),
+    )
+    p.add_argument(
+        "--spin-cutoff-sigma2",
+        type=float,
+        default=None,
+        help="Constant spin-cutoff sigma^2 for --level-density-jpi equilibrated "
+             "(default: RIPL-3 BSFG systematic).",
     )
     p.add_argument(
         "--A",

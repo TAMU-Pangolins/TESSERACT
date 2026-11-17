@@ -6,7 +6,15 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 
-from common.densities_retrieval import J_index, apply_hfb_corrections, read_hfb_cor, spin_grid
+from common.densities_retrieval import (
+    J_index,
+    apply_hfb_corrections,
+    apply_level_density_jpi,
+    hfb_sigma2,
+    read_hfb_cor,
+    spin_cutoff_sigma2,
+    spin_grid,
+)
 
 from .hfb_adapter import load_hfb_record, resolve_density_paths
 from .physics import MASS_PROTON
@@ -98,6 +106,16 @@ class HFBSamplerConfig:
         Explicit (ctable, ptable) for the compound nucleus, used instead of
         the `.cor` entry (e.g. interpolated from neighbours for an isotope
         RIPL-3 does not list). Applied whenever it is set.
+    level_density_jpi : {"hfb", "equilibrated"}
+        J^pi split of the compound density. `"hfb"` (default) keeps the
+        table's own rho(U, J, pi). `"equilibrated"` uses
+        rho(U, J, pi) = 1/2 rho_tot(U) P(J; sigma^2(U)) with rho_tot the
+        (corrected) table total and P the spin-cutoff distribution
+        (`common.densities_retrieval.equilibrate_jpi`), applied after any
+        correction, so it changes only the J^pi split, not the level count.
+    spin_cutoff_sigma2 : float or None
+        Constant sigma^2 for the equilibrated split; None uses the RIPL-3
+        back-shifted Fermi-gas systematic (`spin_cutoff_sigma2`).
     cluster_density : float
         Strong-alpha ("cluster") states per MeV added on top of the
         Porter-Thomas widths; 0 (default) disables them. See
@@ -152,6 +170,8 @@ class HFBSamplerConfig:
     Gamma_o_dof: float = 1.0
     use_hfb_corrections: bool = False
     hfb_correction: Optional[Tuple[float, float]] = None
+    level_density_jpi: str = "hfb"
+    spin_cutoff_sigma2: Optional[float] = None
     cluster_density: float = 0.0
     cluster_window_mev: float = 4.0
     cluster_theta2_median: float = 0.45
@@ -550,6 +570,8 @@ def synthesize_sigma_from_hfb(config: HFBSamplerConfig) -> GeneratedSpectrum:
             config.use_hfb_corrections and cor_p is not None
             and (record.header.Z, record.header.A) in read_hfb_cor(str(cor_p))
         )
+    sigma2_table = hfb_sigma2(record)
+    record = apply_level_density_jpi(record, config.level_density_jpi, config.spin_cutoff_sigma2)
 
     # ── Spin/parity-resolved densities rho_{J pi}(E) on the energy grid ──────
     E_mev = np.linspace(config.E_min_mev, config.E_max_mev, config.n_density_points)
@@ -597,6 +619,17 @@ def synthesize_sigma_from_hfb(config: HFBSamplerConfig) -> GeneratedSpectrum:
     )
     rho_per_mev = rho_matrix.sum(axis=1)
     total_levels = float(np.trapezoid(rho_per_mev, E_mev))
+    U_mid = float(_U_of_E_mev(np.array([0.5 * (config.E_min_mev + config.E_max_mev) * 1e6]))[0])
+    U_lo = float(U_values[0])
+
+    def _sigma2_at(U: float) -> Dict[str, Any]:
+        table = float(np.interp(U, record.positive.U, sigma2_table))
+        if config.spin_cutoff_sigma2 is not None:
+            used = float(config.spin_cutoff_sigma2)
+        else:
+            used = float(spin_cutoff_sigma2(U, record.header.Z, record.header.A))
+        return {"U_MeV": U, "systematic_or_override": used,
+                "hfb_table": None if not np.isfinite(table) else table}
 
     n_bins = max(
         1, int(np.ceil((config.E_max_mev - config.E_min_mev) / config.delta_E_mev))
@@ -754,6 +787,9 @@ def synthesize_sigma_from_hfb(config: HFBSamplerConfig) -> GeneratedSpectrum:
         "hfb_corrections_applied": hfb_corrections_applied,
         "hfb_correction_override": (list(map(float, config.hfb_correction))
                                     if config.hfb_correction is not None else None),
+        "level_density_jpi": str(config.level_density_jpi).strip().lower(),
+        "spin_cutoff_sigma2_override": config.spin_cutoff_sigma2,
+        "spin_cutoff_sigma2": [_sigma2_at(U_lo), _sigma2_at(U_mid)],
         "hfb_header_Z": record.header.Z,
         "hfb_header_A": record.header.A,
         "hfb_Z_mismatch": record.header.Z != config.Z,

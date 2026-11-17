@@ -7,6 +7,7 @@ import numpy as np
 from common.densities_retrieval import (
     J_index,
     apply_hfb_corrections,
+    apply_level_density_jpi,
     build_rho_interpolator,
     read_hfb_cor,
     read_hfb_tab,
@@ -57,7 +58,8 @@ def _corrected(rec, cor_path):
 
 
 def load_rho_function(
-    tab_path, cor_path=None, *, A=None, use_corrections=False, warn_if_ignored=True
+    tab_path, cor_path=None, *, A=None, use_corrections=False, warn_if_ignored=True,
+    level_density_jpi="hfb", spin_cutoff_sigma2=None,
 ):
     r"""
     Load the interpolator for \(\rho(U, J, \pi)\) from a `zXXX.tab` file.
@@ -76,6 +78,12 @@ def load_rho_function(
         isotope: rho(U) = exp(ctable sqrt(U - ptable)) rho_HFB(U - ptable).
     warn_if_ignored : bool, default=True
         Emit an informational message when a corrections file is available but not used.
+    level_density_jpi : {"hfb", "equilibrated"}, default="hfb"
+        J^pi split: the table's own, or the parity-equilibrated spin-cutoff
+        split of the (corrected) total (see `equilibrate_jpi`).
+    spin_cutoff_sigma2 : float or None
+        Constant sigma^2 for the equilibrated split instead of the RIPL-3
+        systematic.
 
     Returns
     -------
@@ -90,11 +98,13 @@ def load_rho_function(
         print(
             f"[info] Ignoring corrections file for now: {cor_path} (set use_corrections=True to apply)"
         )
+    rec = apply_level_density_jpi(rec, level_density_jpi, spin_cutoff_sigma2)
     return build_rho_interpolator(rec)
 
 
 def load_hfb_record(
-    tab_path, cor_path=None, *, A=None, use_corrections=False, warn_if_ignored=True
+    tab_path, cor_path=None, *, A=None, use_corrections=False, warn_if_ignored=True,
+    level_density_jpi="hfb", spin_cutoff_sigma2=None,
 ):
     r"""
     Load the full HFB record, including spin-resolved \(\rho_J\), from disk.
@@ -113,6 +123,12 @@ def load_hfb_record(
         isotope: rho(U) = exp(ctable sqrt(U - ptable)) rho_HFB(U - ptable).
     warn_if_ignored : bool, default=True
         Emit an informational message when a corrections file is available but not used.
+    level_density_jpi : {"hfb", "equilibrated"}, default="hfb"
+        J^pi split: the table's own, or the parity-equilibrated spin-cutoff
+        split of the (corrected) total (see `equilibrate_jpi`).
+    spin_cutoff_sigma2 : float or None
+        Constant sigma^2 for the equilibrated split instead of the RIPL-3
+        systematic.
 
     Returns
     -------
@@ -126,6 +142,7 @@ def load_hfb_record(
         print(
             f"[info] Ignoring corrections file for now: {cor_path} (set use_corrections=True to apply)"
         )
+    rec = apply_level_density_jpi(rec, level_density_jpi, spin_cutoff_sigma2)
     return rec
 
 
@@ -210,6 +227,8 @@ def build_density_grid(
     # mapping from lab energy (eV) to excitation U (MeV)
     U_of_E_mev=None,
     use_corrections: bool = False,
+    level_density_jpi: str = "hfb",
+    spin_cutoff_sigma2: float | None = None,
 ) -> tuple[np.ndarray, np.ndarray]:
     r"""
     Build a uniform MeV energy grid and evaluate the fixed-spin level density.
@@ -236,6 +255,8 @@ def build_density_grid(
         Mapping from energy in eV to excitation energy in MeV. Defaults to \(U = E\).
     use_corrections : bool, default=False
         Renormalise with the RIPL-3 `.cor` entry for this isotope, if any.
+    level_density_jpi, spin_cutoff_sigma2
+        J^pi split, as in `load_hfb_record`.
 
     Returns
     -------
@@ -279,6 +300,8 @@ def build_density_grid(
         cor_path=(str(cor_p) if cor_p is not None else None),
         A=A,
         use_corrections=use_corrections,
+        level_density_jpi=level_density_jpi,
+        spin_cutoff_sigma2=spin_cutoff_sigma2,
     )
 
     rho_E_eV_fn = rho_levels_per_eV_from_E(
@@ -304,6 +327,8 @@ def build_total_density_grid(
     n_points: int = 2001,
     U_of_E_mev=None,
     use_corrections: bool = False,
+    level_density_jpi: str = "hfb",
+    spin_cutoff_sigma2: float | None = None,
 ) -> tuple[np.ndarray, np.ndarray]:
     r"""
     Build a uniform MeV grid using the total level density for fixed parity.
@@ -328,6 +353,8 @@ def build_total_density_grid(
         Mapping from energy in eV to excitation energy in MeV. Defaults to \(U = E\).
     use_corrections : bool, default=False
         Renormalise with the RIPL-3 `.cor` entry for this isotope, if any.
+    level_density_jpi, spin_cutoff_sigma2
+        J^pi split, as in `load_hfb_record`.
 
     Returns
     -------
@@ -369,6 +396,8 @@ def build_total_density_grid(
         cor_path=(str(cor_p) if cor_p is not None else None),
         A=A,
         use_corrections=use_corrections,
+        level_density_jpi=level_density_jpi,
+        spin_cutoff_sigma2=spin_cutoff_sigma2,
     )
 
     rho_E_eV_fn = rho_total_levels_per_eV_from_E(record, pi=pi, U_of_E_mev=U_of_E_mev)

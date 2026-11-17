@@ -318,6 +318,127 @@ def apply_hfb_corrections(record: HFBRecord, cor: Dict[Tuple[int, int], Tuple[fl
         negative=_correct_block(record.negative, c, delta),
     )
 
+# ------------------------- J^pi equilibration -------------------------
+
+LEVEL_DENSITY_JPI_MODELS = ("hfb", "equilibrated")
+
+# Fermi-gas level-density parameter systematics of TALYS (ldmodel 1, global
+# default), a = alpha A + beta A^(2/3): A. J. Koning, S. Hilaire and
+# S. Goriely, Nucl. Phys. A 810, 13 (2008), Table 3 (shell effects omitted).
+_TALYS_ALPHA = 0.0722396
+_TALYS_BETA = 0.195267
+
+
+def fermi_gas_a(A: int) -> float:
+    """Asymptotic level-density parameter a (MeV^-1), TALYS global systematics (see above)."""
+    return _TALYS_ALPHA * A + _TALYS_BETA * A ** (2.0 / 3.0)
+
+
+def pairing_shift(Z: int, A: int) -> float:
+    """Pairing energy Delta = chi 12/sqrt(A) MeV, chi = 2 (even-even), 1 (odd A), 0 (odd-odd)."""
+    N = A - Z
+    chi = 2 if (Z % 2 == 0 and N % 2 == 0) else (0 if (Z % 2 and N % 2) else 1)
+    return chi * 12.0 / math.sqrt(A)
+
+
+def spin_cutoff_sigma2(U, Z: int, A: int, a: Optional[float] = None) -> np.ndarray:
+    """
+    Spin-cutoff parameter sigma^2(U) of the back-shifted Fermi gas,
+
+        sigma^2 = 0.0146 A^(5/3) (1 + sqrt(1 + 4 a U*)) / (2 a),
+
+    RIPL-3, R. Capote et al., Nucl. Data Sheets 110, 3107 (2009), Sec. 5
+    (eq. for the BSFG spin cutoff; T. von Egidy and D. Bucurescu, PRC 72,
+    044311 (2005)), with the effective excitation energy U* = max(U - Delta, 0),
+    Delta = chi 12/sqrt(A) the pairing shift TALYS uses, and a from
+    `fermi_gas_a` unless given.
+    """
+    a = fermi_gas_a(A) if a is None else float(a)
+    if not a > 0.0:
+        raise ValueError("Level-density parameter a must be positive.")
+    Ueff = np.clip(np.asarray(U, dtype=float) - pairing_shift(Z, A), 0.0, None)
+    return 0.0146 * A ** (5.0 / 3.0) * (1.0 + np.sqrt(1.0 + 4.0 * a * Ueff)) / (2.0 * a)
+
+
+def spin_distribution(J: np.ndarray, sigma2) -> np.ndarray:
+    """
+    P(J; sigma^2) = (2J+1)/(2 sigma^2) exp(-(J+1/2)^2 / (2 sigma^2)), normalised
+    to 1 over the spin grid J (axis -1). sigma2 may be a scalar or an array of
+    shape (nU,), giving shape (nU, nJ).
+    """
+    J = np.asarray(J, dtype=float)
+    s2 = np.asarray(sigma2, dtype=float)[..., None]
+    if np.any(~(s2 > 0.0)):
+        raise ValueError("sigma^2 must be positive.")
+    P = (2.0 * J + 1.0) / (2.0 * s2) * np.exp(-((J + 0.5) ** 2) / (2.0 * s2))
+    return P / P.sum(axis=-1, keepdims=True)
+
+
+def hfb_sigma2(record: HFBRecord) -> np.ndarray:
+    """
+    The table's own spin cutoff on its U grid, sigma^2 = <(J+1/2)^2>/2 =
+    (<J(J+1)> + 1/4)/2, averaged over both parities with rho_J weights (NaN
+    where the table is empty).
+    """
+    J = spin_grid(record.header.A)
+    w = np.clip(record.positive.rho_J, 0.0, None) + np.clip(record.negative.rho_J, 0.0, None)
+    tot = w.sum(axis=1)
+    with np.errstate(invalid="ignore", divide="ignore"):
+        return np.where(tot > 0.0, (w * (J + 0.5) ** 2).sum(axis=1) / tot / 2.0, np.nan)
+
+
+def equilibrate_jpi(record: HFBRecord, sigma2: Optional[float] = None,
+                    a: Optional[float] = None) -> HFBRecord:
+    """
+    Replace the table's J^pi split by a parity-equilibrated spin-cutoff one,
+
+        rho(U, J, pi) = 1/2 rho_tot(U) P(J; sigma^2(U)),
+
+    where rho_tot is the record's (possibly corrected) total, summed over its
+    J columns and both parities, and P is `spin_distribution` on the
+    isotope's spin grid. sigma^2(U) is `spin_cutoff_sigma2` (RIPL-3 BSFG
+    systematic) unless a constant `sigma2` is given. The total level density
+    is unchanged; Rho_level/Rho_state of each block become the new J sums.
+    Apply after any (ctable, ptable) correction.
+    """
+    pos, neg = record.positive, record.negative
+    if not np.array_equal(pos.U, neg.U):
+        raise ValueError("Parity blocks must share one U grid to be equilibrated.")
+    A = int(record.header.A)
+    J = spin_grid(A)
+    if pos.rho_J.shape[1] != J.size:
+        raise ValueError("HFB spin columns do not match the spin grid.")
+    if sigma2 is not None:
+        s2 = np.full(pos.U.shape, float(sigma2))
+    else:
+        s2 = spin_cutoff_sigma2(pos.U, int(record.header.Z), A, a=a)
+    rho_tot = np.clip(pos.rho_J, 0.0, None).sum(axis=1) + np.clip(neg.rho_J, 0.0, None).sum(axis=1)
+    rhoJ = 0.5 * rho_tot[:, None] * spin_distribution(J, s2)
+
+    def block(b: HFBBlock) -> HFBBlock:
+        return HFBBlock(
+            parity=b.parity,
+            U=b.U.copy(),
+            T=b.T.copy(),
+            Ncumul=b.Ncumul.copy(),  # not recomputed; unused by the samplers
+            Rho_level=rhoJ.sum(axis=1),
+            Rho_state=(rhoJ * (2.0 * J + 1.0)).sum(axis=1),
+            rho_J=rhoJ.copy(),
+        )
+
+    return HFBRecord(header=record.header, positive=block(pos), negative=block(neg))
+
+
+def apply_level_density_jpi(record: HFBRecord, model: str = "hfb",
+                            sigma2: Optional[float] = None) -> HFBRecord:
+    """Apply the J^pi model `model` ("hfb": the table as is; "equilibrated": `equilibrate_jpi`)."""
+    model = str(model).strip().lower()
+    if model not in LEVEL_DENSITY_JPI_MODELS:
+        raise ValueError(f"level_density_jpi must be one of {LEVEL_DENSITY_JPI_MODELS}; got {model!r}.")
+    if model == "hfb":
+        return record
+    return equilibrate_jpi(record, sigma2=sigma2)
+
 # ---------------------------- utilities ----------------------------
 
 def build_rho_interpolator(record: HFBRecord):
