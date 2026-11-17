@@ -1,4 +1,6 @@
 import unittest
+
+import numpy as np
 from pathlib import Path
 
 from nucres.generator import (
@@ -283,3 +285,100 @@ class ExitChannelL2Test(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ClusterStatesTest(unittest.TestCase):
+    """alpha + 24Mg -> 28Si (Z=14, A=28): every formable sequence is natural parity, l = J."""
+
+    W_EV = 1.0e6  # entrance Wigner limit (eV) used to convert theta^2
+
+    def _cfg(self, **overrides):
+        kwargs = dict(
+            Z=14, data_root=DATA_ROOT, A=28, pi=0, s1=0.0, s2=0.0,
+            projectile_parity=1, target_parity=1,
+            Gamma_i_mean_eV=0.018 * self.W_EV, Gamma_o_mean_eV=0.5, delta_E_mev=0.05,
+            E_min_mev=0.1, E_max_mev=6.0, n_density_points=601,
+            n_sigma_points=64, U_offset_mev=10.0, seed=11,
+            widths_are_reduced=True, use_hfb_corrections=True,
+        )
+        kwargs.update(overrides)
+        return HFBSamplerConfig(**kwargs)
+
+    def _on(self, **overrides):
+        kw = dict(cluster_density=2.0, cluster_window_mev=4.0, cluster_wigner_eV=self.W_EV)
+        kw.update(overrides)
+        return self._cfg(**kw)
+
+    @staticmethod
+    def _signature(spec):
+        return [(r.E_r, r.J, r.parity, r.L1, r.Gamma_i, r.Gamma_o) for r in spec.resonances]
+
+    def test_off_by_default_and_unchanged(self):
+        self.assertEqual(HFBSamplerConfig(Z=14).cluster_density, 0.0)
+        a = synthesize_sigma_from_hfb(self._cfg())
+        b = synthesize_sigma_from_hfb(self._cfg(cluster_density=0.0, cluster_wigner_eV=self.W_EV))
+        self.assertEqual(self._signature(a), self._signature(b))
+        self.assertIsNone(a.metadata["cluster"])
+        self.assertIsNone(a.metadata["cluster_states"])
+
+    def test_streams_are_paired(self):
+        off = synthesize_sigma_from_hfb(self._cfg())
+        on = synthesize_sigma_from_hfb(self._on())
+        self.assertEqual(len(off.resonances), len(on.resonances))
+        boosted = {s["E_MeV"] for s in on.metadata["cluster_states"]["states"]}
+        self.assertGreater(len(boosted), 0)
+        for r_off, r_on in zip(off.resonances, on.resonances):
+            self.assertEqual((r_off.E_r, r_off.J, r_off.parity, r_off.Gamma_o),
+                             (r_on.E_r, r_on.J, r_on.parity, r_on.Gamma_o))
+            if r_on.E_r * 1e-6 in boosted:
+                self.assertGreaterEqual(r_on.Gamma_i, r_off.Gamma_i)
+            else:
+                self.assertEqual(r_off.Gamma_i, r_on.Gamma_i)
+
+    def test_mean_number_and_bounds(self):
+        counts, theta2 = [], []
+        for seed in range(60):
+            spec = synthesize_sigma_from_hfb(self._on(seed=seed, cluster_density=3.0))
+            info = spec.metadata["cluster_states"]
+            counts.append(info["n_requested"])
+            self.assertEqual(len(info["states"]) + info["n_unplaced"], info["n_requested"])
+            energies = [s["E_MeV"] for s in info["states"]]
+            self.assertEqual(len(energies), len(set(energies)))  # no level twice
+            for s in info["states"]:
+                theta2.append(s["theta2"])
+                self.assertLessEqual(s["E_drawn_MeV"], 4.0)
+                self.assertGreaterEqual(s["E_drawn_MeV"], 0.1)
+                r = next(r for r in spec.resonances if r.E_r * 1e-6 == s["E_MeV"])
+                self.assertEqual(r.L1, s["l"])
+                self.assertEqual(r.parity, (-1) ** int(r.J))
+                self.assertAlmostEqual(r.Gamma_i, max(s["theta2"], s["theta2_before"]) * self.W_EV)
+        expected = 3.0 * (4.0 - 0.1)
+        self.assertAlmostEqual(np.mean(counts), expected, delta=4 * np.sqrt(expected / 60))
+        theta2 = np.array(theta2)
+        self.assertTrue(np.all((theta2 > 0.0) & (theta2 <= 2.0)))
+        # Truncated log-normal median sits just below the untruncated 0.45.
+        self.assertAlmostEqual(np.median(theta2), 0.43, delta=0.06)
+
+    def test_l_weights_are_respected(self):
+        ls = []
+        for seed in range(30):
+            spec = synthesize_sigma_from_hfb(
+                self._on(seed=seed, cluster_density=3.0, cluster_l_weights=(1.0, 0.0, 1.0)))
+            ls += [s["l"] for s in spec.metadata["cluster_states"]["states"]]
+        self.assertGreater(len(ls), 50)
+        self.assertEqual(set(ls), {0, 2})
+        self.assertAlmostEqual(ls.count(0) / len(ls), 0.5, delta=0.15)
+
+    def test_metadata_records_parameters(self):
+        spec = synthesize_sigma_from_hfb(self._on(cluster_l_weights=(1, 1, 0.3)))
+        meta = spec.metadata["cluster"]
+        self.assertEqual(meta["density_per_MeV"], 2.0)
+        self.assertEqual(meta["l_weights"], [1.0, 1.0, 0.3])
+        self.assertEqual(meta["wigner_eV"], self.W_EV)
+        self.assertEqual(meta["allowed_l"][:3], [0, 1, 2])
+
+    def test_requires_reduced_widths_and_wigner_limit(self):
+        with self.assertRaises(ValueError):
+            synthesize_sigma_from_hfb(self._on(cluster_wigner_eV=None))
+        with self.assertRaises(ValueError):
+            synthesize_sigma_from_hfb(self._on(widths_are_reduced=False))

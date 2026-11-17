@@ -647,6 +647,28 @@ def _exf_open_as_written(E_r_keV: float, Exf_keV: float, q_keV: float, opts) -> 
     return max(exf, 0.0)
 
 
+def _cluster_settings(args) -> dict:
+    """HFBSamplerConfig keywords of the alpha-cluster component (off unless --cluster-density > 0)."""
+    density = float(getattr(args, "cluster_density", 0.0) or 0.0)
+    if density < 0.0:
+        raise ValueError("--cluster-density must be non-negative.")
+    if density == 0.0:
+        return {}
+    if getattr(args, "cluster_wigner_eV", None) is None:
+        raise ValueError("--cluster-density needs --cluster-wigner-eV, the entrance "
+                         "Wigner limit hbar^2/(mu R^2) in eV.")
+    weights = getattr(args, "cluster_l_weights", None)
+    return dict(
+        cluster_density=density,
+        cluster_window_mev=args.cluster_window_mev,
+        cluster_theta2_median=args.cluster_theta2_median,
+        cluster_sigma_ln=args.cluster_sigma_ln,
+        cluster_theta2_max=args.cluster_theta2_max,
+        cluster_l_weights=tuple(weights) if weights else None,
+        cluster_wigner_eV=args.cluster_wigner_eV,
+    )
+
+
 def _spacing_lookup(generated):
     """Callable res -> D (eV) of the resonance's own J^pi sequence at E_r (inf if unknown)."""
     E_grid = generated.rho_energy_MeV
@@ -851,6 +873,7 @@ def build_ratesmc_input(args) -> None:
         use_hfb_corrections=getattr(args, "hfb_corrections", False),
         hfb_correction=(tuple(args.hfb_correction)
                         if getattr(args, "hfb_correction", None) else None),
+        **_cluster_settings(args),
     )
     try:
         generated = synthesize_sigma_from_hfb(cfg)
@@ -986,7 +1009,7 @@ def build_ratesmc_input(args) -> None:
     # (tesseract.py) merges "common" once and "run" per RUN_j into a single
     # consolidated <reaction>_meta.json, then deletes this per-run file.
     level_density = dict(generated.metadata)
-    run_only_keys = ("seed", "n_drawn", "n_spacing_ladders")
+    run_only_keys = ("seed", "n_drawn", "n_spacing_ladders", "cluster_states")
     level_density_run = {k: level_density.pop(k, None) for k in run_only_keys}
 
     implicit_meta = {
@@ -1060,6 +1083,7 @@ def build_ratesmc_input(args) -> None:
             "n_resonances_generated": count,
             "n_drawn": level_density_run["n_drawn"],
             "n_spacing_ladders": level_density_run["n_spacing_ladders"],
+            "cluster_states": level_density_run["cluster_states"],
         },
     }
     meta_path = output_path.with_name(output_path.stem + "_meta.json")
@@ -1415,6 +1439,38 @@ def parse_args() -> argparse.Namespace:
             "(default: 1, preserving Porter-Thomas fluctuations). "
             "Use inf for no fluctuation."
         ),
+    )
+
+    p.add_argument(
+        "--cluster-density", type=float, default=0.0,
+        help="Strong-alpha cluster states per MeV: existing levels whose entrance reduced "
+             "width is raised to theta^2 * Wigner limit (default 0: off).",
+    )
+    p.add_argument(
+        "--cluster-window-mev", type=float, default=4.0,
+        help="Cluster states lie within this many MeV above the entrance threshold (default 4).",
+    )
+    p.add_argument(
+        "--cluster-theta2-median", type=float, default=0.45,
+        help="Median of the log-normal cluster theta^2 (default 0.45).",
+    )
+    p.add_argument(
+        "--cluster-sigma-ln", type=float, default=0.9,
+        help="Log width of the cluster theta^2 distribution (default 0.9).",
+    )
+    p.add_argument(
+        "--cluster-theta2-max", type=float, default=2.0,
+        help="Upper truncation of the cluster theta^2 (default 2).",
+    )
+    p.add_argument(
+        "--cluster-l-weights", type=float, nargs="+", default=None,
+        help="Relative weights of entrance l = 0, 1, 2, ... for cluster states "
+             "(default: equal over the allowed l).",
+    )
+    p.add_argument(
+        "--cluster-wigner-eV", type=float, default=None,
+        help="Entrance Wigner limit hbar^2/(mu R^2) in eV, converting the cluster theta^2 "
+             "to reduced widths (required with --cluster-density).",
     )
 
     p.add_argument(

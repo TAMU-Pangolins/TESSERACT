@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -98,6 +98,23 @@ class HFBSamplerConfig:
         Explicit (ctable, ptable) for the compound nucleus, used instead of
         the `.cor` entry (e.g. interpolated from neighbours for an isotope
         RIPL-3 does not list). Applied whenever it is set.
+    cluster_density : float
+        Strong-alpha ("cluster") states per MeV added on top of the
+        Porter-Thomas widths; 0 (default) disables them. See
+        `_apply_cluster_states`.
+    cluster_window_mev : float
+        Cluster states lie within this many MeV above the entrance threshold
+        (intersected with [E_min_mev, E_max_mev]).
+    cluster_theta2_median, cluster_sigma_ln, cluster_theta2_max : float
+        Log-normal distribution of the cluster theta^2 (median and log
+        width), truncated above at `cluster_theta2_max`.
+    cluster_l_weights : tuple of float or None
+        Relative weights of entrance l = 0, 1, 2, ... for cluster states
+        (l beyond the tuple get weight 0); None weights every allowed l
+        equally.
+    cluster_wigner_eV : float or None
+        Entrance Wigner limit hbar^2 / (mu R^2) in eV, converting theta^2 to
+        the reduced widths sampled here. Required when clusters are on.
     """
 
     Z: int
@@ -135,6 +152,19 @@ class HFBSamplerConfig:
     Gamma_o_dof: float = 1.0
     use_hfb_corrections: bool = False
     hfb_correction: Optional[Tuple[float, float]] = None
+    cluster_density: float = 0.0
+    cluster_window_mev: float = 4.0
+    cluster_theta2_median: float = 0.45
+    cluster_sigma_ln: float = 0.9
+    cluster_theta2_max: float = 2.0
+    cluster_l_weights: Optional[Tuple[float, ...]] = None
+    cluster_wigner_eV: Optional[float] = None
+
+
+# Salt of the cluster-state RNG stream: drawn from [seed, salt], independent of
+# the ladder and width stream (seed), so runs with and without clusters share
+# their levels and Porter-Thomas widths.
+_CLUSTER_STREAM_SALT = 7341
 
 
 @dataclass
@@ -318,6 +348,122 @@ def _pick_L2(J: float, pi_res: int, config: "HFBSamplerConfig") -> Optional[int]
         config.ejectile_spin, config.ejectile_parity,
     )
     return int(allowed[0]) if allowed else None
+
+
+def _is_natural_parity(J: float, parity: int) -> bool:
+    """pi = (-1)^J for integer J; half-integer J has no natural parity, so any."""
+    if abs(J - round(J)) > 1e-6:
+        return True
+    return int(parity) == (-1) ** int(round(J))
+
+
+def _truncated_lognormal(rng, n: int, median: float, sigma_ln: float, upper: float) -> np.ndarray:
+    """`n` log-normal draws (median, log width sigma_ln) truncated above at `upper`."""
+    from scipy.special import ndtr, ndtri
+
+    if sigma_ln == 0.0:
+        return np.full(n, min(median, upper))
+    p_max = float(ndtr(np.log(upper / median) / sigma_ln))
+    return median * np.exp(sigma_ln * ndtri(rng.random(n) * p_max))
+
+
+def _apply_cluster_states(
+    resonances: List[Resonance],
+    channels: List[tuple[float, int]],
+    config: "HFBSamplerConfig",
+    pi_intrinsic: int,
+) -> tuple[List[Resonance], Dict[str, Any]]:
+    """
+    Enhance the entrance width of a few existing levels into alpha-cluster states.
+
+    N ~ Poisson(cluster_density * width of the window [max(E_min, 0),
+    min(E_max, cluster_window_mev)]) states are drawn. Each gets an energy
+    uniform in the window, an entrance l from `cluster_l_weights` among the l
+    that are the lowest entrance l (L1, the one RatesMC uses) of some formable
+    natural-parity J^pi sequence with levels in the window, and theta^2 from
+    the truncated log-normal. The not-yet-chosen level in the window of such
+    a sequence nearest to that energy gets
+    its reduced width raised to max(current, theta^2 * cluster_wigner_eV).
+    The level count is unchanged. All draws use their own stream, so the
+    ladder and the Porter-Thomas widths do not depend on the cluster settings.
+    """
+    if not config.widths_are_reduced:
+        raise ValueError("Cluster states need reduced widths (widths_are_reduced=True).")
+    if config.cluster_wigner_eV is None or not config.cluster_wigner_eV > 0.0:
+        raise ValueError("Cluster states need the entrance Wigner limit cluster_wigner_eV > 0.")
+    if not (config.cluster_theta2_median > 0.0 and config.cluster_theta2_max > 0.0
+            and config.cluster_sigma_ln >= 0.0 and config.cluster_window_mev > 0.0):
+        raise ValueError("Cluster theta^2 median, maximum and window must be positive "
+                         "and sigma_ln non-negative.")
+
+    def l1_of(J: float, parity: int) -> Optional[int]:
+        return _pick_L1(J, config.s1, config.s2, parity, pi_intrinsic)
+
+    lo = max(config.E_min_mev, 0.0)
+    hi = min(config.E_max_mev, config.cluster_window_mev)
+    span = max(hi - lo, 0.0)
+    E_res = np.array([res.E_r * 1e-6 for res in resonances], dtype=float)
+    in_window = (E_res >= lo) & (E_res <= hi)
+
+    seq_l = {ch: l1_of(*ch) for ch in channels if _is_natural_parity(*ch)}
+    # Entrance l of each level's sequence; -1 for unnatural parity, no l, or
+    # outside the window. Only l with levels in the window can be drawn (the
+    # spin grid runs to J ~ 50, whose sequences hold no levels here).
+    res_l = np.array([
+        -1 if seq_l.get((res.J, res.parity)) is None else seq_l[(res.J, res.parity)]
+        for res in resonances
+    ], dtype=int)
+    res_l[~in_window] = -1
+    l_vals = sorted({int(l) for l in res_l if l >= 0})
+    if config.cluster_l_weights is None:
+        weights = np.ones(len(l_vals))
+    else:
+        w = list(config.cluster_l_weights)
+        weights = np.array([float(w[l]) if l < len(w) else 0.0 for l in l_vals])
+    if np.any(weights < 0.0):
+        raise ValueError("cluster_l_weights must be non-negative.")
+
+    rng = np.random.default_rng(
+        None if config.seed is None else [int(config.seed), _CLUSTER_STREAM_SALT]
+    )
+    n = int(rng.poisson(config.cluster_density * span)) if span > 0.0 else 0
+    # Draw every random number up front, in a fixed order.
+    E_draw = rng.uniform(lo, hi, n) if n else np.empty(0)
+    u_l = rng.random(n)
+    theta2 = _truncated_lognormal(rng, n, config.cluster_theta2_median,
+                                  config.cluster_sigma_ln, config.cluster_theta2_max)
+
+    taken = np.zeros(len(resonances), dtype=bool)
+    out = list(resonances)
+    states: List[Dict[str, Any]] = []
+    n_unplaced = 0
+    for k in range(n):
+        if not l_vals or weights.sum() <= 0.0:
+            n_unplaced += 1
+            continue
+        cdf = np.cumsum(weights) / weights.sum()
+        l = int(l_vals[min(int(np.searchsorted(cdf, u_l[k], side="right")), len(l_vals) - 1)])
+        cand = np.flatnonzero((res_l == l) & ~taken)
+        if cand.size == 0:
+            n_unplaced += 1
+            continue
+        i = int(cand[np.argmin(np.abs(E_res[cand] - E_draw[k]))])
+        taken[i] = True
+        res = out[i]
+        gamma2 = float(theta2[k]) * float(config.cluster_wigner_eV)
+        out[i] = replace(res, Gamma_i=max(float(res.Gamma_i), gamma2))
+        states.append({
+            "E_MeV": float(E_res[i]),
+            "E_drawn_MeV": float(E_draw[k]),
+            "J": float(res.J),
+            "parity": int(res.parity),
+            "l": l,
+            "theta2": float(theta2[k]),
+            "theta2_before": float(res.Gamma_i) / float(config.cluster_wigner_eV),
+        })
+    info = {"n_requested": n, "n_unplaced": n_unplaced, "allowed_l": l_vals,
+            "states": states}
+    return out, info
 
 
 def _selected_parities(pi: int) -> tuple[int, ...]:
@@ -573,6 +719,12 @@ def synthesize_sigma_from_hfb(config: HFBSamplerConfig) -> GeneratedSpectrum:
         if not config.widths_are_reduced:
             sigma_tot += sigma_bw_constant(E_plot_eV, resonance)
 
+    cluster_info = None
+    if config.cluster_density > 0.0:
+        resonances, cluster_info = _apply_cluster_states(
+            resonances, channels, config, pi_intrinsic
+        )
+
     metadata: Dict[str, Any] = {
         "expected_levels": total_levels,
         "expected_levels_dropped": expected_dropped,
@@ -616,6 +768,22 @@ def synthesize_sigma_from_hfb(config: HFBSamplerConfig) -> GeneratedSpectrum:
             "beta4": record.header.beta4,
         },
         "sample_J": config.sample_J,
+        "cluster": None if cluster_info is None else {
+            "density_per_MeV": config.cluster_density,
+            "window_MeV": config.cluster_window_mev,
+            "theta2_median": config.cluster_theta2_median,
+            "sigma_ln": config.cluster_sigma_ln,
+            "theta2_max": config.cluster_theta2_max,
+            "l_weights": (None if config.cluster_l_weights is None
+                          else list(map(float, config.cluster_l_weights))),
+            "wigner_eV": config.cluster_wigner_eV,
+            "allowed_l": cluster_info["allowed_l"],
+        },
+        "cluster_states": None if cluster_info is None else {
+            "n_requested": cluster_info["n_requested"],
+            "n_unplaced": cluster_info["n_unplaced"],
+            "states": cluster_info["states"],
+        },
     }
 
     return GeneratedSpectrum(

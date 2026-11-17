@@ -338,6 +338,8 @@ def step1_build_ratesmc(basics: dict, resonance: dict,
     except ValueError as exc:
         sys.exit(f"[resonance] {exc}")
     gamma_i, gamma_o = compute_gamma(rxn, float(mean_i), float(mean_o))
+    # Entrance Wigner limit for the alpha-cluster theta^2 (same convention as mean_i).
+    cluster_wigner = _wigner_limit_ev(rxn.M_proj, rxn.M_targ, rxn.R0_fm)
     exit_note = "mean gamma width" if (rxn.Z_exit == 0 and rxn.M_exit == 0.0) else "reduced width"
     print(f"[resonance] gamma_i = {gamma_i:.4e} eV  |  gamma_o = {gamma_o:.4e} eV ({exit_note})")
     run_range = [run_idx] if run_idx is not None else range(runs)
@@ -399,6 +401,18 @@ def step1_build_ratesmc(basics: dict, resonance: dict,
                               ('final_parity', '--final-parity')):
                 if key in resonance:
                     cmd.extend([flag, resonance[key]])
+            if float(resonance.get('cluster_density', 0) or 0) > 0:
+                cmd.extend(["--cluster-density", resonance['cluster_density'],
+                            "--cluster-wigner-eV", str(cluster_wigner)])
+                for key, flag in (('cluster_window_mev', '--cluster-window-mev'),
+                                  ('cluster_theta2_median', '--cluster-theta2-median'),
+                                  ('cluster_sigma_ln', '--cluster-sigma-ln'),
+                                  ('cluster_theta2_max', '--cluster-theta2-max')):
+                    if key in resonance:
+                        cmd.extend([flag, resonance[key]])
+                if resonance.get('cluster_l_weights'):
+                    cmd.extend(["--cluster-l-weights",
+                                *resonance['cluster_l_weights'].replace(',', ' ').split()])
             if not _bool(resonance.get('drop_forbidden'), True):
                 cmd.append("--keep-forbidden")
             if not _bool(resonance.get('auto_l2'), True):

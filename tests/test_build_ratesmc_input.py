@@ -490,3 +490,25 @@ class ExitOpenAsWrittenTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ClusterSettingsTest(unittest.TestCase):
+    def _args(self, **kw):
+        base = dict(cluster_density=0.0, cluster_window_mev=4.0, cluster_theta2_median=0.45,
+                    cluster_sigma_ln=0.9, cluster_theta2_max=2.0, cluster_l_weights=None,
+                    cluster_wigner_eV=None)
+        base.update(kw)
+        return Namespace(**base)
+
+    def test_off_gives_no_settings(self):
+        from build_ratesmc_input import _cluster_settings
+        self.assertEqual(_cluster_settings(self._args()), {})
+
+    def test_on_needs_the_wigner_limit(self):
+        from build_ratesmc_input import _cluster_settings
+        with self.assertRaises(ValueError):
+            _cluster_settings(self._args(cluster_density=2.0))
+        s = _cluster_settings(self._args(cluster_density=2.0, cluster_wigner_eV=1.5e6,
+                                         cluster_l_weights=[1.0, 0.5]))
+        self.assertEqual(s["cluster_l_weights"], (1.0, 0.5))
+        self.assertEqual(s["cluster_wigner_eV"], 1.5e6)
