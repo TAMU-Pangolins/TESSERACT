@@ -46,7 +46,7 @@ from nucres.read_qvals import atomic_mass_u
 # ─────────────────────────────────────────────────────────────────────────────
 _SCRIPT_KEYS = frozenset({
     'method', 'maxiter', 'xtol', 'ftol', 'xatol', 'fatol',
-    'exp_rel_err', 'e_fit_min', 'e_fit_max', 'prior_rel_std', 'prior_abs_floor',
+    'exp_rel_err', 'e_fit_min', 'e_fit_max', 'exp_sigma_floor', 'prior_rel_std', 'prior_abs_floor',
     'debug_every', 'exp_file', 'output_file', 'rates_mc_file',
     'rate_xmin', 'rate_xmax', 'plot_log_y_xs', 'plot_log_y_rate',
     'talys_output_dir', 'exp_energy_frame', 'talys_xs_file', 'talys_points_per_bin', 'exp_bin_width',
@@ -965,6 +965,18 @@ def run_least_squares(obj, x0: np.ndarray, cfg: dict):
     )
 
 
+def fit_mask(x_exp, y_exp, e_min: float, e_max: float = np.inf, sigma_floor: float = 1e-10):
+    """
+    Bins that enter chi^2: inside [e_min, e_max] (MeV) with a data cross
+    section above sigma_floor (mb). The floor stands in for an experiment's
+    sensitivity: bins below it would not have been measured, so the fit has
+    to extrapolate through them. The default 1e-10 mb only drops empty bins.
+    """
+    x_exp = np.asarray(x_exp, dtype=float)
+    y_exp = np.asarray(y_exp, dtype=float)
+    return (y_exp > sigma_floor) & (x_exp >= e_min) & (x_exp <= e_max)
+
+
 def _fit_window_text(e_min: float, e_max: float = np.inf) -> str:
     """'E >= a MeV' or 'a <= E <= b MeV' for logs and summaries."""
     if e_max is None or not np.isfinite(e_max):
@@ -1460,7 +1472,8 @@ def main():
     # Optional upper edge, e.g. to leave out energies where the sampled
     # resonance cross section is not physical (overlapping resonances).
     E_FIT_MAX   = float(script['e_fit_max']) if script.get('e_fit_max') else np.inf
-    mask        = (y_exp > 1e-10) & (x_exp >= E_FIT_MIN) & (x_exp <= E_FIT_MAX)
+    SIGMA_FLOOR = float(script['exp_sigma_floor']) if script.get('exp_sigma_floor') else 1e-10
+    mask        = fit_mask(x_exp, y_exp, E_FIT_MIN, E_FIT_MAX, SIGMA_FLOOR)
 
     if np.any(~np.isfinite(y_exp)):
         raise ValueError("Experimental y contains non-finite values.")
@@ -1480,7 +1493,8 @@ def main():
     GRID_STEP = float(script['talys_grid_step']) if script.get('talys_grid_step') else None
     talys_where = configure_talys_energies(cfg, x_exp, BIN_WIDTH, N_PER_BIN, GRID_STEP)
     print(f"[talys_opt] data bins: width {BIN_WIDTH:g} MeV; TALYS {talys_where}; "
-          f"fit window {_fit_window_text(E_FIT_MIN, E_FIT_MAX)}")
+          f"fit window {_fit_window_text(E_FIT_MIN, E_FIT_MAX)}, data above {SIGMA_FLOOR:g} mb "
+          f"({int(mask.sum())} of {len(mask)} bins)")
 
     # ── Debug mode: one verbose TALYS call at x0, then exit ──────────────────
     if args.debug_talys:
@@ -1572,7 +1586,7 @@ def main():
     # parameters. Associate diagnostics with the parameters and curve we save.
     fit_info = obj.statistics(params_best, y_t)
     fit_info.update(optimizer_objective=float(res.fun), e_fit_min=E_FIT_MIN, e_fit_max=E_FIT_MAX,
-                    talys_points_per_bin=N_PER_BIN, bin_width=BIN_WIDTH)
+                    exp_sigma_floor=SIGMA_FLOOR, talys_points_per_bin=N_PER_BIN, bin_width=BIN_WIDTH)
     if GRID_STEP:
         fit_info.update(talys_grid_step=GRID_STEP)
     y_bin = talys_to_bins(y_t, cfg, len(y_exp))

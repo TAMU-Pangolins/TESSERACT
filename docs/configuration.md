@@ -148,6 +148,7 @@ log-posterior up to a constant); chi^2/dof is reported and written as
 | `exp_bin_width` | from the file | Bin width (MeV); else the `dE=` in the file header, the `_dE_<w>` in its name, or the median spacing. |
 | `e_fit_min` | `2.0` | Only bins with E >= e_fit_min (MeV) enter chi^2. |
 | `e_fit_max` | unset | Only bins with E <= e_fit_max (MeV) enter chi^2, e.g. to leave out energies where the sampled resonances overlap strongly. Unset: no upper limit. |
+| `exp_sigma_floor` | `1e-10` | Only bins whose data cross section exceeds this value (mb) enter chi^2, standing in for an experiment's sensitivity: lower bins are treated as unmeasured and TALYS extrapolates through them. Combines with `e_fit_min`/`e_fit_max`. The default only drops empty bins. |
 | `exp_rel_err` | `0.10` | Relative uncertainty of points without one (the data file's third column, an absolute uncertainty, is used where present). |
 | `prior_rel_std` | `0.15` | Relative prior width; `0` disables the prior. |
 | `prior_abs_floor` | `0.01` | Floor on \|x0\| in the prior width. |

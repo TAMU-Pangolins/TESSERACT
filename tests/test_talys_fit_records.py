@@ -71,6 +71,13 @@ class TalysFitRecordTest(unittest.TestCase):
             self.assertEqual(plot.call_args.kwargs['e_fit_min'], 1.5)
             self.assertEqual(plot.call_args.kwargs['e_fit_max'], 6.0)
 
+    def test_fit_mask_combines_energy_window_and_cross_section_floor(self):
+        x = [0.5, 1.0, 1.5, 2.0, 2.5]
+        y = [1e-12, 1e-4, 5e-2, 2.0, 30.0]
+        self.assertEqual(list(optimizer.fit_mask(x, y, 0.0)), [False, True, True, True, True])
+        self.assertEqual(list(optimizer.fit_mask(x, y, 0.0, sigma_floor=1e-3)), [False, False, True, True, True])
+        self.assertEqual(list(optimizer.fit_mask(x, y, 1.2, 2.2, sigma_floor=1e-3)), [False, False, True, True, False])
+
     def test_fit_window_text(self):
         self.assertEqual(optimizer._fit_window_text(2.0), "E >= 2.0 MeV")
         self.assertEqual(optimizer._fit_window_text(2.0, float('inf')), "E >= 2.0 MeV")
